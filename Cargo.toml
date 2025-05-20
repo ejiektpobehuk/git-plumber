@@ -1,0 +1,23 @@
+[package]
+name = "git-plumber"
+description = "Explore git internals, the plumbing"
+version = "0.1.0"
+edition = "2024"
+repository = "https://github.com/ejiektpobehuk/git-plumber"
+license = "MIT"
+readme = "README.md"
+authors = ["Vlad Petrov <oss@ejiek.id>"]
+
+[dependencies]
+flate2 = "1.1.1"
+nom = "8.0.0"
+thiserror = "2.0.12"
+clap = { version = "4.5.5", features = ["derive"] }
+ratatui = "0.29.0"
+crossterm = "0.29.0"
+hex = "0.4.3"
+sha1 = "0.10.6"
+rayon = "1.10.0"
+
+[dev-dependencies]
+tempfile = "3.10.1"
