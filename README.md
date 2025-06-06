@@ -1,8 +1,7 @@
 # git-plumber
 
-<p align="center">
-  [![asciicast](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr.svg)](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr)
-</p>
+[![asciicast](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr.svg)](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr)
+
 > _🎥 Click above to watch git-plumber in action (asciinema demo)_
 
 > **Explore a `.git/` directory and peek into git’s internals from a terminal.**
@@ -35,7 +34,7 @@ Perfect for learning, live experimentation, or just satisfying your curiosity.
 ## Installation
 
 > [!WARNING]
-> ** Early version - best to build from source **
+> Early version - best to build from source
 
 _Packaging is coming soon! Planned:_
 
