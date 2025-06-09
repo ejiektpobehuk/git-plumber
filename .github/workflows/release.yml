@@ -220,6 +220,9 @@ jobs:
     needs: [release]
     runs-on: ubuntu-latest
     environment: publish-container
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
