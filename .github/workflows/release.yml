@@ -1,0 +1,300 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # clippy:
+  #   name: Clippy
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Install Rust
+  #       uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         components: clippy
+  #
+  #     - name: Cache cargo
+  #       uses: actions/cache@v4
+  #       with:
+  #         path: |
+  #           ~/.cargo/registry
+  #           ~/.cargo/git
+  #           target
+  #         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+  #
+  #     - name: Run clippy
+  #       run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests
+        run: cargo test --all-features
+
+  # Build matrix for multiple platforms
+  build:
+    name: Build
+    needs: [clippy, test]
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: git-plumber-linux-x86_64
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            name: git-plumber-linux-x86_64-static
+            static: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            name: git-plumber-linux-aarch64-static
+            static: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            name: git-plumber-linux-aarch64
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            name: git-plumber-windows-x86_64.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            name: git-plumber-windows-aarch64.exe
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            name: git-plumber-macos-x86_64
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            name: git-plumber-macos-aarch64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross-compilation tools (Linux ARM)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install musl tools (for static builds)
+        if: matrix.static == true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools musl-dev
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary
+        run: cargo build --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+          RUSTFLAGS: ${{ matrix.static == true && '-C target-feature=+crt-static' || '' }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target/${{ matrix.target }}/release/git-plumber.exe ${{ matrix.name }}
+          else
+            cp target/${{ matrix.target }}/release/git-plumber ${{ matrix.name }}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  # Create release draft
+  release:
+    name: Create Release
+    needs: [build]
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create_release.outputs.id }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -la artifacts/
+
+      - name: Get tag name
+        id: tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG_NAME }}
+          release_name: Release ${{ steps.tag.outputs.TAG_NAME }}
+          draft: true
+          prerelease: false
+          body: |
+            ## Release ${{ steps.tag.outputs.TAG_NAME }}
+
+            ### What's Changed
+            <!-- Add your release notes here -->
+
+            ### Downloads
+            Choose the appropriate binary for your platform:
+            - **Linux x86_64**: `git-plumber-linux-x86_64`
+            - **Linux x86_64 (static)**: `git-plumber-linux-x86_64-static` _(fully static, no dependencies)_
+            - **Linux ARM64**: `git-plumber-linux-aarch64`
+            - **Linux ARM64 (static)**: `git-plumber-linux-aarch64-static` _(fully static, no dependencies)_
+            - **Windows x86_64**: `git-plumber-windows-x86_64.exe`
+            - **Windows ARM64**: `git-plumber-windows-aarch64.exe`
+            - **macOS x86_64**: `git-plumber-macos-x86_64`
+            - **macOS ARM64**: `git-plumber-macos-aarch64`
+
+            ### Docker Image
+            Available as a minimal Docker image (~2MB) using static binaries on scratch base.
+            Supports both x86_64 and ARM64 architectures.
+
+      - name: Upload Release Assets
+        shell: bash
+        run: |
+          for dir in artifacts/*/; do
+            asset_name=$(basename "$dir")
+            asset_path="$dir$asset_name"
+            if [[ -f "$asset_path" ]]; then
+              echo "Uploading $asset_name from $asset_path"
+              curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+                   -H "Content-Type: application/octet-stream" \
+                   --data-binary @"$asset_path" \
+                   "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$asset_name"
+            fi
+          done
+
+  # Manual approval required for publishing
+  docker-publish:
+    name: Publish Docker Image
+    needs: [release]
+    runs-on: ubuntu-latest
+    environment: publish-container
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download x86_64 static binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git-plumber-linux-x86_64-static
+          path: ./amd64
+
+      - name: Download ARM64 static binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git-plumber-linux-aarch64-static
+          path: ./arm64
+
+      - name: Prepare binaries for Docker
+        run: |
+          # Rename to match Docker's TARGETARCH values and simplify names
+          mv ./amd64/git-plumber-linux-x86_64-static ./amd64/git-plumber
+          mv ./arm64/git-plumber-linux-aarch64-static ./arm64/git-plumber
+          chmod +x ./amd64/git-plumber ./arm64/git-plumber
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get tag name
+        id: tag
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: .github/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/git-plumber:latest
+            ${{ secrets.DOCKER_USERNAME }}/git-plumber:${{ steps.tag.outputs.TAG_NAME }}
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.TAG_NAME }}
+
+  crates-publish:
+    name: Publish to Crates.io
+    needs: [release]
+    runs-on: ubuntu-latest
+    environment: publish-crate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Publish to crates.io
+        run: cargo publish --token ${{ secrets.CRATES_TOKEN }}
