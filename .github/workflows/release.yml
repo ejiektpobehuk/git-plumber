@@ -56,6 +56,38 @@ jobs:
       - name: Run tests
         run: cargo test --all-features
 
+  # Nix build and Cachix caching for releases
+  nix-build-cache:
+    name: Nix Build and Cache
+    needs: [clippy, test]
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://git-plumber.cachix.org
+            extra-trusted-public-keys = git-plumber.cachix.org-1:A40lddBYiPFacXEF8iHiiOkuJSHBw2D5IeIEr98Velg=
+
+      - name: Setup Cachix
+        uses: cachix/cachix-action@v15
+        with:
+          name: git-plumber
+          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+
+      - name: Build and push to cachix
+        run: |
+          nix build .#git-plumber
+          nix path-info --json | jq -r '.[].path' | cachix push git-plumber
+
   # Build matrix for multiple platforms
   build:
     name: Build
