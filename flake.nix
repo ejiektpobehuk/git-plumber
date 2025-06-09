@@ -1,6 +1,12 @@
 {
   description = "Explore git internals, the plumbing";
 
+  # Suggest binary cache for faster builds
+  nixConfig = {
+    extra-substituters = [ "https://git-plumber.cachix.org" ];
+    extra-trusted-public-keys = [ "git-plumber.cachix.org-1:A40lddBYiPFacXEF8iHiiOkuJSHBw2D5IeIEr98Velg=" ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
