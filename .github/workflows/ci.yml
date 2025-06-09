@@ -89,8 +89,7 @@ jobs:
 
       - name: Build and push to cachix
         run: |
-          nix build .#git-plumber
-          nix path-info --json | jq -r '.[].path' | cachix push git-plumber
+          nix build .#git-plumber --no-link --print-out-paths | cachix push git-plumber
 
   # Build matrix - only run for main branch pushes
   build:
