@@ -246,6 +246,17 @@ jobs:
             ```
             cargo install git-plumber --version ${{ steps.tag.outputs.TAG_NAME }}
             ```
+
+            ### Chocolatey (Windows)
+            Available at [Chocolatey Community Repository](https://community.chocolatey.org/packages/git-plumber) for Windows users:
+
+            ```
+            choco install git-plumber
+            ```
+            To install this specific version, use:
+            ```
+            choco install git-plumber --version ${{ steps.tag.outputs.TAG_NAME }}
+            ```
           files: |
             artifacts/*/git-plumber-*
 
@@ -337,3 +348,167 @@ jobs:
 
       - name: Publish to crates.io
         run: cargo publish --token ${{ secrets.CRATES_TOKEN }}
+
+  chocolatey-publish:
+    name: Publish to Chocolatey Community Repository
+    needs: [release]
+    runs-on: windows-latest
+    environment: publish-chocolatey
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Windows x86_64 binary
+        uses: actions/download-artifact@v4
+        with:
+          name: git-plumber-windows-x86_64.exe
+          path: ./
+
+      - name: Get tag name
+        id: tag
+        run: echo "TAG_NAME=${env:GITHUB_REF -replace 'refs/tags/', ''}" >> $env:GITHUB_OUTPUT
+
+      - name: Install Chocolatey
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+      - name: Create Chocolatey package
+        run: |
+          # Create package directory
+          New-Item -ItemType Directory -Path "choco-package" -Force
+          New-Item -ItemType Directory -Path "choco-package/tools" -Force
+
+          # Copy binary to tools directory
+          Copy-Item "git-plumber-windows-x86_64.exe" -Destination "choco-package/tools/git-plumber.exe"
+
+          # Create nuspec file
+          $version = "${{ steps.tag.outputs.TAG_NAME }}" -replace '^v', ''
+          $nuspec = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+            <metadata>
+              <id>git-plumber</id>
+              <version>$version</version>
+              <packageSourceUrl>https://github.com/ejiektpobehuk/git-plumber</packageSourceUrl>
+              <owners>ejiektpobehuk</owners>
+              <title>Git Plumber</title>
+              <authors>ejiektpobehuk</authors>
+              <projectUrl>https://github.com/ejiektpobehuk/git-plumber</projectUrl>
+              <licenseUrl>https://github.com/ejiektpobehuk/git-plumber/blob/main/LICENSE</licenseUrl>
+              <requireLicenseAcceptance>false</requireLicenseAcceptance>
+              <description>
+                 [![asciicast](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr.svg)](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr)
+
+                 **Explore a `.git/` directory and peek into git&apos;s internals from a terminal.**
+
+                 A visual, interactive companion to &quot;Pro Git&quot; Chapter 10 and anyone curious about what&apos;s under git&apos;s hood.
+
+                 Perfect for learning, live experimentation, or just satisfying your curiosity about how git works internally.
+
+                 [![asciicast](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr.svg)](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr)
+
+                 > _🎥 Click above to watch git-plumber in action (asciinema demo)_
+
+                 > **Explore a `.git/` directory and peek into git&apos;s internals from a terminal.**
+                 > _A visual, interactive companion to &quot;Pro Git&quot; Chapter 10 and anyone curious about what&apos;s under git&apos;s hood._
+
+                 ---
+
+                 ## What is _git-plumber_?
+
+                 [git-plumber](https://github.com/ejiektpobehuk/git-plumber) is a CLI and TUI application for **exploring the internals of git repositories** in a safe, read-only way.
+                 Browse and understand the contents of the `.git/` directory: refs, trees, blobs and more.
+                 Demystifying compressed and binary &quot;plumbing&quot; beneath git&apos;s familiar porcelain appearance.
+
+                 Perfect for learning, live experimentation, or just satisfying your curiosity.
+
+                 ### Use cases
+
+
+                 - **Learning with _[&quot;Pro Git&quot; 10. Git Internals](https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain))_**: Fire up `git-plumber` in a test repository and see immediately how every command reshapes your repo&apos;s internals.
+                 - **Understanding git storage**: See for yourself how git stores differences between versions — the reason this app was created!
+
+                 ### What _git-plumber_ is not?
+
+                 - **Not** a replacement for everyday git workflow
+                 - **Not** a &quot;porcelain&quot; UI like [gitui](https://github.com/extrawurst/gitui) or [lazygit](https://github.com/jesseduffield/lazygit)
+                 - **Not** an interface for running plumbing commands, but a worthy alternative to `git cat-file` or `git verify-pack`
+
+                 ---
+
+                 ## Roadmap &amp; Contributions
+
+                 This app is my git learning project.
+                 It&apos;s going to be more complete as my knowledge grows.
+
+                 For planned features checkout [issues at GitHub](https://github.com/ejiektpobehuk/git-plumber/issues).
+
+                 **Major goals**:
+
+                 - Navigation hints
+                 - Support for all native git files
+                 - Clear &quot;unsupported&quot; indicators
+                 - Internationalization (i18n)
+                 - [git-bug](https://github.com/git-bug/git-bug) support
+                 - [jj](https://github.com/jj-vcs/jj) support
+
+                 **PRs/issues welcome — no need to be a git guru!**
+                 Beginners and documentation helpers are especially appreciated.
+                 If something is unclear, that&apos;s a sign the app can get better: lease [open an issue](https://github.com/ejiektpobehuk/git-plumber/issues/new) or start a discussion!
+
+                 ---
+
+                 ## License
+
+                 [MIT](https://github.com/ejiektpobehuk/git-plumber/blob/main/LICENSE)
+
+                 ---
+
+                 ## Credits &amp; Inspiration
+
+                 - *Pro Git*, [Chapter 10: Git Internals](https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain)
+                 - [Git pack-format documentation](https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain)
+
+                 ---
+
+                 **Not a git management tool.
+                 Not for your day-to-day workflow.
+                 This is for those who want to see git&apos;s wiring and learn how it all fits together.**
+
+                 🕳️ *Happy plumbing!* 🔧
+               </description>
+              <releaseNotes>https://github.com/ejiektpobehuk/git-plumber/releases/tag/${{ steps.tag.outputs.TAG_NAME }}</releaseNotes>
+              <tags>git cli tui developer-tools education</tags>
+            </metadata>
+          </package>
+          "@
+          Set-Content -Path "choco-package/git-plumber.nuspec" -Value $nuspec
+
+          # Create chocolateyInstall.ps1
+          $installScript = @"
+          `$ErrorActionPreference = 'Stop'
+          `$toolsDir = Split-Path -Parent `$MyInvocation.MyCommand.Definition
+          `$exePath = Join-Path `$toolsDir 'git-plumber.exe'
+
+          # Create shim for the executable
+          Install-BinFile -Name 'git-plumber' -Path `$exePath
+          "@
+          Set-Content -Path "choco-package/tools/chocolateyInstall.ps1" -Value $installScript
+
+          # Create chocolateyUninstall.ps1
+          $uninstallScript = @"
+          `$ErrorActionPreference = 'Stop'
+
+          # Remove shim
+          Uninstall-BinFile -Name 'git-plumber'
+          "@
+          Set-Content -Path "choco-package/tools/chocolateyUninstall.ps1" -Value $uninstallScript
+
+      - name: Pack and push Chocolatey package
+        run: |
+          cd choco-package
+          choco pack
+          choco apikey --api-key ${{ secrets.CHOCOLATEY_API_KEY }} --source https://push.chocolatey.org/
+          choco push git-plumber.*.nupkg --source https://push.chocolatey.org/
