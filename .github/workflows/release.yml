@@ -181,8 +181,8 @@ jobs:
     name: Create Release
     needs: [build]
     runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create_release.outputs.id }}
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -201,12 +201,10 @@ jobs:
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.TAG_NAME }}
-          release_name: Release ${{ steps.tag.outputs.TAG_NAME }}
+          name: Release ${{ steps.tag.outputs.TAG_NAME }}
           draft: true
           prerelease: false
           body: |
@@ -215,7 +213,7 @@ jobs:
             ### What's Changed
             <!-- Add your release notes here -->
 
-            ### Downloads
+            ### Available binaries
             Choose the appropriate binary for your platform:
             - **Linux x86_64**: `git-plumber-linux-x86_64`
             - **Linux x86_64 (static)**: `git-plumber-linux-x86_64-static` _(fully static, no dependencies)_
@@ -226,24 +224,30 @@ jobs:
             - **macOS x86_64**: `git-plumber-macos-x86_64`
             - **macOS ARM64**: `git-plumber-macos-aarch64`
 
-            ### Docker Image
-            Available as a minimal Docker image (~2MB) using static binaries on scratch base.
-            Supports both x86_64 and ARM64 architectures.
+            ### Container Image
+            Available at [docker hub](https://hub.docker.com/r/ejiek/git-plumber/tags?name=${{ steps.tag.outputs.TAG_NAME }}) and [ghcr](https://github.com/ejiektpobehuk/git-plumber/pkgs/container/git-plumber) as a minimal Docker image (<1MB) using static binaries on scratch base.
+            Supports `x86_64` and `ARM64` architectures.
 
-      - name: Upload Release Assets
-        shell: bash
-        run: |
-          for dir in artifacts/*/; do
-            asset_name=$(basename "$dir")
-            asset_path="$dir$asset_name"
-            if [[ -f "$asset_path" ]]; then
-              echo "Uploading $asset_name from $asset_path"
-              curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                   -H "Content-Type: application/octet-stream" \
-                   --data-binary @"$asset_path" \
-                   "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.create_release.outputs.id }}/assets?name=$asset_name"
-            fi
-          done
+
+            ```
+            docker run --rm -v $(pwd):/workspace ejiek/git-plumber:${{ steps.tag.outputs.TAG_NAME }}
+            ```
+            ```
+            podman run --rm -v $(pwd):/workspace docker pull ghcr.io/ejiektpobehuk/git-plumber:${{ steps.tag.outputs.TAG_NAME }}
+            ```
+
+            ### Crates.io
+            Available at [crates.io](https://crates.io/crates/git-plumber) as a Rust crate:
+
+            ```
+            cargo install git-plumber
+            ```
+            To install this specific version, use:
+            ```
+            cargo install git-plumber --version ${{ steps.tag.outputs.TAG_NAME }}
+            ```
+          files: |
+            artifacts/*/git-plumber-*
 
   # Manual approval required for publishing
   docker-publish:
