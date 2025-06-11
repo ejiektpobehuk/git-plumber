@@ -102,26 +102,24 @@ pub fn render(f: &mut ratatui::Frame, app: &AppState, area: ratatui::layout::Rec
                                 };
                                 if is_last { "└▼ " } else { "├▼ " }
                             }
+                        } else if *depth == 0 {
+                            "▶ "
                         } else {
-                            if *depth == 0 {
-                                "▶ "
-                            } else {
-                                // Find if this is the last category at this depth
-                                let is_last = {
-                                    let mut is_last = true;
-                                    for j in (i + 1)..state.git_objects.flat_view.len() {
-                                        let (next_depth, _) = &state.git_objects.flat_view[j];
-                                        if *next_depth == *depth {
-                                            is_last = false;
-                                            break;
-                                        } else if *next_depth < *depth {
-                                            break;
-                                        }
+                            // Find if this is the last category at this depth
+                            let is_last = {
+                                let mut is_last = true;
+                                for j in (i + 1)..state.git_objects.flat_view.len() {
+                                    let (next_depth, _) = &state.git_objects.flat_view[j];
+                                    if *next_depth == *depth {
+                                        is_last = false;
+                                        break;
+                                    } else if *next_depth < *depth {
+                                        break;
                                     }
-                                    is_last
-                                };
-                                if is_last { "└▶ " } else { "├▶ " }
-                            }
+                                }
+                                is_last
+                            };
+                            if is_last { "└▶ " } else { "├▶ " }
                         }
                     }
                     GitObjectType::Category(_) => {

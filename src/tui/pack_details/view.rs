@@ -159,7 +159,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                             byte & 0x7F
                         )));
                     } else {
-                        lines.push(Line::from(format!("    └─ Part of base object hash")));
+                        lines.push(Line::from("    └─ Part of base object hash".to_string()));
                     }
                 }
             }
@@ -208,7 +208,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
 
     // If we have object data, show detailed information
     if let Some(ref object_data) = pack_obj.object_data {
-        lines.push(Line::from(format!("\n")));
+        lines.push(Line::from("\n".to_string()));
 
         let obj_type = object_data.header.obj_type();
 
@@ -230,7 +230,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     lines.push(Line::from(format!(
                         "This object is a delta relative to an object {base_offset} bytes back\n"
                     )));
-                    lines.push(Line::from(format!("\n")));
+                    lines.push(Line::from("\n".to_string()));
                 }
             } else if let crate::git::pack::ObjectHeader::RefDelta { base_ref, .. } =
                 &object_data.header
@@ -239,9 +239,9 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     "Base Reference: {}",
                     hex::encode(base_ref)
                 )));
-                lines.push(Line::from(format!(
-                    "This object is a delta relative to the referenced object\n\n"
-                )));
+                lines.push(Line::from(
+                    "This object is a delta relative to the referenced object\n\n".to_string(),
+                ));
             }
 
             // Parse and display delta instructions
@@ -255,7 +255,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                         "Total Instructions: {}\n",
                         instructions.len()
                     )));
-                    lines.push(Line::from(format!("\n")));
+                    lines.push(Line::from("\n".to_string()));
 
                     for (i, instruction) in instructions.iter().enumerate() {
                         let _ = write!(detail, "  {}. ", i + 1);
@@ -283,9 +283,9 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                                             hex::encode(&data[..data.len().min(32)])
                                         )));
                                         if data.len() > 32 {
-                                            lines.push(Line::from(format!(
-                                                "      └─ ... (truncated)\n"
-                                            )));
+                                            lines.push(Line::from(
+                                                "      └─ ... (truncated)\n".to_string(),
+                                            ));
                                         }
                                     }
                                 } else {
@@ -301,7 +301,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                                 }
                             }
                         }
-                        lines.push(Line::from(format!("\n")));
+                        lines.push(Line::from("\n".to_string()));
                     }
 
                     // Delta reconstruction explanation
@@ -358,7 +358,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     "Content (first 1000 chars):\n{}",
                     &content_str[..1000]
                 )));
-                lines.push(Line::from(format!("... (truncated)\n")));
+                lines.push(Line::from("... (truncated)\n".to_string()));
             }
         }
     } else {

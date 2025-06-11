@@ -686,55 +686,57 @@ impl AppState {
             },
 
             Message::OpenPackView => {
-                if let AppView::Main { state } = &mut self.view {
-                    if let MainViewState {
-                        preview_state:
-                            PreviewState::Pack(PackPreViewState {
-                                pack_file_path,
-                                pack_object_list,
-                                selected_pack_object,
-                                pack_object_list_scroll_position,
-                                ..
-                            }),
-                        ..
-                    } = state
-                    {
-                        self.view = AppView::PackObjectDetail {
-                            state: PackViewState {
-                                pack_file_path: pack_file_path.clone(),
-                                pack_object_list: pack_object_list.clone(),
-                                pack_object_index: *selected_pack_object,
-                                pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                                preview_scroll_position: 0,
-                            },
-                        }
+                if let AppView::Main {
+                    state:
+                        MainViewState {
+                            preview_state:
+                                PreviewState::Pack(PackPreViewState {
+                                    pack_file_path,
+                                    pack_object_list,
+                                    selected_pack_object,
+                                    pack_object_list_scroll_position,
+                                    ..
+                                }),
+                            ..
+                        },
+                } = &mut self.view
+                {
+                    self.view = AppView::PackObjectDetail {
+                        state: PackViewState {
+                            pack_file_path: pack_file_path.clone(),
+                            pack_object_list: pack_object_list.clone(),
+                            pack_object_index: *selected_pack_object,
+                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
+                            preview_scroll_position: 0,
+                        },
                     }
                 }
             }
             Message::EnterPackObjectDetail => {
                 // Handle entering pack object detail view - same as OpenPackView
-                if let AppView::Main { state } = &mut self.view {
-                    if let MainViewState {
-                        preview_state:
-                            PreviewState::Pack(PackPreViewState {
-                                pack_file_path,
-                                pack_object_list,
-                                selected_pack_object,
-                                pack_object_list_scroll_position,
-                                ..
-                            }),
-                        ..
-                    } = state
-                    {
-                        self.view = AppView::PackObjectDetail {
-                            state: PackViewState {
-                                pack_file_path: pack_file_path.clone(),
-                                pack_object_list: pack_object_list.clone(),
-                                pack_object_index: *selected_pack_object,
-                                pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                                preview_scroll_position: 0,
-                            },
-                        }
+                if let AppView::Main {
+                    state:
+                        MainViewState {
+                            preview_state:
+                                PreviewState::Pack(PackPreViewState {
+                                    pack_file_path,
+                                    pack_object_list,
+                                    selected_pack_object,
+                                    pack_object_list_scroll_position,
+                                    ..
+                                }),
+                            ..
+                        },
+                } = &mut self.view
+                {
+                    self.view = AppView::PackObjectDetail {
+                        state: PackViewState {
+                            pack_file_path: pack_file_path.clone(),
+                            pack_object_list: pack_object_list.clone(),
+                            pack_object_index: *selected_pack_object,
+                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
+                            preview_scroll_position: 0,
+                        },
                     }
                 }
             }

@@ -1,5 +1,4 @@
-use ratatui::layout::Alignment;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span, Text};
 /// Educational content for different Git object types and categories
 use std::collections::HashMap;
