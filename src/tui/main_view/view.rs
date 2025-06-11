@@ -1,15 +1,11 @@
 use ratatui::layout::{Constraint, Direction, Layout};
 use ratatui::style::{Color, Style};
+use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
-use std::env;
-use std::path::PathBuf;
 
 use super::model::{MainViewState, PackFocus, RegularFocus};
-use super::{PackPreViewState, PreviewState};
-use crate::tui::helpers::{
-    render_list_with_scrollbar, render_paragraph_with_scrollbar,
-    render_styled_paragraph_with_scrollbar,
-};
+use super::{PackPreViewState, PreviewState, RegularPreViewState};
+use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_with_scrollbar};
 use crate::tui::model::{AppState, AppView, GitObjectType};
 use crate::tui::pack_details::render_pack_object_detail_view_with_cache;
 
@@ -410,4 +406,67 @@ fn render_pack_preview_2_panels(
             );
         }
     }
+}
+
+pub fn navigation_hints(app: &AppState) -> Vec<Span> {
+    let mut hints = Vec::new();
+    if let AppView::Main { state } = &app.view {
+        let MainViewState {
+            preview_state,
+            git_objects,
+            ..
+        } = &state;
+        match &preview_state {
+            PreviewState::Pack(PackPreViewState { focus, .. }) => {
+                match focus {
+                    PackFocus::GitObjects => {
+                        hints.append(&mut vec![
+                            Span::styled("←", Style::default().fg(Color::Green)),
+                            Span::styled("↕→", Style::default().fg(Color::Blue)),
+                        ]);
+                    }
+                    PackFocus::PackObjectDetails => {
+                        hints.append(&mut vec![
+                            Span::styled("←↕", Style::default().fg(Color::Blue)),
+                            Span::styled("→", Style::default().fg(Color::Gray)),
+                        ]);
+                    }
+                    _ => {
+                        hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
+                    }
+                };
+            }
+            PreviewState::Regular(RegularPreViewState { focus, .. }) => match focus {
+                RegularFocus::GitObjects => {
+                    match git_objects.flat_view[git_objects.selected_index].1.obj_type {
+                        GitObjectType::Category(_) => {
+                            hints.append(&mut vec![
+                                Span::styled("←", Style::default().fg(Color::Green)),
+                                Span::styled("↕→", Style::default().fg(Color::Blue)),
+                            ]);
+                        }
+                        _ => {
+                            hints.append(&mut vec![
+                                Span::styled("←", Style::default().fg(Color::Green)),
+                                Span::styled("↕→", Style::default().fg(Color::Blue)),
+                            ]);
+                        }
+                    };
+                }
+                RegularFocus::Preview => {
+                    hints.append(&mut vec![
+                        Span::styled("←↕", Style::default().fg(Color::Blue)),
+                        Span::styled("→", Style::default().fg(Color::Gray)),
+                    ]);
+                }
+            },
+        };
+    };
+    hints.append(&mut vec![
+        Span::raw(" to navigate | "),
+        Span::raw("("),
+        Span::styled("Q", Style::default().fg(Color::Blue)),
+        Span::raw(")uit"),
+    ]);
+    hints
 }

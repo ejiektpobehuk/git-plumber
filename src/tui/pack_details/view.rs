@@ -400,3 +400,20 @@ pub fn get_or_generate_pack_object_detail_content(
     *cache = Some((content.clone(), line_count));
     (content, line_count)
 }
+
+pub fn navigation_hints(app: &AppState) -> Vec<Span> {
+    match &app.view {
+        AppView::PackObjectDetail { .. } => {
+            vec![
+                Span::styled("↕", Style::default().fg(Color::Blue)),
+                Span::raw(" to scroll | "),
+                Span::raw(""),
+                Span::styled("Q", Style::default().fg(Color::Blue)),
+                Span::styled("/", Style::default().fg(Color::Gray)),
+                Span::styled("←", Style::default().fg(Color::Blue)),
+                Span::raw(" - go back"),
+            ]
+        }
+        _ => Vec::new(),
+    }
+}
