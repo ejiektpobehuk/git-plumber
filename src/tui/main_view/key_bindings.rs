@@ -1,6 +1,6 @@
-use crate::tui::main_view::{PackFocus, PreviewState};
+use crate::tui::main_view::{PackFocus, PackPreViewState, PreviewState, RegularPreViewState};
 use crate::tui::message::{MainNavigation, Message};
-use crate::tui::model::{AppState, AppView};
+use crate::tui::model::{AppState, AppView, GitObjectType};
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::RegularFocus;
@@ -10,27 +10,51 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
     match &app.view {
         AppView::Main { state } => match key.code {
             KeyCode::Char('q') | KeyCode::Esc => Some(Message::Quit),
+            KeyCode::Char('t') => Some(Message::MainNavigation(MainNavigation::ToggleExpand)),
             KeyCode::Char('h') | KeyCode::Left => {
-                if state.are_git_objects_focused() {
-                    None
-                } else {
-                    match &state.preview_state {
-                        PreviewState::Regular(state) => match state.focus {
-                            RegularFocus::Preview => {
-                                Some(Message::MainNavigation(MainNavigation::FocusGitObjects))
+                match &state.preview_state {
+                    PreviewState::Regular(RegularPreViewState {
+                        focus: RegularFocus::GitObjects,
+                        ..
+                    })
+                    | PreviewState::Pack(PackPreViewState {
+                        focus: PackFocus::GitObjects,
+                        ..
+                    }) => {
+                        if !state.git_objects.flat_view.is_empty()
+                            && state.git_objects.selected_index < state.git_objects.flat_view.len()
+                        {
+                            let (current_depth, selected_obj) =
+                                &state.git_objects.flat_view[state.git_objects.selected_index];
+                            match &selected_obj.obj_type {
+                                GitObjectType::Category(_) => {
+                                    Some(Message::MainNavigation(MainNavigation::ToggleExpand))
+                                }
+                                _ => {
+                                    if *current_depth > 0 {
+                                        // Jump to parent category
+                                        Some(Message::MainNavigation(
+                                            MainNavigation::JumpToParentCategory,
+                                        ))
+                                    } else {
+                                        None
+                                    }
+                                }
                             }
-                            _ => None,
-                        },
-                        PreviewState::Pack(state) => match state.focus {
-                            PackFocus::PackObjectsList | PackFocus::Educational => {
-                                Some(Message::MainNavigation(MainNavigation::FocusGitObjects))
-                            }
-                            PackFocus::PackObjectDetails => Some(Message::MainNavigation(
-                                MainNavigation::FocusEducationalOrList,
-                            )),
-                            PackFocus::GitObjects => None,
-                        },
+                        } else {
+                            None
+                        }
                     }
+                    PreviewState::Pack(pack_state) => match pack_state.focus {
+                        PackFocus::PackObjectsList | PackFocus::Educational => {
+                            Some(Message::MainNavigation(MainNavigation::FocusGitObjects))
+                        }
+                        PackFocus::PackObjectDetails => Some(Message::MainNavigation(
+                            MainNavigation::FocusEducationalOrList,
+                        )),
+                        PackFocus::GitObjects => None,
+                    },
+                    _ => None,
                 }
             }
             KeyCode::Char('l') | KeyCode::Right => match &state.preview_state {
@@ -41,9 +65,9 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                     _ => None,
                 },
                 PreviewState::Pack(state) => match state.focus {
-                    PackFocus::GitObjects | PackFocus::PackObjectDetails => Some(
-                        Message::MainNavigation(MainNavigation::FocusEducationalOrList),
-                    ),
+                    PackFocus::GitObjects => Some(Message::MainNavigation(
+                        MainNavigation::FocusEducationalOrList,
+                    )),
                     PackFocus::Educational => {
                         if app.is_wide_screen() {
                             Some(Message::MainNavigation(
@@ -62,6 +86,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                             Some(Message::OpenPackView)
                         }
                     }
+                    PackFocus::PackObjectDetails => None,
                 },
             },
             KeyCode::Up | KeyCode::Char('k') => match &state.preview_state {

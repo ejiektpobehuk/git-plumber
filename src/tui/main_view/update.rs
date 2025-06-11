@@ -222,6 +222,43 @@ impl AppState {
                     }
                 }
 
+                MainNavigation::JumpToParentCategory => {
+                    if let AppView::Main { state } = &mut self.view {
+                        if !state.git_objects.flat_view.is_empty()
+                            && state.git_objects.selected_index < state.git_objects.flat_view.len()
+                        {
+                            let (current_depth, _) =
+                                &state.git_objects.flat_view[state.git_objects.selected_index];
+
+                            if *current_depth > 0 {
+                                // Find parent category by looking backwards for an object at depth - 1
+                                for i in (0..state.git_objects.selected_index).rev() {
+                                    let (parent_depth, parent_obj) =
+                                        &state.git_objects.flat_view[i];
+                                    if *parent_depth == current_depth - 1 {
+                                        if let GitObjectType::Category(_) = &parent_obj.obj_type {
+                                            // Jump to this parent category
+                                            state.git_objects.selected_index = i;
+
+                                            // Update scroll position to keep selected item visible
+                                            self.update_git_objects_scroll_for_selection(i);
+
+                                            // Load details for the newly selected object
+                                            let details_msg = self.load_git_object_details(plumber);
+                                            self.update(details_msg, plumber);
+                                            // Load educational content for the newly selected object
+                                            let content_msg =
+                                                self.load_educational_content(plumber);
+                                            self.update(content_msg, plumber);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 MainNavigation::FocusEducationalOrList => {
                     if let AppView::Main { state } = &mut self.view {
                         match &mut state.preview_state {

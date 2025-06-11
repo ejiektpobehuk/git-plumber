@@ -38,6 +38,7 @@ pub enum MainNavigation {
     SelectFirstGitObject,
     SelectLastGitObject,
     ToggleExpand,
+    JumpToParentCategory,
     // Preview/content
     ScrollPreviewUp,
     ScrollPreviewDown,
