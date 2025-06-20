@@ -3,6 +3,7 @@ use super::{PackPreViewState, RegularFocus, RegularPreViewState};
 use crate::tui::message::{MainNavigation, Message};
 use crate::tui::model::{AppState, AppView, GitObjectType};
 use crate::tui::pack_details::PackViewState;
+use crate::tui::widget::PackObjectWidget;
 
 impl AppState {
     // Handle view mode transition messages for main view
@@ -343,11 +344,12 @@ impl AppState {
                             MainViewState {
                                 preview_state:
                                     PreviewState::Pack(PackPreViewState {
+                                        pack_file_path,
                                         pack_object_list,
                                         pack_object_list_scroll_position,
                                         selected_pack_object,
                                         pack_object_detail_max_scroll,
-                                        pack_object_text_cache: last_pack_object_cache,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -358,8 +360,9 @@ impl AppState {
                         if !pack_object_list.is_empty() {
                             if *selected_pack_object < pack_object_list.len() - 1 {
                                 *selected_pack_object += 1;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
+                                *pack_widget_state = PackObjectWidget::new(
+                                    pack_object_list[*selected_pack_object].clone(),
+                                );
 
                                 // Update scroll position to keep selected item visible
                                 let visible_height = self.layout_dimensions.pack_objects_height;
@@ -372,26 +375,20 @@ impl AppState {
 
                                 // Calculate max scroll for the newly selected pack object
                                 if *selected_pack_object < pack_object_list.len() {
-                                    let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                        &pack_object_list[*selected_pack_object],
-                                        last_pack_object_cache
-                                    );
+                                    let line_count = pack_widget_state.text_len();
                                     let visible_height = self.layout_dimensions.git_objects_height;
                                     *pack_object_detail_max_scroll =
                                         line_count.saturating_sub(visible_height);
                                 }
                             } else {
                                 *selected_pack_object = 0;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
                                 *pack_object_list_scroll_position = 0;
+                                *pack_widget_state =
+                                    PackObjectWidget::new(pack_object_list[0].clone());
 
                                 // Calculate max scroll for the newly selected pack object
                                 if !pack_object_list.is_empty() {
-                                    let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                        &pack_object_list[0],
-                                        last_pack_object_cache
-                                    );
+                                    let line_count = pack_widget_state.text_len();
                                     let visible_height = self.layout_dimensions.git_objects_height;
                                     *pack_object_detail_max_scroll =
                                         line_count.saturating_sub(visible_height);
@@ -412,7 +409,7 @@ impl AppState {
                                         focus,
                                         previous_focus,
                                         pack_object_detail_max_scroll,
-                                        pack_object_text_cache: last_pack_object_cache,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -423,19 +420,16 @@ impl AppState {
                         if !pack_object_list.is_empty() {
                             if *selected_pack_object > 0 {
                                 *selected_pack_object -= 1;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
+                                *pack_widget_state = PackObjectWidget::new(
+                                    pack_object_list[*selected_pack_object].clone(),
+                                );
 
                                 // Update scroll position to keep selected item visible
                                 if *selected_pack_object < *pack_object_list_scroll_position {
                                     *pack_object_list_scroll_position = *selected_pack_object;
                                 }
 
-                                // Calculate max scroll for the newly selected pack object
-                                let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                    &pack_object_list[*selected_pack_object],
-                                    last_pack_object_cache
-                                );
+                                let line_count = pack_widget_state.text_len();
                                 let visible_height = self.layout_dimensions.git_objects_height;
                                 *pack_object_detail_max_scroll =
                                     line_count.saturating_sub(visible_height);
@@ -728,11 +722,7 @@ impl AppState {
                         MainViewState {
                             preview_state:
                                 PreviewState::Pack(PackPreViewState {
-                                    pack_file_path,
-                                    pack_object_list,
-                                    selected_pack_object,
-                                    pack_object_list_scroll_position,
-                                    ..
+                                    pack_object_widget_state: pack_widget_state, ..
                                 }),
                             ..
                         },
@@ -740,39 +730,7 @@ impl AppState {
                 {
                     self.view = AppView::PackObjectDetail {
                         state: PackViewState {
-                            pack_file_path: pack_file_path.clone(),
-                            pack_object_list: pack_object_list.clone(),
-                            pack_object_index: *selected_pack_object,
-                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                            preview_scroll_position: 0,
-                        },
-                    }
-                }
-            }
-            Message::EnterPackObjectDetail => {
-                // Handle entering pack object detail view - same as OpenPackView
-                if let AppView::Main {
-                    state:
-                        MainViewState {
-                            preview_state:
-                                PreviewState::Pack(PackPreViewState {
-                                    pack_file_path,
-                                    pack_object_list,
-                                    selected_pack_object,
-                                    pack_object_list_scroll_position,
-                                    ..
-                                }),
-                            ..
-                        },
-                } = &mut self.view
-                {
-                    self.view = AppView::PackObjectDetail {
-                        state: PackViewState {
-                            pack_file_path: pack_file_path.clone(),
-                            pack_object_list: pack_object_list.clone(),
-                            pack_object_index: *selected_pack_object,
-                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                            preview_scroll_position: 0,
+                            pack_widget: pack_widget_state.clone(),
                         },
                     }
                 }
@@ -809,7 +767,7 @@ impl AppState {
                                     educational_scroll_position: 0,
                                     pack_object_preview_scroll_position: 0,
                                     pack_object_detail_max_scroll: 0,
-                                    pack_object_text_cache: None,
+                                    pack_object_widget_state: PackObjectWidget::Uninitiolized,
                                 };
                                 state.preview_state = PreviewState::Pack(new_pack_state);
                             }

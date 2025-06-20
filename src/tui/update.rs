@@ -106,8 +106,7 @@ impl AppState {
             }
 
             // Pack object detail mode messages
-            Message::EnterPackObjectDetail
-            | Message::ExitPackObjectDetail
+            Message::ExitPackObjectDetail
             | Message::HandlePackObjectDetailAction
             | Message::BackFromObjectDetail => {
                 return self.handle_main_view_mode_message(msg, plumber);
@@ -115,6 +114,10 @@ impl AppState {
 
             Message::MainNavigation(_) | Message::OpenPackView => {
                 return self.handle_main_view_mode_message(msg, plumber);
+            }
+
+            Message::PackNavigation(_) => {
+                return self.handle_pack_view_mode_message(msg, plumber);
             }
 
             Message::OpenMainView => {}

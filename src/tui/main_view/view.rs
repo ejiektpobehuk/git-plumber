@@ -7,7 +7,6 @@ use super::model::{MainViewState, PackFocus, RegularFocus};
 use super::{PackPreViewState, PreviewState, RegularPreViewState};
 use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_with_scrollbar};
 use crate::tui::model::{AppState, AppView, GitObjectType};
-use crate::tui::pack_details::render_pack_object_detail_view_with_cache;
 
 pub fn render(f: &mut ratatui::Frame, app: &AppState, area: ratatui::layout::Rect) {
     if let AppView::Main { state } = &app.view {
@@ -269,7 +268,7 @@ pub fn render_pack_preview_layout(
                         selected_pack_object,
                         focus,
                         pack_object_preview_scroll_position,
-                        pack_object_text_cache,
+                        pack_object_widget_state: pack_object_widget,
                         ..
                     }),
                 ..
@@ -283,21 +282,17 @@ pub fn render_pack_preview_layout(
                 .split(area);
 
             let pack_file_details = horizontal_chunks[0];
-            let object_inside_the_pack_preview = horizontal_chunks[1];
+            let object_details_area = horizontal_chunks[1];
 
             // Render main content in the left area
             render_pack_preview_2_panels(f, app, pack_file_details);
 
             // Render pack detail in the right area only if pack_object_list is not empty
             if !pack_object_list.is_empty() && *selected_pack_object < pack_object_list.len() {
-                render_pack_object_detail_view_with_cache(
+                pack_object_widget.render(
                     f,
-                    object_inside_the_pack_preview,
-                    &pack_object_list[*selected_pack_object],
-                    *pack_object_preview_scroll_position,
-                    "Pack Object Detail",
+                    object_details_area,
                     matches!(focus, PackFocus::PackObjectDetails),
-                    Some(pack_object_text_cache),
                 );
             } else {
                 // Render empty state
@@ -306,7 +301,7 @@ pub fn render_pack_preview_layout(
                         .title("Pack Object Detail")
                         .borders(Borders::ALL),
                 );
-                f.render_widget(empty_widget, object_inside_the_pack_preview);
+                f.render_widget(empty_widget, object_details_area);
             }
         } else {
             render_pack_preview_2_panels(f, app, area);

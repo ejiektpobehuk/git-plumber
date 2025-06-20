@@ -22,6 +22,7 @@ mod view;
 // Include the main view module
 mod main_view;
 mod pack_details;
+mod widget;
 
 // Include the split update modules
 mod loaders;
