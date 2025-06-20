@@ -3,8 +3,60 @@ use super::{PackPreViewState, RegularFocus, RegularPreViewState};
 use crate::tui::message::{MainNavigation, Message};
 use crate::tui::model::{AppState, AppView, GitObjectType};
 use crate::tui::pack_details::PackViewState;
+use crate::tui::widget::PackObjectWidget;
 
 impl AppState {
+    // Handle git object selection with all associated updates
+    fn handle_git_object_selection(
+        &mut self,
+        new_index: usize,
+        is_pack_preview: bool,
+        plumber: &crate::GitPlumber,
+    ) {
+        // Handle preview state transition based on object type
+        self.handle_preview_state_transition(new_index, is_pack_preview);
+
+        // Update scroll position to keep selected item visible
+        self.update_git_objects_scroll_for_selection(new_index);
+
+        // Load details for the newly selected object
+        let details_msg = self.load_git_object_details(plumber);
+        self.update(details_msg, plumber);
+
+        // Load educational content for the newly selected object
+        let content_msg = self.load_educational_content(plumber);
+        self.update(content_msg, plumber);
+
+        // Load pack objects if this is a pack file and update pack object details
+        if is_pack_preview {
+            self.load_pack_objects_if_needed(plumber);
+            self.update_pack_object_widget_if_needed();
+        }
+    }
+
+    // Update pack object widget to show details of the selected pack object
+    fn update_pack_object_widget_if_needed(&mut self) {
+        if let AppView::Main {
+            state:
+                MainViewState {
+                    preview_state: PreviewState::Pack(pack_preview_state),
+                    ..
+                },
+        } = &mut self.view
+        {
+            // If we have pack objects and the widget is uninitialized or showing a different object
+            if !pack_preview_state.pack_object_list.is_empty() {
+                let selected_pack_object = pack_preview_state.selected_pack_object;
+                if selected_pack_object < pack_preview_state.pack_object_list.len() {
+                    // Update the widget to show the selected pack object's details
+                    pack_preview_state.pack_object_widget_state = PackObjectWidget::new(
+                        pack_preview_state.pack_object_list[selected_pack_object].clone(),
+                    );
+                }
+            }
+        }
+    }
+
     // Handle view mode transition messages for main view
     pub fn handle_main_view_mode_message(
         &mut self,
@@ -29,12 +81,7 @@ impl AppState {
                 MainNavigation::SelectNextGitObject => {
                     let (should_update, new_index, is_pack_preview) = match &mut self.view {
                         AppView::Main {
-                            state:
-                                MainViewState {
-                                    git_objects,
-                                    preview_state,
-                                    ..
-                                },
+                            state: MainViewState { git_objects, .. },
                             ..
                         } => {
                             if !git_objects.flat_view.is_empty() {
@@ -55,22 +102,7 @@ impl AppState {
                     };
 
                     if should_update {
-                        // Handle preview state transition based on object type
-                        self.handle_preview_state_transition(new_index, is_pack_preview);
-
-                        // Update scroll position to keep selected item visible
-                        self.update_git_objects_scroll_for_selection(new_index);
-
-                        // Load details for the newly selected object
-                        let details_msg = self.load_git_object_details(plumber);
-                        self.update(details_msg, plumber);
-                        // Load educational content for the newly selected object
-                        let content_msg = self.load_educational_content(plumber);
-                        self.update(content_msg, plumber);
-
-                        if is_pack_preview {
-                            self.load_pack_objects_if_needed(plumber);
-                        }
+                        self.handle_git_object_selection(new_index, is_pack_preview, plumber);
                     }
                 }
 
@@ -100,22 +132,7 @@ impl AppState {
                     };
 
                     if should_update {
-                        // Handle preview state transition based on object type
-                        self.handle_preview_state_transition(new_index, is_pack_preview);
-
-                        // Update scroll position to keep selected item visible
-                        self.update_git_objects_scroll_for_selection(new_index);
-
-                        // Load details for the newly selected object
-                        let details_msg = self.load_git_object_details(plumber);
-                        self.update(details_msg, plumber);
-                        // Load educational content for the newly selected object
-                        let content_msg = self.load_educational_content(plumber);
-                        self.update(content_msg, plumber);
-                        // Load pack objects if this is a pack file
-                        if is_pack_preview {
-                            self.load_pack_objects_if_needed(plumber);
-                        }
+                        self.handle_git_object_selection(new_index, is_pack_preview, plumber);
                     }
                 }
 
@@ -140,22 +157,7 @@ impl AppState {
                     };
 
                     if should_update {
-                        // Handle preview state transition based on object type
-                        self.handle_preview_state_transition(new_index, is_pack_preview);
-
-                        // Update scroll position to keep selected item visible
-                        self.update_git_objects_scroll_for_selection(new_index);
-
-                        // Load details for the newly selected object
-                        let details_msg = self.load_git_object_details(plumber);
-                        self.update(details_msg, plumber);
-                        // Load educational content for the newly selected object
-                        let content_msg = self.load_educational_content(plumber);
-                        self.update(content_msg, plumber);
-                        // Load pack objects if this is a pack file
-                        if is_pack_preview {
-                            self.load_pack_objects_if_needed(plumber);
-                        }
+                        self.handle_git_object_selection(new_index, is_pack_preview, plumber);
                     }
                 }
 
@@ -181,44 +183,34 @@ impl AppState {
                     };
 
                     if should_update {
-                        // Handle preview state transition based on object type
-                        self.handle_preview_state_transition(new_index, is_pack_preview);
-
-                        // Update scroll position to keep selected item visible
-                        self.update_git_objects_scroll_for_selection(new_index);
-
-                        // Load details for the newly selected object
-                        let details_msg = self.load_git_object_details(plumber);
-                        self.update(details_msg, plumber);
-                        // Load educational content for the newly selected object
-                        let content_msg = self.load_educational_content(plumber);
-                        self.update(content_msg, plumber);
-                        // Load pack objects if this is a pack file
-                        if is_pack_preview {
-                            self.load_pack_objects_if_needed(plumber);
-                        }
+                        self.handle_git_object_selection(new_index, is_pack_preview, plumber);
                     }
                 }
 
                 MainNavigation::ToggleExpand => {
-                    if let AppView::Main { state } = &mut self.view {
-                        let toggle_msg = state.toggle_expand();
-                        // Extract the information we need before calling update to avoid borrow conflicts
-                        let has_items = !state.git_objects.flat_view.is_empty();
+                    let (toggle_msg, has_items, selected_index, is_pack) =
+                        if let AppView::Main { state } = &mut self.view {
+                            let toggle_msg = state.toggle_expand();
+                            // Extract the information we need before calling update to avoid borrow conflicts
+                            let has_items = !state.git_objects.flat_view.is_empty();
+                            let selected_index = state.git_objects.selected_index;
+                            let is_pack = if let Some((_, git_object)) =
+                                state.git_objects.flat_view.get(selected_index)
+                            {
+                                matches!(git_object.obj_type, GitObjectType::Pack { .. })
+                            } else {
+                                false
+                            };
+                            (toggle_msg, has_items, selected_index, is_pack)
+                        } else {
+                            return true; // Not in main view
+                        };
 
-                        self.update(toggle_msg, plumber);
+                    self.update(toggle_msg, plumber);
 
-                        // If we still have items, load details and educational content
-                        if has_items {
-                            // Load details for the newly selected object
-                            let details_msg = self.load_git_object_details(plumber);
-                            self.update(details_msg, plumber);
-                            // Load educational content for the newly selected object
-                            let content_msg = self.load_educational_content(plumber);
-                            self.update(content_msg, plumber);
-                            // Load pack objects if this is a pack file
-                            self.load_pack_objects_if_needed(plumber);
-                        }
+                    // If we still have items, load details and educational content
+                    if has_items {
+                        self.handle_git_object_selection(selected_index, is_pack, plumber);
                     }
                 }
 
@@ -244,12 +236,7 @@ impl AppState {
                                             self.update_git_objects_scroll_for_selection(i);
 
                                             // Load details for the newly selected object
-                                            let details_msg = self.load_git_object_details(plumber);
-                                            self.update(details_msg, plumber);
-                                            // Load educational content for the newly selected object
-                                            let content_msg =
-                                                self.load_educational_content(plumber);
-                                            self.update(content_msg, plumber);
+                                            self.handle_git_object_selection(i, false, plumber);
                                             break;
                                         }
                                     }
@@ -346,8 +333,7 @@ impl AppState {
                                         pack_object_list,
                                         pack_object_list_scroll_position,
                                         selected_pack_object,
-                                        pack_object_detail_max_scroll,
-                                        pack_object_text_cache: last_pack_object_cache,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -358,8 +344,9 @@ impl AppState {
                         if !pack_object_list.is_empty() {
                             if *selected_pack_object < pack_object_list.len() - 1 {
                                 *selected_pack_object += 1;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
+                                *pack_widget_state = PackObjectWidget::new(
+                                    pack_object_list[*selected_pack_object].clone(),
+                                );
 
                                 // Update scroll position to keep selected item visible
                                 let visible_height = self.layout_dimensions.pack_objects_height;
@@ -369,33 +356,11 @@ impl AppState {
                                     *pack_object_list_scroll_position =
                                         *selected_pack_object - visible_height + 1;
                                 }
-
-                                // Calculate max scroll for the newly selected pack object
-                                if *selected_pack_object < pack_object_list.len() {
-                                    let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                        &pack_object_list[*selected_pack_object],
-                                        last_pack_object_cache
-                                    );
-                                    let visible_height = self.layout_dimensions.git_objects_height;
-                                    *pack_object_detail_max_scroll =
-                                        line_count.saturating_sub(visible_height);
-                                }
                             } else {
                                 *selected_pack_object = 0;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
                                 *pack_object_list_scroll_position = 0;
-
-                                // Calculate max scroll for the newly selected pack object
-                                if !pack_object_list.is_empty() {
-                                    let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                        &pack_object_list[0],
-                                        last_pack_object_cache
-                                    );
-                                    let visible_height = self.layout_dimensions.git_objects_height;
-                                    *pack_object_detail_max_scroll =
-                                        line_count.saturating_sub(visible_height);
-                                }
+                                *pack_widget_state =
+                                    PackObjectWidget::new(pack_object_list[0].clone());
                             }
                         }
                     }
@@ -411,8 +376,7 @@ impl AppState {
                                         selected_pack_object,
                                         focus,
                                         previous_focus,
-                                        pack_object_detail_max_scroll,
-                                        pack_object_text_cache: last_pack_object_cache,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -423,22 +387,14 @@ impl AppState {
                         if !pack_object_list.is_empty() {
                             if *selected_pack_object > 0 {
                                 *selected_pack_object -= 1;
-                                // Invalidate cache since we changed selection
-                                *last_pack_object_cache = None;
+                                *pack_widget_state = PackObjectWidget::new(
+                                    pack_object_list[*selected_pack_object].clone(),
+                                );
 
                                 // Update scroll position to keep selected item visible
                                 if *selected_pack_object < *pack_object_list_scroll_position {
                                     *pack_object_list_scroll_position = *selected_pack_object;
                                 }
-
-                                // Calculate max scroll for the newly selected pack object
-                                let (_, line_count) = crate::tui::pack_details::view::get_or_generate_pack_object_detail_content(
-                                    &pack_object_list[*selected_pack_object],
-                                    last_pack_object_cache
-                                );
-                                let visible_height = self.layout_dimensions.git_objects_height;
-                                *pack_object_detail_max_scroll =
-                                    line_count.saturating_sub(visible_height);
                             } else {
                                 // At the top of pack objects, switch focus to educational content
                                 *focus = PackFocus::Educational;
@@ -606,14 +562,16 @@ impl AppState {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
                                 ..
-                            })
-                            | PreviewState::Pack(PackPreViewState {
-                                pack_object_preview_scroll_position: preview_scroll_position,
-                                ..
                             }) => {
                                 if *preview_scroll_position > 0 {
                                     *preview_scroll_position -= 1;
                                 }
+                            }
+                            PreviewState::Pack(PackPreViewState {
+                                pack_object_widget_state,
+                                ..
+                            }) => {
+                                pack_object_widget_state.scroll_up();
                             }
                         }
                     }
@@ -644,22 +602,16 @@ impl AppState {
                                 }
                             }
                             PreviewState::Pack(PackPreViewState {
-                                pack_object_preview_scroll_position,
                                 pack_object_list,
                                 selected_pack_object,
-                                pack_object_detail_max_scroll,
+                                pack_object_widget_state,
                                 ..
                             }) => {
                                 // For pack object detail scrolling, we need to calculate max scroll based on the content
                                 if !pack_object_list.is_empty()
                                     && *selected_pack_object < pack_object_list.len()
                                 {
-                                    // Use the stored max scroll value calculated when content was generated
-                                    if *pack_object_preview_scroll_position
-                                        < *pack_object_detail_max_scroll
-                                    {
-                                        *pack_object_preview_scroll_position += 1;
-                                    }
+                                    pack_object_widget_state.scroll_down();
                                 }
                             }
                         }
@@ -675,12 +627,14 @@ impl AppState {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
                                 ..
-                            })
-                            | PreviewState::Pack(PackPreViewState {
-                                pack_object_preview_scroll_position: preview_scroll_position,
-                                ..
                             }) => {
                                 *preview_scroll_position = 0;
+                            }
+                            PreviewState::Pack(PackPreViewState {
+                                pack_object_widget_state,
+                                ..
+                            }) => {
+                                pack_object_widget_state.scroll_to_top();
                             }
                         }
                     }
@@ -708,13 +662,10 @@ impl AppState {
                                 *preview_scroll_position = max_scroll;
                             }
                             PreviewState::Pack(PackPreViewState {
-                                pack_object_preview_scroll_position,
-                                pack_object_detail_max_scroll,
+                                pack_object_widget_state,
                                 ..
                             }) => {
-                                // For pack object detail scrolling, use the stored max scroll value
-                                *pack_object_preview_scroll_position =
-                                    *pack_object_detail_max_scroll;
+                                pack_object_widget_state.scroll_to_bottom();
                             }
                         }
                     }
@@ -728,10 +679,7 @@ impl AppState {
                         MainViewState {
                             preview_state:
                                 PreviewState::Pack(PackPreViewState {
-                                    pack_file_path,
-                                    pack_object_list,
-                                    selected_pack_object,
-                                    pack_object_list_scroll_position,
+                                    pack_object_widget_state: pack_widget_state,
                                     ..
                                 }),
                             ..
@@ -740,39 +688,7 @@ impl AppState {
                 {
                     self.view = AppView::PackObjectDetail {
                         state: PackViewState {
-                            pack_file_path: pack_file_path.clone(),
-                            pack_object_list: pack_object_list.clone(),
-                            pack_object_index: *selected_pack_object,
-                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                            preview_scroll_position: 0,
-                        },
-                    }
-                }
-            }
-            Message::EnterPackObjectDetail => {
-                // Handle entering pack object detail view - same as OpenPackView
-                if let AppView::Main {
-                    state:
-                        MainViewState {
-                            preview_state:
-                                PreviewState::Pack(PackPreViewState {
-                                    pack_file_path,
-                                    pack_object_list,
-                                    selected_pack_object,
-                                    pack_object_list_scroll_position,
-                                    ..
-                                }),
-                            ..
-                        },
-                } = &mut self.view
-                {
-                    self.view = AppView::PackObjectDetail {
-                        state: PackViewState {
-                            pack_file_path: pack_file_path.clone(),
-                            pack_object_list: pack_object_list.clone(),
-                            pack_object_index: *selected_pack_object,
-                            pack_object_list_scroll_position: *pack_object_list_scroll_position,
-                            preview_scroll_position: 0,
+                            pack_widget: pack_widget_state.clone(),
                         },
                     }
                 }
@@ -807,9 +723,7 @@ impl AppState {
                                     focus: PackFocus::GitObjects,
                                     previous_focus: None,
                                     educational_scroll_position: 0,
-                                    pack_object_preview_scroll_position: 0,
-                                    pack_object_detail_max_scroll: 0,
-                                    pack_object_text_cache: None,
+                                    pack_object_widget_state: PackObjectWidget::Uninitiolized,
                                 };
                                 state.preview_state = PreviewState::Pack(new_pack_state);
                             }

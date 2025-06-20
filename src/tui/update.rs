@@ -1,6 +1,7 @@
 use crate::tui::main_view::{MainViewState, PreviewState};
 use crate::tui::message::Message;
 use crate::tui::model::{AppState, AppView};
+use crate::tui::widget::PackObjectWidget;
 
 impl AppState {
     // Handle load result messages
@@ -70,6 +71,13 @@ impl AppState {
                     } = &mut self.view
                     {
                         preview_state.pack_object_list = objects;
+                        // Reset selection to first object and update widget
+                        preview_state.selected_pack_object = 0;
+                        preview_state.pack_object_list_scroll_position = 0;
+                        if !preview_state.pack_object_list.is_empty() {
+                            preview_state.pack_object_widget_state =
+                                PackObjectWidget::new(preview_state.pack_object_list[0].clone());
+                        }
                         self.error = None;
                     }
                 }
@@ -106,8 +114,7 @@ impl AppState {
             }
 
             // Pack object detail mode messages
-            Message::EnterPackObjectDetail
-            | Message::ExitPackObjectDetail
+            Message::ExitPackObjectDetail
             | Message::HandlePackObjectDetailAction
             | Message::BackFromObjectDetail => {
                 return self.handle_main_view_mode_message(msg, plumber);
@@ -115,6 +122,10 @@ impl AppState {
 
             Message::MainNavigation(_) | Message::OpenPackView => {
                 return self.handle_main_view_mode_message(msg, plumber);
+            }
+
+            Message::PackNavigation(_) => {
+                return self.handle_pack_view_mode_message(msg);
             }
 
             Message::OpenMainView => {}

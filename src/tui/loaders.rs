@@ -4,7 +4,6 @@ use crate::tui::model::{AppState, AppView, GitObject, GitObjectType, PackObject}
 use std::path::PathBuf;
 
 use super::main_view::{MainViewState, PackPreViewState};
-use super::pack_details::PackViewState;
 use rayon::prelude::*;
 use sha1::{Digest, Sha1};
 
@@ -286,20 +285,7 @@ impl AppState {
             AppView::Main {
                 state:
                     MainViewState {
-                        preview_state:
-                            PreviewState::Pack(PackPreViewState {
-                                pack_file_path,
-                                pack_object_list,
-                                ..
-                            }),
-                        ..
-                    },
-            }
-            | AppView::PackObjectDetail {
-                state:
-                    PackViewState {
-                        pack_file_path,
-                        pack_object_list,
+                        preview_state: PreviewState::Pack(PackPreViewState { pack_file_path, .. }),
                         ..
                     },
             } => {

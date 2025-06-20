@@ -7,10 +7,9 @@ use super::model::{MainViewState, PackFocus, RegularFocus};
 use super::{PackPreViewState, PreviewState, RegularPreViewState};
 use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_with_scrollbar};
 use crate::tui::model::{AppState, AppView, GitObjectType};
-use crate::tui::pack_details::render_pack_object_detail_view_with_cache;
 
-pub fn render(f: &mut ratatui::Frame, app: &AppState, area: ratatui::layout::Rect) {
-    if let AppView::Main { state } = &app.view {
+pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout::Rect) {
+    if let AppView::Main { state } = &mut app.view {
         // Split main content into two blocks
         let content_chunks = Layout::default()
             .direction(Direction::Horizontal)
@@ -185,224 +184,217 @@ pub fn render(f: &mut ratatui::Frame, app: &AppState, area: ratatui::layout::Rec
             },
         );
         match &state.preview_state {
-            PreviewState::Regular(_) => render_regular_preview_layout(f, app, content_chunks[1]),
-            PreviewState::Pack(_) => render_pack_preview_layout(f, app, content_chunks[1]),
+            PreviewState::Regular(_) => {
+                render_regular_preview_layout(f, state, &app.error, content_chunks[1])
+            }
+            PreviewState::Pack(_) => {
+                render_pack_preview_layout(f, state, &app.error, content_chunks[1])
+            }
         };
     }
 }
 
 fn render_regular_preview_layout(
     f: &mut ratatui::Frame,
-    app: &AppState,
+    main_view: &MainViewState,
+    app_error: &Option<String>,
     area: ratatui::layout::Rect,
 ) {
-    if let AppView::Main { state } = &app.view {
-        if let PreviewState::Regular(preview_state) = &state.preview_state {
-            // Split area into two vertical sections for consistent layout
-            let content_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    [
-                        Constraint::Length(6), // Height for object details
-                        Constraint::Min(0),    // Remaining space for educational content
-                    ]
-                    .as_ref(),
-                )
-                .split(area);
+    if let PreviewState::Regular(preview_state) = &main_view.preview_state {
+        // Split area into two vertical sections for consistent layout
+        let content_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(6), // Height for object details
+                    Constraint::Min(0),    // Remaining space for educational content
+                ]
+                .as_ref(),
+            )
+            .split(area);
 
-            // Top block - Object details
-            let object_info = if app.error.is_some() {
-                app.error.as_ref().unwrap()
-            } else if state.git_object_info.is_empty() && !state.git_objects.flat_view.is_empty() {
-                "Select an object to view details"
-            } else if state.git_objects.flat_view.is_empty() {
-                "No Git objects found"
-            } else {
-                &state.git_object_info
-            };
+        // Top block - Object details
+        let object_info = if app_error.is_some() {
+            app_error.as_ref().unwrap()
+        } else if main_view.git_object_info.is_empty()
+            && !main_view.git_objects.flat_view.is_empty()
+        {
+            "Select an object to view details"
+        } else if main_view.git_objects.flat_view.is_empty() {
+            "No Git objects found"
+        } else {
+            &main_view.git_object_info
+        };
 
-            let details_widget = Paragraph::new(object_info).block(
-                Block::default()
-                    .title("Object Details")
-                    .borders(Borders::ALL),
-            );
-            f.render_widget(details_widget, content_chunks[0]);
+        let details_widget = Paragraph::new(object_info).block(
+            Block::default()
+                .title("Object Details")
+                .borders(Borders::ALL),
+        );
+        f.render_widget(details_widget, content_chunks[0]);
 
-            // Bottom block - Educational/Preview content
-            let bottom_title = if !state.git_objects.flat_view.is_empty()
-                && state.git_objects.selected_index < state.git_objects.flat_view.len()
-            {
-                let selected_object =
-                    &state.git_objects.flat_view[state.git_objects.selected_index].1;
-                match selected_object.obj_type {
-                    GitObjectType::Category(_) => "Educational Content",
-                    _ => "Object Preview",
-                }
-            } else {
-                "Content"
-            };
+        // Bottom block - Educational/Preview content
+        let bottom_title = if !main_view.git_objects.flat_view.is_empty()
+            && main_view.git_objects.selected_index < main_view.git_objects.flat_view.len()
+        {
+            let selected_object =
+                &main_view.git_objects.flat_view[main_view.git_objects.selected_index].1;
+            match selected_object.obj_type {
+                GitObjectType::Category(_) => "Educational Content",
+                _ => "Object Preview",
+            }
+        } else {
+            "Content"
+        };
 
-            render_styled_paragraph_with_scrollbar(
-                f,
-                content_chunks[1],
-                state.educational_content.clone(),
-                preview_state.preview_scroll_position,
-                bottom_title,
-                matches!(preview_state.focus, RegularFocus::Preview),
-            );
-        }
+        render_styled_paragraph_with_scrollbar(
+            f,
+            content_chunks[1],
+            main_view.educational_content.clone(),
+            preview_state.preview_scroll_position,
+            bottom_title,
+            matches!(preview_state.focus, RegularFocus::Preview),
+        );
     }
 }
 
 pub fn render_pack_preview_layout(
     f: &mut ratatui::Frame,
-    app: &AppState,
+    main_view: &mut MainViewState,
+    app_error: &Option<String>,
     area: ratatui::layout::Rect,
 ) {
-    if let AppView::Main {
-        state:
-            MainViewState {
-                preview_state:
-                    PreviewState::Pack(PackPreViewState {
-                        pack_file_path,
-                        pack_object_list,
-                        selected_pack_object,
-                        focus,
-                        pack_object_preview_scroll_position,
-                        pack_object_text_cache,
-                        ..
-                    }),
-                ..
-            },
-    } = &app.view
-    {
-        if app.is_wide_screen() {
+    if let PreviewState::Pack(_) = &main_view.preview_state {
+        if area.width > 116 {
             let horizontal_chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Length(46), Constraint::Min(0)].as_ref())
                 .split(area);
 
             let pack_file_details = horizontal_chunks[0];
-            let object_inside_the_pack_preview = horizontal_chunks[1];
+            let object_details_area = horizontal_chunks[1];
 
             // Render main content in the left area
-            render_pack_preview_2_panels(f, app, pack_file_details);
+            render_pack_file_preview(f, main_view, app_error, pack_file_details);
 
-            // Render pack detail in the right area only if pack_object_list is not empty
-            if !pack_object_list.is_empty() && *selected_pack_object < pack_object_list.len() {
-                render_pack_object_detail_view_with_cache(
-                    f,
-                    object_inside_the_pack_preview,
-                    &pack_object_list[*selected_pack_object],
-                    *pack_object_preview_scroll_position,
-                    "Pack Object Detail",
-                    matches!(focus, PackFocus::PackObjectDetails),
-                    Some(pack_object_text_cache),
-                );
-            } else {
-                // Render empty state
-                let empty_widget = Paragraph::new("Loading pack objects...").block(
-                    Block::default()
-                        .title("Pack Object Detail")
-                        .borders(Borders::ALL),
-                );
-                f.render_widget(empty_widget, object_inside_the_pack_preview);
+            // Extract the data we need first
+            if let PreviewState::Pack(pack_preview_state) = &mut main_view.preview_state {
+                // Render pack detail in the right area only if pack_object_list is not empty
+                if !pack_preview_state.pack_object_list.is_empty()
+                    && pack_preview_state.selected_pack_object
+                        < pack_preview_state.pack_object_list.len()
+                {
+                    pack_preview_state.pack_object_widget_state.render(
+                        f,
+                        object_details_area,
+                        matches!(pack_preview_state.focus, PackFocus::PackObjectDetails),
+                    );
+                } else {
+                    // Render empty state
+                    let empty_widget = Paragraph::new("Loading pack objects...").block(
+                        Block::default()
+                            .title("Pack Object Detail")
+                            .borders(Borders::ALL),
+                    );
+                    f.render_widget(empty_widget, object_details_area);
+                }
             }
         } else {
-            render_pack_preview_2_panels(f, app, area);
+            render_pack_file_preview(f, main_view, app_error, area);
         }
     }
 }
 
-fn render_pack_preview_2_panels(
+fn render_pack_file_preview(
     f: &mut ratatui::Frame,
-    app: &AppState,
+    main_view: &mut MainViewState,
+    app_error: &Option<String>,
     area: ratatui::layout::Rect,
 ) {
-    if let AppView::Main { state } = &app.view {
-        if let PreviewState::Pack(preview_state) = &state.preview_state {
-            // Split area into three vertical sections for consistent layout
-            let content_chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints(
-                    [
-                        Constraint::Length(6),      // Height for object details
-                        Constraint::Percentage(50), // Educational content
-                        Constraint::Percentage(50), // Pack objects list
-                    ]
-                    .as_ref(),
-                )
-                .split(area);
+    if let PreviewState::Pack(preview_state) = &main_view.preview_state {
+        // Split area into three vertical sections for consistent layout
+        let content_chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(
+                [
+                    Constraint::Length(6),      // Height for object details
+                    Constraint::Percentage(50), // Educational content
+                    Constraint::Percentage(50), // Pack objects list
+                ]
+                .as_ref(),
+            )
+            .split(area);
 
-            // Top block - Object details (same as PackPreview)
-            let object_info = if app.error.is_some() {
-                app.error.as_ref().unwrap()
-            } else if state.git_object_info.is_empty() && !state.git_objects.flat_view.is_empty() {
-                "Select an object to view details"
-            } else if state.git_objects.flat_view.is_empty() {
-                "No Git objects found"
-            } else {
-                &state.git_object_info
-            };
+        // Top block - Object details (same as PackPreview)
+        let object_info = if app_error.is_some() {
+            app_error.as_ref().unwrap()
+        } else if main_view.git_object_info.is_empty()
+            && !main_view.git_objects.flat_view.is_empty()
+        {
+            "Select an object to view details"
+        } else if main_view.git_objects.flat_view.is_empty() {
+            "No Git objects found"
+        } else {
+            &main_view.git_object_info
+        };
 
-            let details_widget = Paragraph::new(object_info).block(
-                Block::default()
-                    .title("Object Details")
-                    .borders(Borders::ALL),
-            );
-            f.render_widget(details_widget, content_chunks[0]);
+        let details_widget = Paragraph::new(object_info).block(
+            Block::default()
+                .title("Object Details")
+                .borders(Borders::ALL),
+        );
+        f.render_widget(details_widget, content_chunks[0]);
 
-            // Middle block - Educational content with scrolling
-            // Only highlight if in ObjectPreview mode and focus is Educational
-            render_styled_paragraph_with_scrollbar(
-                f,
-                content_chunks[1],
-                state.educational_content.clone(),
-                preview_state.educational_scroll_position,
-                "Pack File Header",
-                matches!(preview_state.focus, PackFocus::Educational),
-            );
-            // Bottom block - Pack objects list
-            // Only highlight if in ObjectPreview mode and focus is PackObjects
-            let selected_index = if preview_state.pack_object_list.is_empty() {
-                None
-            } else {
-                Some(
-                    preview_state
-                        .selected_pack_object
-                        .min(preview_state.pack_object_list.len().saturating_sub(1)),
-                )
-            };
+        // Middle block - Educational content with scrolling
+        // Only highlight if in ObjectPreview mode and focus is Educational
+        render_styled_paragraph_with_scrollbar(
+            f,
+            content_chunks[1],
+            main_view.educational_content.clone(),
+            preview_state.educational_scroll_position,
+            "Pack File Header",
+            matches!(preview_state.focus, PackFocus::Educational),
+        );
+        // Bottom block - Pack objects list
+        // Only highlight if in ObjectPreview mode and focus is PackObjects
+        let selected_index = if preview_state.pack_object_list.is_empty() {
+            None
+        } else {
+            Some(
+                preview_state
+                    .selected_pack_object
+                    .min(preview_state.pack_object_list.len().saturating_sub(1)),
+            )
+        };
 
-            render_list_with_scrollbar(
-                f,
-                content_chunks[2],
-                &preview_state.pack_object_list,
-                selected_index,
-                preview_state.pack_object_list_scroll_position,
-                "Pack Objects",
-                matches!(preview_state.focus, PackFocus::PackObjectsList),
-                |_absolute_index, pack_obj, is_selected| {
-                    let display_text = format!(
-                        "{}: {} | {} bytes{}",
-                        pack_obj.index,
-                        pack_obj.obj_type,
-                        pack_obj.size,
-                        if let Some(ref hash) = pack_obj.sha1 {
-                            format!(" | {hash}")
-                        } else {
-                            String::new()
-                        }
-                    );
-
-                    ListItem::new(display_text).style(if is_selected {
-                        Style::default().fg(Color::Yellow)
+        render_list_with_scrollbar(
+            f,
+            content_chunks[2],
+            &preview_state.pack_object_list,
+            selected_index,
+            preview_state.pack_object_list_scroll_position,
+            "Pack Objects",
+            matches!(preview_state.focus, PackFocus::PackObjectsList),
+            |_absolute_index, pack_obj, is_selected| {
+                let display_text = format!(
+                    "{}: {} | {} bytes{}",
+                    pack_obj.index,
+                    pack_obj.obj_type,
+                    pack_obj.size,
+                    if let Some(ref hash) = pack_obj.sha1 {
+                        format!(" | {hash}")
                     } else {
-                        Style::default()
-                    })
-                },
-            );
-        }
+                        String::new()
+                    }
+                );
+
+                ListItem::new(display_text).style(if is_selected {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                })
+            },
+        );
     }
 }
 

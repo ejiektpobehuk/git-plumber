@@ -15,12 +15,12 @@ pub enum Message {
     Refresh,
     // Pack navigation messages
     TogglePackFocus,
-    EnterPackObjectDetail,
     ExitPackObjectDetail,
     HandlePackObjectDetailAction,
     BackFromObjectDetail,
     LoadPackObjects(Result<Vec<PackObject>, String>),
     MainNavigation(MainNavigation),
+    PackNavigation(PackNavigation),
     OpenMainView,
     OpenPackView,
 }
@@ -57,4 +57,12 @@ pub enum MainNavigation {
     FocusEducationalOrList,
     FocusPackList,
     FocusToggle,
+}
+
+#[derive(Debug)]
+pub enum PackNavigation {
+    ScrollUp,
+    ScrollDown,
+    ScrollToTop,
+    ScrollToBottom,
 }

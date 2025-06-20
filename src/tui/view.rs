@@ -5,7 +5,7 @@ use ratatui::widgets::{Block, Borders};
 use crate::tui::model::{AppState, AppView};
 
 // The main view function - renders the UI based on the current state
-pub fn draw_ui(f: &mut ratatui::Frame, app: &AppState) {
+pub fn draw_ui(f: &mut ratatui::Frame, app: &mut AppState) {
     let size = f.area();
 
     // Create layout

@@ -3,6 +3,7 @@ use crate::tui::message::Message;
 use crate::tui::model::GitObject;
 use crate::tui::model::GitObjectType;
 use crate::tui::model::PackObject;
+use crate::tui::widget::PackObjectWidget;
 use ratatui::text::Text;
 use std::path::PathBuf;
 
@@ -40,10 +41,8 @@ pub struct PackPreViewState {
     pub pack_object_list_scroll_position: usize,
     pub focus: PackFocus,
     pub previous_focus: Option<PackColumnPreviousFocus>,
+    pub pack_object_widget_state: PackObjectWidget,
     pub educational_scroll_position: usize,
-    pub pack_object_preview_scroll_position: usize,
-    pub pack_object_detail_max_scroll: usize,
-    pub pack_object_text_cache: Option<(ratatui::text::Text<'static>, usize)>, // (content, line_count)
 }
 
 #[derive(Debug, Clone)]
