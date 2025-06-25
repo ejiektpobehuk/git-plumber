@@ -116,7 +116,7 @@ pub fn render_pack_preview_layout(
             let object_details_area = horizontal_chunks[1];
 
             // Render main content in the left area
-            render_pack_file_preview(f, main_view, app_error, pack_file_details);
+            render_pack_file_preview(f, main_view, app_error, pack_file_details, true);
 
             // Extract the data we need first
             if let PreviewState::Pack(pack_preview_state) = &mut main_view.preview_state {
@@ -141,7 +141,7 @@ pub fn render_pack_preview_layout(
                 }
             }
         } else {
-            render_pack_file_preview(f, main_view, app_error, area);
+            render_pack_file_preview(f, main_view, app_error, area, false);
         }
     }
 }
@@ -151,6 +151,7 @@ fn render_pack_file_preview(
     main_view: &mut MainViewState,
     app_error: &Option<String>,
     area: ratatui::layout::Rect,
+    is_widescreen: bool,
 ) {
     if let PreviewState::Pack(preview_state) = &main_view.preview_state {
         // Split area into three vertical sections for consistent layout
@@ -229,11 +230,15 @@ fn render_pack_file_preview(
                     }
                 );
 
-                ListItem::new(display_text).style(if is_selected {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                })
+                ListItem::new(display_text).style(
+                    if is_selected && matches!(preview_state.focus, PackFocus::PackObjectsList)
+                        || is_selected && is_widescreen
+                    {
+                        Style::default().fg(Color::Yellow)
+                    } else {
+                        Style::default()
+                    },
+                )
             },
         );
     }
