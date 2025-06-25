@@ -245,6 +245,7 @@ fn render_pack_file_preview(
 }
 
 pub fn navigation_hints(app: &AppState) -> Vec<Span> {
+    let is_wide_screen = app.is_wide_screen();
     let mut hints = Vec::new();
     if let AppView::Main { state } = &app.view {
         let MainViewState {
@@ -260,6 +261,26 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span> {
                             Span::styled("←", Style::default().fg(Color::Green)),
                             Span::styled("↕→", Style::default().fg(Color::Blue)),
                         ]);
+                    }
+                    PackFocus::Educational => {
+                        if is_wide_screen {
+                            hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
+                        } else {
+                            hints.append(&mut vec![
+                                Span::styled("←↕", Style::default().fg(Color::Blue)),
+                                Span::styled("→", Style::default().fg(Color::Gray)),
+                            ]);
+                        }
+                    }
+                    PackFocus::PackObjectsList => {
+                        if is_wide_screen {
+                            hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
+                        } else {
+                            hints.append(&mut vec![
+                                Span::styled("←↕", Style::default().fg(Color::Blue)),
+                                Span::styled("→", Style::default().fg(Color::Green)),
+                            ]);
+                        }
                     }
                     PackFocus::PackObjectDetails => {
                         hints.append(&mut vec![
