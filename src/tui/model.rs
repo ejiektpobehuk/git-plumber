@@ -206,6 +206,8 @@ pub struct AppState {
     pub error: Option<String>,
     // Current view
     pub view: AppView,
+    // View stack for navigation history
+    pub view_stack: Vec<AppView>,
     // Layout dimensions for accurate scrolling
     pub layout_dimensions: LayoutDimensions,
     pub educational_content_provider: EducationalContent,
@@ -241,8 +243,25 @@ impl AppState {
             view: AppView::Main {
                 state: MainViewState::new(&educational_content_provider),
             },
+            view_stack: Vec::new(),
             layout_dimensions: LayoutDimensions::default(),
             educational_content_provider,
+        }
+    }
+
+    // Push current view onto stack and set new view
+    pub fn push_view(&mut self, new_view: AppView) {
+        let current_view = std::mem::replace(&mut self.view, new_view);
+        self.view_stack.push(current_view);
+    }
+
+    // Pop previous view from stack and restore it
+    pub fn pop_view(&mut self) -> bool {
+        if let Some(previous_view) = self.view_stack.pop() {
+            self.view = previous_view;
+            true
+        } else {
+            false
         }
     }
 

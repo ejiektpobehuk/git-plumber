@@ -684,30 +684,30 @@ impl AppState {
                                 }),
                             ..
                         },
-                } = &mut self.view
+                } = &self.view
                 {
-                    self.view = AppView::PackObjectDetail {
+                    // Create the new pack view
+                    let pack_view = AppView::PackObjectDetail {
                         state: PackViewState {
                             pack_widget: pack_widget_state.clone(),
                         },
-                    }
+                    };
+
+                    // Push current view onto stack and transition to pack view
+                    self.push_view(pack_view);
                 }
             }
             Message::OpenMainView => {
-                // Transition back from PackObjectDetail to Main view
-                if let AppView::PackObjectDetail {
-                    state: PackViewState { pack_widget },
-                } = &self.view
-                {
-                    // We need to reconstruct a basic main view state
-                    // This is a simplified approach - in a complete implementation,
-                    // we might want to store the previous main view state
+                // Pop the previous view from the stack to restore state
+                if !self.pop_view() {
+                    // Fallback: if no previous view in stack, create a new main view
+                    // This should rarely happen, but provides a safety net
                     let main_view_state = MainViewState::new(&self.educational_content_provider);
                     self.view = AppView::Main {
                         state: main_view_state,
                     };
 
-                    // Reload git objects to restore the state
+                    // Reload git objects to restore basic functionality
                     let objects_msg = self.load_git_objects(plumber);
                     self.update(objects_msg, plumber);
                 }
