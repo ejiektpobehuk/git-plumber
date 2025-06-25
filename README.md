@@ -1,6 +1,6 @@
 # git-plumber
 
-[![asciicast](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr.svg)](https://asciinema.org/a/yekhZM8XzNzAq6IAzLuRUBzsr)
+[![asciicast](https://raw.githubusercontent.com/ejiektpobehuk/git-plumber/preview-assets/git-plumber.gif)](https://asciinema.org/a/724583)
 
 > _🎥 Click above to watch git-plumber in action (asciinema demo)_
 
