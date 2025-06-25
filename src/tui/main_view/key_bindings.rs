@@ -54,6 +54,10 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         )),
                         PackFocus::GitObjects => None,
                     },
+                    PreviewState::Regular(RegularPreViewState {
+                        focus: RegularFocus::Preview,
+                        ..
+                    }) => Some(Message::MainNavigation(MainNavigation::FocusGitObjects)),
                     _ => None,
                 }
             }
