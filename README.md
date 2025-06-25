@@ -36,15 +36,30 @@ Perfect for learning, live experimentation, or just satisfying your curiosity.
 
 ## Installation
 
-> [!WARNING]
-> Early version - best to build from source
+### Development version
 
-_Packaging is coming soon! Planned:_
+Dev versions are built from the latest `main` commit.
+They are available:
 
-- crates.io
-- Nix Flake
-- Docker
-- Linux distros
+- Nix Flake: `nix run github:ejiektpobehuk/git-plumber`
+- Container images
+  - `ejiek/git-plumber:dev` at Docker Hub
+  - `ghcr.io/ejiektpobehuk/git-plumber:dev`
+- [Arch User Repository](https://aur.archlinux.org/packages/git-plumber-git)
+- [From source](#building-from-source)
+
+### Versioned releases
+They are built from tags, are more rare and still not stable.
+However, they have better availability:
+
+- [crates.io/git-plumber](https://crates.io/crates/git-plumber)
+- Nix Flake: `nix run github:ejiektpobehuk/git-plumber/${VERSION}`
+- Container images at
+  - [Docker Hub](https://hub.docker.com/r/ejiek/git-plumber)
+  - [GitHub Container Registry](https://github.com/ejiektpobehuk/git-plumber/pkgs/container/git-plumber)
+- [Release Binaries](https://github.com/ejiektpobehuk/git-plumber/releases)
+
+More packaging details are available in [issue #1](https://github.com/ejiektpobehuk/git-plumber/issues/1)
 
 ### Building from source
 
