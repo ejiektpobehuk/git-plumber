@@ -113,11 +113,22 @@ impl PackObjectWidget {
         area: ratatui::layout::Rect,
         is_focused: bool,
     ) {
+        let content = self.text();
+
+        match self {
+            Self::Initiolized { max_scroll, .. } => {
+                let total_lines = content.lines.len();
+                let visible_height = area.height as usize - 2; // Account for borders
+                *max_scroll = total_lines.saturating_sub(visible_height);
+            }
+            Self::Uninitiolized => {}
+        }
+
         let title = "Pack object Details";
         render_styled_paragraph_with_scrollbar(
             f,
             area,
-            self.text(),
+            content,
             self.scroll_position(),
             title,
             is_focused,

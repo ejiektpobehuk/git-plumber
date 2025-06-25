@@ -9,7 +9,6 @@ use std::io;
 use std::time::Duration;
 
 // Import the model types and message types
-use crate::tui::main_view::handle_key_event;
 use crate::tui::model::AppState;
 use crate::tui::view::draw_ui;
 
@@ -89,7 +88,14 @@ fn run_app<B: ratatui::backend::Backend>(
                 event::read().map_err(|e| format!("Failed to read event: {e}"))?
             {
                 // Convert key events to messages using the main_view key handler
-                if let Some(msg) = handle_key_event(key, app) {
+                if let Some(msg) = match app.view {
+                    model::AppView::Main { .. } => {
+                        crate::tui::main_view::handle_key_event(key, app)
+                    }
+                    model::AppView::PackObjectDetail { .. } => {
+                        crate::tui::pack_details::handle_key_event(key, app)
+                    }
+                } {
                     // Update the application state
                     if !app.update(msg, plumber) {
                         return Ok(());

@@ -693,6 +693,25 @@ impl AppState {
                     }
                 }
             }
+            Message::OpenMainView => {
+                // Transition back from PackObjectDetail to Main view
+                if let AppView::PackObjectDetail {
+                    state: PackViewState { pack_widget },
+                } = &self.view
+                {
+                    // We need to reconstruct a basic main view state
+                    // This is a simplified approach - in a complete implementation,
+                    // we might want to store the previous main view state
+                    let main_view_state = MainViewState::new(&self.educational_content_provider);
+                    self.view = AppView::Main {
+                        state: main_view_state,
+                    };
+
+                    // Reload git objects to restore the state
+                    let objects_msg = self.load_git_objects(plumber);
+                    self.update(objects_msg, plumber);
+                }
+            }
             _ => {
                 unreachable!("handle_main_view_mode_message called with non-main-view message")
             }

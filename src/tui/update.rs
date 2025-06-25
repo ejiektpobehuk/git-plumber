@@ -128,7 +128,9 @@ impl AppState {
                 return self.handle_pack_view_mode_message(msg);
             }
 
-            Message::OpenMainView => {}
+            Message::OpenMainView => {
+                return self.handle_main_view_mode_message(msg, plumber);
+            }
 
             // Load result messages
             Message::LoadGitObjects(_)

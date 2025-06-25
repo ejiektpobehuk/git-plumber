@@ -22,9 +22,23 @@ impl AppState {
                         pack_widget.scroll_down();
                     }
                 }
-                _ => {}
+                PackNavigation::ScrollToTop => {
+                    if let AppView::PackObjectDetail {
+                        state: PackViewState { pack_widget },
+                    } = &mut self.view
+                    {
+                        pack_widget.scroll_to_top();
+                    }
+                }
+                PackNavigation::ScrollToBottom => {
+                    if let AppView::PackObjectDetail {
+                        state: PackViewState { pack_widget },
+                    } = &mut self.view
+                    {
+                        pack_widget.scroll_to_bottom();
+                    }
+                }
             },
-            Message::OpenMainView => {}
             _ => {
                 unreachable!("handle_pack_view_mode_message called with non-pack-view message")
             }
