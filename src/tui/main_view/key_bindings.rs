@@ -57,6 +57,29 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                     _ => None,
                 }
             }
+            KeyCode::Enter => match &state.preview_state {
+                PreviewState::Regular(state) => match state.focus {
+                    RegularFocus::GitObjects => Some(Message::MainNavigation(
+                        MainNavigation::FocusEducationalOrList,
+                    )),
+                    _ => None,
+                },
+                PreviewState::Pack(state) => match state.focus {
+                    PackFocus::GitObjects => Some(Message::MainNavigation(
+                        MainNavigation::FocusEducationalOrList,
+                    )),
+                    PackFocus::PackObjectsList => {
+                        if app.is_wide_screen() {
+                            Some(Message::MainNavigation(
+                                MainNavigation::FocusPackObjectDetails,
+                            ))
+                        } else {
+                            Some(Message::OpenPackView)
+                        }
+                    }
+                    PackFocus::Educational | PackFocus::PackObjectDetails => None,
+                },
+            },
             KeyCode::Char('l') | KeyCode::Right => match &state.preview_state {
                 PreviewState::Regular(state) => match state.focus {
                     RegularFocus::GitObjects => Some(Message::MainNavigation(
