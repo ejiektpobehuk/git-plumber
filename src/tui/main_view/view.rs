@@ -9,6 +9,7 @@ use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_wi
 use crate::tui::model::{AppState, AppView, GitObjectType};
 
 pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout::Rect) {
+    let project_name = app.project_name.clone();
     if let AppView::Main { state } = &mut app.view {
         // Split main content into two blocks
         let content_chunks = Layout::default()
@@ -22,167 +23,7 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
             )
             .split(area);
 
-        render_list_with_scrollbar(
-            f,
-            content_chunks[0],
-            &state.git_objects.flat_view,
-            Some(state.git_objects.selected_index),
-            state.git_objects.scroll_position,
-            &format!("{}/.git", app.project_name),
-            state.are_git_objects_focused(),
-            |i, (depth, obj), is_selected| {
-                // Create indentation based on depth
-                let indent = if *depth > 0 {
-                    let mut indent = String::new();
-
-                    // For each level from 0 to depth-1, determine if we need a vertical line
-                    for d in 0..(*depth - 1) {
-                        // We need a vertical line at depth d if there are more siblings
-                        // at depth d that will come after the current branch
-                        let needs_vertical_line = {
-                            // Find the ancestor of the current item at depth d+1
-                            let mut ancestor_index = None;
-                            for k in (0..i).rev() {
-                                let (ancestor_depth, _) = &state.git_objects.flat_view[k];
-                                if *ancestor_depth == d + 1 {
-                                    ancestor_index = Some(k);
-                                    break;
-                                } else if *ancestor_depth <= d {
-                                    break;
-                                }
-                            }
-
-                            // If we found an ancestor, check if it has siblings after it
-                            if let Some(ancestor_idx) = ancestor_index {
-                                let mut has_sibling = false;
-                                for j in (ancestor_idx + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == d + 1 {
-                                        has_sibling = true;
-                                        break;
-                                    } else if *next_depth <= d {
-                                        break;
-                                    }
-                                }
-                                has_sibling
-                            } else {
-                                false
-                            }
-                        };
-
-                        indent.push_str(if needs_vertical_line { "│" } else { " " });
-                    }
-
-                    indent
-                } else {
-                    String::new()
-                };
-
-                // Add expansion indicator for categories
-                let prefix = match &obj.obj_type {
-                    GitObjectType::Category(_) if !obj.children.is_empty() => {
-                        if obj.expanded {
-                            if *depth == 0 {
-                                "▼ "
-                            } else {
-                                // Find if this is the last category at this depth
-                                let is_last = {
-                                    let mut is_last = true;
-                                    for j in (i + 1)..state.git_objects.flat_view.len() {
-                                        let (next_depth, _) = &state.git_objects.flat_view[j];
-                                        if *next_depth == *depth {
-                                            is_last = false;
-                                            break;
-                                        } else if *next_depth < *depth {
-                                            break;
-                                        }
-                                    }
-                                    is_last
-                                };
-                                if is_last { "└▼ " } else { "├▼ " }
-                            }
-                        } else if *depth == 0 {
-                            "▶ "
-                        } else {
-                            // Find if this is the last category at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-                            if is_last { "└▶ " } else { "├▶ " }
-                        }
-                    }
-                    GitObjectType::Category(_) => {
-                        if *depth == 0 {
-                            "  "
-                        } else {
-                            // Find if this is the last category at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-                            if is_last { "└─ " } else { "├─ " }
-                        }
-                    }
-                    _ => {
-                        // Find if this is the last item in its group
-                        let is_last = if *depth > 0 {
-                            // Look ahead to find the next item at the same depth
-                            let mut is_last = true;
-                            for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _) = &state.git_objects.flat_view[j];
-                                if *next_depth == *depth {
-                                    is_last = false;
-                                    break;
-                                } else if *next_depth < *depth {
-                                    break;
-                                }
-                            }
-                            is_last
-                        } else {
-                            false
-                        };
-
-                        match *depth {
-                            0 => "",
-                            _ => {
-                                if is_last {
-                                    "└─ "
-                                } else {
-                                    "├─ "
-                                }
-                            }
-                        }
-                    }
-                };
-
-                let display_text = format!("{}{}{}", indent, prefix, obj.name);
-
-                ListItem::new(display_text).style(if is_selected {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default()
-                })
-            },
-        );
+        render_git_tree(f, state, project_name, content_chunks[0]);
         match &state.preview_state {
             PreviewState::Regular(_) => {
                 render_regular_preview_layout(f, state, &app.error, content_chunks[1])
@@ -459,4 +300,173 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span> {
         Span::raw(")uit"),
     ]);
     hints
+}
+
+fn render_git_tree(
+    f: &mut ratatui::Frame,
+    state: &mut MainViewState,
+    project_name: String,
+    area: ratatui::layout::Rect,
+) {
+    render_list_with_scrollbar(
+        f,
+        area,
+        &state.git_objects.flat_view,
+        Some(state.git_objects.selected_index),
+        state.git_objects.scroll_position,
+        &format!("{}/.git", project_name),
+        state.are_git_objects_focused(),
+        |i, (depth, obj), is_selected| {
+            // Create indentation based on depth
+            let indent = if *depth > 0 {
+                let mut indent = String::new();
+
+                // For each level from 0 to depth-1, determine if we need a vertical line
+                for d in 0..(*depth - 1) {
+                    // We need a vertical line at depth d if there are more siblings
+                    // at depth d that will come after the current branch
+                    let needs_vertical_line = {
+                        // Find the ancestor of the current item at depth d+1
+                        let mut ancestor_index = None;
+                        for k in (0..i).rev() {
+                            let (ancestor_depth, _) = &state.git_objects.flat_view[k];
+                            if *ancestor_depth == d + 1 {
+                                ancestor_index = Some(k);
+                                break;
+                            } else if *ancestor_depth <= d {
+                                break;
+                            }
+                        }
+
+                        // If we found an ancestor, check if it has siblings after it
+                        if let Some(ancestor_idx) = ancestor_index {
+                            let mut has_sibling = false;
+                            for j in (ancestor_idx + 1)..state.git_objects.flat_view.len() {
+                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                if *next_depth == d + 1 {
+                                    has_sibling = true;
+                                    break;
+                                } else if *next_depth <= d {
+                                    break;
+                                }
+                            }
+                            has_sibling
+                        } else {
+                            false
+                        }
+                    };
+
+                    indent.push_str(if needs_vertical_line { "│" } else { " " });
+                }
+
+                indent
+            } else {
+                String::new()
+            };
+
+            // Add expansion indicator for categories
+            let prefix = match &obj.obj_type {
+                GitObjectType::Category(_) if !obj.children.is_empty() => {
+                    if obj.expanded {
+                        if *depth == 0 {
+                            "▼ "
+                        } else {
+                            // Find if this is the last category at this depth
+                            let is_last = {
+                                let mut is_last = true;
+                                for j in (i + 1)..state.git_objects.flat_view.len() {
+                                    let (next_depth, _) = &state.git_objects.flat_view[j];
+                                    if *next_depth == *depth {
+                                        is_last = false;
+                                        break;
+                                    } else if *next_depth < *depth {
+                                        break;
+                                    }
+                                }
+                                is_last
+                            };
+                            if is_last { "└▼ " } else { "├▼ " }
+                        }
+                    } else if *depth == 0 {
+                        "▶ "
+                    } else {
+                        // Find if this is the last category at this depth
+                        let is_last = {
+                            let mut is_last = true;
+                            for j in (i + 1)..state.git_objects.flat_view.len() {
+                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                if *next_depth == *depth {
+                                    is_last = false;
+                                    break;
+                                } else if *next_depth < *depth {
+                                    break;
+                                }
+                            }
+                            is_last
+                        };
+                        if is_last { "└▶ " } else { "├▶ " }
+                    }
+                }
+                GitObjectType::Category(_) => {
+                    if *depth == 0 {
+                        "  "
+                    } else {
+                        // Find if this is the last category at this depth
+                        let is_last = {
+                            let mut is_last = true;
+                            for j in (i + 1)..state.git_objects.flat_view.len() {
+                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                if *next_depth == *depth {
+                                    is_last = false;
+                                    break;
+                                } else if *next_depth < *depth {
+                                    break;
+                                }
+                            }
+                            is_last
+                        };
+                        if is_last { "└─ " } else { "├─ " }
+                    }
+                }
+                _ => {
+                    // Find if this is the last item in its group
+                    let is_last = if *depth > 0 {
+                        // Look ahead to find the next item at the same depth
+                        let mut is_last = true;
+                        for j in (i + 1)..state.git_objects.flat_view.len() {
+                            let (next_depth, _) = &state.git_objects.flat_view[j];
+                            if *next_depth == *depth {
+                                is_last = false;
+                                break;
+                            } else if *next_depth < *depth {
+                                break;
+                            }
+                        }
+                        is_last
+                    } else {
+                        false
+                    };
+
+                    match *depth {
+                        0 => "",
+                        _ => {
+                            if is_last {
+                                "└─ "
+                            } else {
+                                "├─ "
+                            }
+                        }
+                    }
+                }
+            };
+
+            let display_text = format!("{}{}{}", indent, prefix, obj.name);
+
+            ListItem::new(display_text).style(if is_selected {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default()
+            })
+        },
+    );
 }
