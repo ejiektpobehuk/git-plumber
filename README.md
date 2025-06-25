@@ -1,5 +1,8 @@
 # git-plumber
 
+> [!IMPORTANT]
+> Pre-release software. Expect bugs and incomplete features.
+
 [![asciicast](https://raw.githubusercontent.com/ejiektpobehuk/git-plumber/preview-assets/git-plumber.gif)](https://asciinema.org/a/724583)
 
 > _🎥 Click above to watch git-plumber in action (asciinema demo)_
