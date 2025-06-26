@@ -8,6 +8,10 @@ pub struct Cli {
     #[arg(long = "repo", short = 'r', default_value = ".", global = true)]
     pub repo_path: PathBuf,
 
+    /// Show version information
+    #[arg(long = "version", short = 'v', action = clap::ArgAction::SetTrue)]
+    pub version: bool,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
@@ -34,6 +38,13 @@ pub enum Commands {
 
 pub fn run() -> Result<(), String> {
     let cli = Cli::parse();
+
+    // Handle version flag first
+    if cli.version {
+        print!("{}", crate::version::get_version_info());
+        return Ok(());
+    }
+
     let plumber = crate::GitPlumber::new(&cli.repo_path);
 
     match &cli.command {
