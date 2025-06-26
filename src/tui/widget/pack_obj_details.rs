@@ -139,6 +139,7 @@ impl PackObjectWidget {
 fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
     let mut detail = String::new();
     let mut lines: Vec<Line> = Vec::new();
+    let colors = [Color::Blue, Color::Magenta, Color::Cyan, Color::Red];
 
     // If we have object data, show detailed header information
     if let Some(ref object_data) = pack_obj.object_data {
@@ -155,6 +156,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
         lines.push(Line::from(""));
 
         if !raw_data.is_empty() {
+            let mut length_parts = Vec::new();
             // Show hex dump of raw header data
             // "Byte {}\n: 0x{:02x} ({:08b}) = {}",
             // Show detailed byte-by-byte breakdown
@@ -185,7 +187,14 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                         format!("{:03b}", (byte >> 4) & 0x7),
                         Style::default().fg(Color::Yellow),
                     ));
-                    byte_line.push(Span::from(format!("{:04b}", byte & 0x0F)));
+                    byte_line.push(Span::styled(
+                        format!("{:04b}", byte & 0x0F),
+                        Style::default().fg(colors[0]),
+                    ));
+                    length_parts.push(Span::styled(
+                        format!("{:04b}", byte & 0x0F),
+                        Style::default().fg(colors[0]),
+                    ));
                     byte_line.push(Span::from("┊"));
                     lines.push(Line::from(byte_line));
 
@@ -215,9 +224,13 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                             format!("{:b}", (byte >> 7) & 0x1),
                             Style::default().fg(Color::Green),
                         ),
-                        Span::from(format!("{:07b}", byte & 0x7F)),
+                        Span::styled(format!("{:07b}", byte & 0x7F), colors[i % colors.len()]),
                         Span::styled("|", Style::default().add_modifier(Modifier::BOLD)),
                     ];
+                    length_parts.push(Span::styled(
+                        format!("{:07b}", byte & 0x7F),
+                        colors[i % colors.len()],
+                    ));
                     lines.push(Line::from(byte_line.to_vec()));
 
                     // For RefDelta, the last 20 bytes are the hash, so don't analyze them as size bytes
@@ -243,17 +256,188 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                 "  - Object type: {}",
                 header.obj_type()
             )));
-            lines.push(Line::from(format!(
-                "  - Uncompressed data size: {} bytes",
+            lines.push(Line::from("  - Uncompressed data size:"));
+
+            // Separate size reconstruction from base reference/offset reconstruction
+            let obj_type = header.obj_type();
+            let size_byte_count = match obj_type {
+                crate::git::pack::ObjectType::RefDelta => {
+                    // RefDelta: size bytes + 20-byte hash
+                    raw_data.len() - 20
+                }
+                crate::git::pack::ObjectType::OfsDelta => {
+                    // OfsDelta: find where size encoding ends
+                    let mut size_bytes = 0;
+                    for (i, &byte) in raw_data.iter().enumerate() {
+                        size_bytes = i + 1;
+                        if byte & 0x80 == 0 {
+                            // No continuation bit, this is the last size byte
+                            break;
+                        }
+                    }
+                    size_bytes
+                }
+                _ => raw_data.len(), // Regular objects use all bytes for size
+            };
+
+            // Create reconstruction line with byte separators and colors indicating source byte
+            let mut reconstruction_line = vec![Span::from("      ")];
+
+            // Concatenate only the size bits and track their source colors
+            // Note: Git uses little-endian bit order for variable-length encoding,
+            // so we need to reverse the order of bytes when reconstructing
+            let mut all_bits = String::new();
+            let mut bit_colors = Vec::new();
+
+            // Reverse the order: later bytes contribute higher-order bits
+            for (byte_idx, part) in length_parts
+                .iter()
+                .enumerate()
+                .take(size_byte_count)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+            {
+                let color = colors[byte_idx % colors.len()];
+                let bits = part.content.as_ref();
+                all_bits.push_str(bits);
+                // Track color for each bit
+                for _ in 0..bits.len() {
+                    bit_colors.push(color);
+                }
+            }
+
+            // Split into 8-bit groups (bytes) with separators
+            let mut bit_pos = 0;
+            let mut byte_count = 0;
+            while bit_pos < all_bits.len() {
+                if byte_count > 0 {
+                    reconstruction_line.push(Span::styled("|", Style::default().fg(Color::Gray)));
+                }
+
+                // Take up to 8 bits for this byte, but if it's the first group and we have more than 8 bits total,
+                // take only the remaining bits that don't fit evenly into 8-bit groups
+                let remaining_bits = all_bits.len() - bit_pos;
+                let bits_in_this_group = if byte_count == 0 && remaining_bits > 8 {
+                    remaining_bits % 8
+                } else {
+                    8.min(remaining_bits)
+                };
+
+                // If first group would be 0 bits, take 8 instead
+                let bits_in_this_group = if bits_in_this_group == 0 {
+                    8
+                } else {
+                    bits_in_this_group
+                };
+
+                let end_pos = bit_pos + bits_in_this_group;
+                let byte_bits = &all_bits[bit_pos..end_pos];
+
+                // Create spans for each bit with its original color
+                for (i, bit_char) in byte_bits.chars().enumerate() {
+                    let color = bit_colors[bit_pos + i];
+                    reconstruction_line.push(Span::styled(
+                        bit_char.to_string(),
+                        Style::default().fg(color),
+                    ));
+                }
+
+                bit_pos = end_pos;
+                byte_count += 1;
+            }
+            reconstruction_line.push(Span::from(format!(
+                " — 0x{:X}",
                 header.uncompressed_data_size()
             )));
-            match header {
-                crate::git::pack::ObjectHeader::OfsDelta { base_offset, .. } => {
+            lines.push(Line::from(reconstruction_line));
+            lines.push(Line::from(format!(
+                "      Result: {} bytes",
+                header.uncompressed_data_size()
+            )));
+
+            // Show base reference/offset reconstruction for delta objects
+            if obj_type == crate::git::pack::ObjectType::RefDelta {
+                lines.push(Line::from("  - Base object hash (20 bytes):"));
+                let hash_bytes = &raw_data[size_byte_count..];
+                lines.push(Line::from(format!("      {}", hex::encode(hash_bytes))));
+            } else if obj_type == crate::git::pack::ObjectType::OfsDelta {
+                lines.push(Line::from("  - Base offset:"));
+                let offset_bytes = &raw_data[size_byte_count..];
+
+                // Collect offset bits (excluding continuation bits) in correct order
+                // Note: Git uses big-endian bit order for offset encoding
+                // Earlier bytes contribute higher-order bits, so we use natural order
+                let mut offset_parts = Vec::new();
+
+                for (i, &byte) in offset_bytes.iter().enumerate() {
+                    let color = colors[(size_byte_count + i) % colors.len()];
+                    let payload_bits = format!("{:07b}", byte & 0x7F);
+                    offset_parts.push((payload_bits, color));
+                }
+
+                let mut offset_bits = String::new();
+                let mut offset_bit_colors = Vec::new();
+
+                // Use natural order: earlier bytes contribute higher-order bits
+                for (payload_bits, color) in offset_parts.into_iter() {
+                    offset_bits.push_str(&payload_bits);
+                    // Track color for each bit
+                    for _ in 0..7 {
+                        offset_bit_colors.push(color);
+                    }
+                }
+
+                // Display offset reconstruction
+                let mut offset_reconstruction_line = vec![Span::from("      ")];
+                let mut bit_pos = 0;
+                let mut byte_count = 0;
+
+                while bit_pos < offset_bits.len() {
+                    if byte_count > 0 {
+                        offset_reconstruction_line
+                            .push(Span::styled("|", Style::default().fg(Color::Gray)));
+                    }
+
+                    let remaining_bits = offset_bits.len() - bit_pos;
+                    let bits_in_this_group = if byte_count == 0 && remaining_bits > 8 {
+                        remaining_bits % 8
+                    } else {
+                        8.min(remaining_bits)
+                    };
+
+                    let bits_in_this_group = if bits_in_this_group == 0 {
+                        8
+                    } else {
+                        bits_in_this_group
+                    };
+
+                    let end_pos = bit_pos + bits_in_this_group;
+                    let byte_bits = &offset_bits[bit_pos..end_pos];
+
+                    // Create spans for each bit with its original color
+                    for (i, bit_char) in byte_bits.chars().enumerate() {
+                        let color = offset_bit_colors[bit_pos + i];
+                        offset_reconstruction_line.push(Span::styled(
+                            bit_char.to_string(),
+                            Style::default().fg(color),
+                        ));
+                    }
+
+                    bit_pos = end_pos;
+                    byte_count += 1;
+                }
+
+                if let crate::git::pack::ObjectHeader::OfsDelta { base_offset, .. } = header {
+                    offset_reconstruction_line.push(Span::from(format!(" — 0x{:X}", base_offset)));
+                    lines.push(Line::from(offset_reconstruction_line));
                     lines.push(Line::from(format!(
-                        "  - Base Offset: {} (0x{:x})",
-                        base_offset, base_offset
+                        "      Result: {} bytes back",
+                        base_offset
                     )));
                 }
+            }
+            match header {
                 crate::git::pack::ObjectHeader::RefDelta { base_ref, .. } => {
                     lines.push(Line::from(format!(
                         "  - Base Reference: {}",
