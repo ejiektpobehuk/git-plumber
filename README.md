@@ -7,16 +7,13 @@
 
 > _🎥 Click above to watch git-plumber in action (asciinema demo)_
 
-> **Explore a `.git/` directory and peek into git’s internals from a terminal.**
-> _A visual, interactive companion to “Pro Git” Chapter 10 and anyone curious about what’s under git’s hood._
-
 ---
 
 ## What is _git-plumber_?
 
 [git-plumber](https://github.com/ejiektpobehuk/git-plumber) is a CLI and TUI application for **exploring the internals of git repositories** in a safe, read-only way.
 Browse and understand the contents of the `.git/` directory: refs, trees, blobs and more.
-Demystifying compressed and binary “plumbing” beneath git’s familiar porcelain appearance.
+Demystify compressed and binary “plumbing” beneath git’s familiar porcelain appearance.
 
 Perfect for learning, live experimentation, or just satisfying your curiosity.
 
