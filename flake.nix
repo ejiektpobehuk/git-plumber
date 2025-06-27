@@ -55,7 +55,9 @@
             
             src = ./.;
             
-            cargoHash = "sha256-J1zTE9QgdGWGK0/VECvKPlhVeTzH3Td9wj0JBbxST08=";
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+            };
             
             nativeBuildInputs = with pkgs; [
               pkg-config
