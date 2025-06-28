@@ -4,6 +4,7 @@ use crate::tui::helpers::render_styled_paragraph_with_scrollbar;
 use crate::tui::model::PackObject;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span, Text, ToText};
+use std::fmt;
 
 #[derive(Debug, Clone)]
 pub enum PackObjectWidget {
@@ -136,6 +137,70 @@ impl PackObjectWidget {
     }
 }
 
+// Helper function to calculate the number of bytes used for size encoding
+fn calculate_size_byte_count(obj_type: crate::git::pack::ObjectType, raw_data: &[u8]) -> usize {
+    match obj_type {
+        crate::git::pack::ObjectType::RefDelta => {
+            // RefDelta: size bytes + 20-byte hash
+            raw_data.len() - 20
+        }
+        crate::git::pack::ObjectType::OfsDelta => {
+            // OfsDelta: find where size encoding ends
+            let mut size_bytes = 0;
+            for (i, &byte) in raw_data.iter().enumerate() {
+                size_bytes = i + 1;
+                if byte & 0x80 == 0 {
+                    // No continuation bit, this is the last size byte
+                    break;
+                }
+            }
+            size_bytes
+        }
+        _ => raw_data.len(), // Regular objects use all bytes for size
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum HeaderSection {
+    Size,
+    Hash,
+    Offset,
+}
+
+impl fmt::Display for HeaderSection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HeaderSection::Size => write!(f, "size"),
+            HeaderSection::Hash => write!(f, "hash"),
+            HeaderSection::Offset => write!(f, "offset"),
+        }
+    }
+}
+
+impl HeaderSection {
+    fn from_byte_position(
+        byte_index: usize,
+        obj_type: crate::git::pack::ObjectType,
+        raw_data_len: usize,
+        size_byte_count: usize,
+    ) -> Self {
+        let is_ref_delta_hash = obj_type == crate::git::pack::ObjectType::RefDelta
+            && raw_data_len >= 20
+            && byte_index >= raw_data_len - 20;
+
+        let is_ofs_delta_offset =
+            obj_type == crate::git::pack::ObjectType::OfsDelta && byte_index >= size_byte_count;
+
+        if is_ref_delta_hash {
+            HeaderSection::Hash
+        } else if is_ofs_delta_offset {
+            HeaderSection::Offset
+        } else {
+            HeaderSection::Size
+        }
+    }
+}
+
 fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
     let mut detail = String::new();
     let mut lines: Vec<Line> = Vec::new();
@@ -164,16 +229,16 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                 lines.push(Line::from(format!("Byte {i}")));
                 let mut continuation_line: Vec<Span> = Vec::new();
                 continuation_line.push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
-                continuation_line.push(Span::from(format!(
-                    "Continuation bit: {}",
-                    if byte & 0x80 != 0 {
-                        "1 (there is a following header byte)"
-                    } else {
-                        "0 (last byte)"
-                    }
-                )));
-                lines.push(Line::from(continuation_line));
                 if i == 0 {
+                    continuation_line.push(Span::from(format!(
+                        "Continuation bit: {}",
+                        if byte & 0x80 != 0 {
+                            "1 (there is a following size byte)"
+                        } else {
+                            "0 (the last size byte)"
+                        }
+                    )));
+                    lines.push(Line::from(continuation_line));
                     let mut byte_line: Vec<Span> = Vec::new();
                     byte_line.push(Span::styled(
                         "  |",
@@ -218,14 +283,54 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     ];
                     lines.push(Line::from(obj_type_line.to_vec()));
                 } else {
+                    // Determine what this byte represents based on object type and position
+                    let obj_type = header.obj_type();
+                    let size_byte_count = calculate_size_byte_count(obj_type, raw_data);
+
+                    // Determine current and previous byte's logical section types
+                    let current_section = HeaderSection::from_byte_position(
+                        i,
+                        obj_type,
+                        raw_data.len(),
+                        size_byte_count,
+                    );
+                    let prev_section = HeaderSection::from_byte_position(
+                        i - 1,
+                        obj_type,
+                        raw_data.len(),
+                        size_byte_count,
+                    );
+
+                    // Use solid separator when transitioning between different sections
+                    let is_section_transition = current_section != prev_section;
+
+                    continuation_line.push(Span::from(format!(
+                        "Continuation bit: {}",
+                        if byte & 0x80 != 0 {
+                            format!("1 (there is a following {} byte)", current_section)
+                        } else {
+                            format!("0 (the last {} byte)", current_section)
+                        }
+                    )));
+                    lines.push(Line::from(continuation_line));
+                    let front_separator = if is_section_transition {
+                        Span::styled("  |", Style::default().add_modifier(Modifier::BOLD))
+                    } else {
+                        Span::from("  ┊")
+                    };
+                    let back_separator = if byte & 0x80 != 0 {
+                        Span::from("┊")
+                    } else {
+                        Span::styled("|", Style::default().add_modifier(Modifier::BOLD))
+                    };
                     let byte_line = [
-                        Span::from("  ┊"),
+                        front_separator,
                         Span::styled(
                             format!("{:b}", (byte >> 7) & 0x1),
                             Style::default().fg(Color::Green),
                         ),
                         Span::styled(format!("{:07b}", byte & 0x7F), colors[i % colors.len()]),
-                        Span::styled("|", Style::default().add_modifier(Modifier::BOLD)),
+                        back_separator,
                     ];
                     length_parts.push(Span::styled(
                         format!("{:07b}", byte & 0x7F),
@@ -233,20 +338,24 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     ));
                     lines.push(Line::from(byte_line.to_vec()));
 
-                    // For RefDelta, the last 20 bytes are the hash, so don't analyze them as size bytes
-                    let is_ref_delta_hash = header.obj_type()
-                        == crate::git::pack::ObjectType::RefDelta
-                        && raw_data.len() >= 20
-                        && i >= raw_data.len() - 20;
-
-                    if !is_ref_delta_hash {
-                        lines.push(Line::from(format!(
-                            "    ╰─────┴─ Uncompressed size bits: {} (0x{:x})",
-                            byte & 0x7F,
-                            byte & 0x7F
-                        )));
-                    } else {
-                        lines.push(Line::from("    └─ Part of base object hash".to_string()));
+                    match current_section {
+                        HeaderSection::Hash => {
+                            lines.push(Line::from("    └─ Part of base object hash".to_string()));
+                        }
+                        HeaderSection::Offset => {
+                            lines.push(Line::from(format!(
+                                "    ╰─────┴─ Base offset bits: {} (0x{:X})",
+                                byte & 0x7F,
+                                byte & 0x7F
+                            )));
+                        }
+                        HeaderSection::Size => {
+                            lines.push(Line::from(format!(
+                                "    ╰─────┴─ Uncompressed size bits: {} (0x{:X})",
+                                byte & 0x7F,
+                                byte & 0x7F
+                            )));
+                        }
                     }
                 }
             }
@@ -260,25 +369,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
 
             // Separate size reconstruction from base reference/offset reconstruction
             let obj_type = header.obj_type();
-            let size_byte_count = match obj_type {
-                crate::git::pack::ObjectType::RefDelta => {
-                    // RefDelta: size bytes + 20-byte hash
-                    raw_data.len() - 20
-                }
-                crate::git::pack::ObjectType::OfsDelta => {
-                    // OfsDelta: find where size encoding ends
-                    let mut size_bytes = 0;
-                    for (i, &byte) in raw_data.iter().enumerate() {
-                        size_bytes = i + 1;
-                        if byte & 0x80 == 0 {
-                            // No continuation bit, this is the last size byte
-                            break;
-                        }
-                    }
-                    size_bytes
-                }
-                _ => raw_data.len(), // Regular objects use all bytes for size
-            };
+            let size_byte_count = calculate_size_byte_count(obj_type, raw_data);
 
             // Create reconstruction line with byte separators and colors indicating source byte
             let mut reconstruction_line = vec![Span::from("      ")];
