@@ -592,7 +592,10 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
             // Parse and display delta instructions
             match crate::git::pack::parse_delta_instructions(&object_data.uncompressed_data) {
                 Ok((_, instructions)) => {
-                    lines.push(Line::from("DELTA INSTRUCTIONS\n"));
+                    lines.push(Line::styled(
+                        "DELTA INSTRUCTIONS\n",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ));
                     lines.push(Line::from("─".repeat(30)));
                     lines.push(Line::from("\n\n"));
 
