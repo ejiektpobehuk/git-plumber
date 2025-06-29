@@ -565,34 +565,6 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
         if obj_type == crate::git::pack::ObjectType::OfsDelta
             || obj_type == crate::git::pack::ObjectType::RefDelta
         {
-            lines.push(Line::from("DELTA OBJECT ANALYSIS\n"));
-            lines.push(Line::from("─".repeat(40)));
-            lines.push(Line::from("\n\n"));
-
-            if obj_type == crate::git::pack::ObjectType::OfsDelta {
-                if let crate::git::pack::ObjectHeader::OfsDelta { base_offset, .. } =
-                    &object_data.header
-                {
-                    lines.push(Line::from(format!(
-                        "Base Offset: {base_offset} (0x{base_offset:x})"
-                    )));
-                    lines.push(Line::from(format!(
-                        "This object is a delta relative to an object {base_offset} bytes back\n"
-                    )));
-                    lines.push(Line::from("\n".to_string()));
-                }
-            } else if let crate::git::pack::ObjectHeader::RefDelta { base_ref, .. } =
-                &object_data.header
-            {
-                lines.push(Line::from(format!(
-                    "Base Reference: {}",
-                    hex::encode(base_ref)
-                )));
-                lines.push(Line::from(
-                    "This object is a delta relative to the referenced object\n\n".to_string(),
-                ));
-            }
-
             // Parse and display delta instructions
             match crate::git::pack::parse_delta_instructions(&object_data.uncompressed_data) {
                 Ok((_, instructions)) => {
