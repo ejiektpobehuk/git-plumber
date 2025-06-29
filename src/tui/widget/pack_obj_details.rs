@@ -228,7 +228,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
             // Show detailed byte-by-byte breakdown
             for (i, &byte) in raw_data.iter().enumerate() {
                 if i == 0 {
-                    lines.push(Line::from(format!("Byte {i}")));
+                    lines.push(Line::from(format!("Byte 1")));
                     let mut continuation_line: Vec<Span> = Vec::new();
                     continuation_line
                         .push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
@@ -313,7 +313,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                         // Byte 2   ┊00000010|
                         //           ╰──────┴─ hash byte: 2 (0x02)
                         let mut byte_line: Vec<Span> = Vec::new();
-                        byte_line.push(Span::from(format!("Byte {:2}", i)));
+                        byte_line.push(Span::from(format!("Byte {:2}", i + 1)));
                         if is_section_transition {
                             byte_line.push(Span::styled(
                                 "  |",
@@ -338,7 +338,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                         ));
                         lines.push(Line::from(byte_line));
                     } else {
-                        lines.push(Line::from(format!("Byte {i}")));
+                        lines.push(Line::from(format!("Byte {}", i + 1)));
                         let mut continuation_line: Vec<Span> = Vec::new();
                         continuation_line
                             .push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
