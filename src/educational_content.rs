@@ -142,16 +142,14 @@ impl EducationalContent {
         }
 
         lines.push(Line::from("Signature (magic number)").centered());
-        lines.push(Line::from(vec![
-            Span::from("byte"),
-            Span::styled("│", border_style),
-            Span::from("1        2        3        4"),
-        ]));
-        lines.push(Line::from(vec![
-            Span::from("bit "),
-            Span::styled("│", border_style),
-            Span::from("76543210 76543210 76543210 76543210"),
-        ]));
+        lines.push(Line::styled(
+            "byte│1        2        3        4",
+            border_style,
+        ));
+        lines.push(Line::styled(
+            "bit │76543210 76543210 76543210 76543210",
+            border_style,
+        ));
         lines.push(Line::from(vec![Span::styled(
             "    ├────────┼────────┼────────┼────────┼",
             border_style,
@@ -188,38 +186,38 @@ impl EducationalContent {
             Span::from("hex "),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[0] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[0] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[0] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[0] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[1] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[1] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[1] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[1] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[2] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[2] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[2] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[2] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[3] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[3] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[3] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[3] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("┊", border_style),
@@ -227,13 +225,21 @@ impl EducationalContent {
         lines.push(Line::from(vec![
             Span::from("utf8"),
             Span::styled("│", border_style),
-            Span::from(format!("    {}   ", header.raw_data[0] as char)),
+            Span::styled("  ╰─", left_bit_style),
+            Span::from(format!("{}", header.raw_data[0] as char)),
+            Span::styled("─╯ ", right_bit_style),
             Span::styled("│", border_style),
-            Span::from(format!("    {}   ", header.raw_data[1] as char)),
+            Span::styled("  ╰─", left_bit_style),
+            Span::from(format!("{}", header.raw_data[1] as char)),
+            Span::styled("─╯ ", right_bit_style),
             Span::styled("│", border_style),
-            Span::from(format!("    {}   ", header.raw_data[2] as char)),
+            Span::styled("  ╰─", left_bit_style),
+            Span::from(format!("{}", header.raw_data[2] as char)),
+            Span::styled("─╯ ", right_bit_style),
             Span::styled("│", border_style),
-            Span::from(format!("    {}   ", header.raw_data[3] as char)),
+            Span::styled("  ╰─", left_bit_style),
+            Span::from(format!("{}", header.raw_data[3] as char)),
+            Span::styled("─╯ ", right_bit_style),
             Span::styled("┊", border_style),
         ]));
         lines.push(Line::from(vec![Span::styled(
@@ -243,8 +249,14 @@ impl EducationalContent {
         lines.push(Line::from(""));
 
         lines.push(Line::from(format!("Version: {}", header.version)).centered());
-        lines.push(Line::from("byte 5        6        7        8"));
-        lines.push(Line::from("bit  76543210 76543210 76543210 76543210"));
+        lines.push(Line::styled(
+            "byte 5        6        7        8",
+            border_style,
+        ));
+        lines.push(Line::styled(
+            "bit  76543210 76543210 76543210 76543210",
+            border_style,
+        ));
         lines.push(Line::from(vec![Span::styled(
             "    ┼────────┼────────┼────────┼────────┼",
             border_style,
@@ -281,38 +293,38 @@ impl EducationalContent {
             Span::from("hex "),
             Span::styled("┊", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[4] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[4] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[4] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[4] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[5] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[5] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[5] & 0x0F),
+                format!("╰─{:01x}╯", header.raw_data[5] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[6] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[6] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[6] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[6] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[7] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[7] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[7] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[7] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("┊", border_style),
@@ -324,14 +336,14 @@ impl EducationalContent {
         lines.push(Line::from(""));
 
         lines.push(Line::from(format!("Number of objects: {}", header.object_count)).centered());
-        lines.push(Line::from(vec![
-            Span::from("byte 9        10       11       12      "),
-            Span::styled("│", border_style),
-        ]));
-        lines.push(Line::from(vec![
-            Span::from("bit  76543210 76543210 76543210 76543210"),
-            Span::styled("│", border_style),
-        ]));
+        lines.push(Line::styled(
+            "byte 9        10       11       12      │",
+            border_style,
+        ));
+        lines.push(Line::styled(
+            "bit  76543210 76543210 76543210 76543210│",
+            border_style,
+        ));
         lines.push(Line::from(vec![Span::styled(
             "    ┼────────┼────────┼────────┼────────┤",
             border_style,
@@ -368,38 +380,38 @@ impl EducationalContent {
             Span::from("hex "),
             Span::styled("┊", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[8] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[8] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[8] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[8] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[9] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[9] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[9] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[9] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[10] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[10] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[10] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[10] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
             Span::styled(
-                format!("   {:01x}", header.raw_data[11] >> 4),
+                format!("╰─{:01X}╯", header.raw_data[11] >> 4),
                 left_bit_style,
             ),
             Span::styled(
-                format!("{:01x}   ", header.raw_data[11] & 0x0F),
+                format!("╰─{:01X}╯", header.raw_data[11] & 0x0F),
                 right_bit_style,
             ),
             Span::styled("│", border_style),
