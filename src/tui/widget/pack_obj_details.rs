@@ -205,6 +205,7 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
     let mut detail = String::new();
     let mut lines: Vec<Line> = Vec::new();
     let colors = [Color::Blue, Color::Magenta, Color::Cyan, Color::Red];
+    let mut colored_hash: Vec<Span> = Vec::new();
 
     // If we have object data, show detailed header information
     if let Some(ref object_data) = pack_obj.object_data {
@@ -226,10 +227,11 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
             // "Byte {}\n: 0x{:02x} ({:08b}) = {}",
             // Show detailed byte-by-byte breakdown
             for (i, &byte) in raw_data.iter().enumerate() {
-                lines.push(Line::from(format!("Byte {i}")));
-                let mut continuation_line: Vec<Span> = Vec::new();
-                continuation_line.push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
                 if i == 0 {
+                    lines.push(Line::from(format!("Byte {i}")));
+                    let mut continuation_line: Vec<Span> = Vec::new();
+                    continuation_line
+                        .push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
                     continuation_line.push(Span::from(format!(
                         "Continuation bit: {}",
                         if byte & 0x80 != 0 {
@@ -304,57 +306,92 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                     // Use solid separator when transitioning between different sections
                     let is_section_transition = current_section != prev_section;
 
-                    continuation_line.push(Span::from(format!(
-                        "Continuation bit: {}",
-                        if byte & 0x80 != 0 {
-                            format!("1 (there is a following {} byte)", current_section)
+                    if current_section == HeaderSection::Hash {
+                        if is_section_transition {
+                            lines.push(Line::from("          ╭──────┬─ Reference hash bytes"));
+                        }
+                        // Byte 2   ┊00000010|
+                        //           ╰──────┴─ hash byte: 2 (0x02)
+                        let mut byte_line: Vec<Span> = Vec::new();
+                        byte_line.push(Span::from(format!("Byte {:2}", i)));
+                        if is_section_transition {
+                            byte_line.push(Span::styled(
+                                "  |",
+                                Style::default().add_modifier(Modifier::BOLD),
+                            ))
                         } else {
-                            format!("0 (the last {} byte)", current_section)
-                        }
-                    )));
-                    lines.push(Line::from(continuation_line));
-                    let front_separator = if is_section_transition {
-                        Span::styled("  |", Style::default().add_modifier(Modifier::BOLD))
+                            byte_line.push(Span::from("  ┊"))
+                        };
+                        byte_line.push(Span::styled(
+                            format!("{:08b}", byte),
+                            colors[i % colors.len()],
+                        ));
+                        byte_line.push(Span::from("┊"));
+                        byte_line.push(Span::from(" - 0x"));
+                        byte_line.push(Span::styled(
+                            format!("{:02X}", byte),
+                            colors[i % colors.len()],
+                        ));
+                        colored_hash.push(Span::styled(
+                            format!("{:02X}", byte),
+                            colors[i % colors.len()],
+                        ));
+                        lines.push(Line::from(byte_line));
                     } else {
-                        Span::from("  ┊")
-                    };
-                    let back_separator = if byte & 0x80 != 0 {
-                        Span::from("┊")
-                    } else {
-                        Span::styled("|", Style::default().add_modifier(Modifier::BOLD))
-                    };
-                    let byte_line = [
-                        front_separator,
-                        Span::styled(
-                            format!("{:b}", (byte >> 7) & 0x1),
-                            Style::default().fg(Color::Green),
-                        ),
-                        Span::styled(format!("{:07b}", byte & 0x7F), colors[i % colors.len()]),
-                        back_separator,
-                    ];
-                    length_parts.push(Span::styled(
-                        format!("{:07b}", byte & 0x7F),
-                        colors[i % colors.len()],
-                    ));
-                    lines.push(Line::from(byte_line.to_vec()));
+                        lines.push(Line::from(format!("Byte {i}")));
+                        let mut continuation_line: Vec<Span> = Vec::new();
+                        continuation_line
+                            .push(Span::styled("   ╭─ ", Style::default().fg(Color::Green)));
+                        continuation_line.push(Span::from(format!(
+                            "Continuation bit: {}",
+                            if byte & 0x80 != 0 {
+                                format!("1 (there is a following {} byte)", current_section)
+                            } else {
+                                format!("0 (the last {} byte)", current_section)
+                            }
+                        )));
+                        lines.push(Line::from(continuation_line));
+                        let front_separator = if is_section_transition {
+                            Span::styled("  |", Style::default().add_modifier(Modifier::BOLD))
+                        } else {
+                            Span::from("  ┊")
+                        };
+                        let back_separator = if byte & 0x80 != 0 {
+                            Span::from("┊")
+                        } else {
+                            Span::styled("|", Style::default().add_modifier(Modifier::BOLD))
+                        };
+                        let byte_line = [
+                            front_separator,
+                            Span::styled(
+                                format!("{:b}", (byte >> 7) & 0x1),
+                                Style::default().fg(Color::Green),
+                            ),
+                            Span::styled(format!("{:07b}", byte & 0x7F), colors[i % colors.len()]),
+                            back_separator,
+                        ];
+                        length_parts.push(Span::styled(
+                            format!("{:07b}", byte & 0x7F),
+                            colors[i % colors.len()],
+                        ));
+                        lines.push(Line::from(byte_line.to_vec()));
 
-                    match current_section {
-                        HeaderSection::Hash => {
-                            lines.push(Line::from("    └─ Part of base object hash".to_string()));
-                        }
-                        HeaderSection::Offset => {
-                            lines.push(Line::from(format!(
-                                "    ╰─────┴─ Base offset bits: {} (0x{:X})",
-                                byte & 0x7F,
-                                byte & 0x7F
-                            )));
-                        }
-                        HeaderSection::Size => {
-                            lines.push(Line::from(format!(
-                                "    ╰─────┴─ Uncompressed size bits: {} (0x{:X})",
-                                byte & 0x7F,
-                                byte & 0x7F
-                            )));
+                        match current_section {
+                            HeaderSection::Offset => {
+                                lines.push(Line::from(format!(
+                                    "    ╰─────┴─ Base offset bits: {} (0x{:X})",
+                                    byte & 0x7F,
+                                    byte & 0x7F
+                                )));
+                            }
+                            HeaderSection::Size => {
+                                lines.push(Line::from(format!(
+                                    "    ╰─────┴─ Uncompressed size bits: {} (0x{:X})",
+                                    byte & 0x7F,
+                                    byte & 0x7F
+                                )));
+                            }
+                            _ => {}
                         }
                     }
                 }
@@ -450,8 +487,8 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
             // Show base reference/offset reconstruction for delta objects
             if obj_type == crate::git::pack::ObjectType::RefDelta {
                 lines.push(Line::from("  - Base object hash (20 bytes):"));
-                let hash_bytes = &raw_data[size_byte_count..];
-                lines.push(Line::from(format!("      {}", hex::encode(hash_bytes))));
+                colored_hash.insert(0, Span::from("      "));
+                lines.push(Line::from(colored_hash));
             } else if obj_type == crate::git::pack::ObjectType::OfsDelta {
                 lines.push(Line::from("  - Base offset:"));
                 let offset_bytes = &raw_data[size_byte_count..];
@@ -527,15 +564,6 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                         base_offset
                     )));
                 }
-            }
-            match header {
-                crate::git::pack::ObjectHeader::RefDelta { base_ref, .. } => {
-                    lines.push(Line::from(format!(
-                        "  - Base Reference: {}",
-                        hex::encode(base_ref)
-                    )));
-                }
-                _ => {}
             }
             lines.push(Line::from("Calculated values:"));
             lines.push(Line::from(format!(
