@@ -102,24 +102,6 @@ impl AppState {
                 self.update(objects_msg, plumber);
             }
 
-            // Navigation messages
-            Message::SelectNext
-            | Message::SelectPrevious
-            | Message::SelectFirst
-            | Message::SelectLast => {}
-
-            // Main view mode messages - delegate to main_view module
-            Message::TogglePackFocus => {
-                return self.handle_main_view_mode_message(msg, plumber);
-            }
-
-            // Pack object detail mode messages
-            Message::ExitPackObjectDetail
-            | Message::HandlePackObjectDetailAction
-            | Message::BackFromObjectDetail => {
-                return self.handle_main_view_mode_message(msg, plumber);
-            }
-
             Message::MainNavigation(_) | Message::OpenPackView => {
                 return self.handle_main_view_mode_message(msg, plumber);
             }

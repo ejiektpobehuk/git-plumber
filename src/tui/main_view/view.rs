@@ -288,9 +288,6 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span> {
                             Span::styled("→", Style::default().fg(Color::Gray)),
                         ]);
                     }
-                    _ => {
-                        hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
-                    }
                 };
             }
             PreviewState::Regular(RegularPreViewState { focus, .. }) => match focus {

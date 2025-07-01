@@ -5,19 +5,10 @@ use ratatui::text::Text;
 #[derive(Debug)]
 pub enum Message {
     Quit,
-    SelectNext,
-    SelectPrevious,
-    SelectFirst,
-    SelectLast,
     LoadGitObjects(Result<(), String>),
     LoadGitObjectInfo(Result<String, String>),
     LoadEducationalContent(Result<Text<'static>, String>),
     Refresh,
-    // Pack navigation messages
-    TogglePackFocus,
-    ExitPackObjectDetail,
-    HandlePackObjectDetailAction,
-    BackFromObjectDetail,
     LoadPackObjects(Result<Vec<PackObject>, String>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
@@ -51,11 +42,8 @@ pub enum MainNavigation {
     SelectLastPackObject,
     // Focus
     FocusGitObjects,
-    FocusEducational,
-    FocusDetails,
     FocusPackObjectDetails,
     FocusEducationalOrList,
-    FocusPackList,
     FocusToggle,
 }
 

@@ -27,10 +27,6 @@ impl PackObjectWidget {
         }
     }
 
-    pub fn empty() -> Self {
-        Self::Uninitiolized
-    }
-
     pub fn text(&mut self) -> ratatui::text::Text<'static> {
         match self {
             &mut Self::Initiolized {

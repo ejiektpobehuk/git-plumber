@@ -58,7 +58,6 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         focus: RegularFocus::Preview,
                         ..
                     }) => Some(Message::MainNavigation(MainNavigation::FocusGitObjects)),
-                    _ => None,
                 }
             }
             KeyCode::Enter => match &state.preview_state {
@@ -212,6 +211,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                     )),
                 },
             },
+            KeyCode::Tab => Some(Message::MainNavigation(MainNavigation::FocusToggle)),
             _ => None,
         },
         _ => None,

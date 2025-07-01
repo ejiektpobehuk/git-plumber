@@ -670,7 +670,6 @@ impl AppState {
                         }
                     }
                 }
-                _ => {}
             },
 
             Message::OpenPackView => {
