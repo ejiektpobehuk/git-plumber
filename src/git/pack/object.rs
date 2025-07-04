@@ -229,16 +229,20 @@ impl ObjectHeader {
 pub struct Object {
     pub header: ObjectHeader,
     pub uncompressed_data: Vec<u8>,
-    pub compressed_size: usize, // Size of the compressed data
-    pub data_offset: usize,     // Where compressed data begins
+    pub compressed_data: Vec<u8>, // Raw compressed bytes
+    pub compressed_size: usize,   // Size of the compressed data
+    pub data_offset: usize,       // Where compressed data begins
 }
 
 impl Object {
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (input, header) = ObjectHeader::parse(input)?;
         let pre_parse_input_size = input.len();
-        let (input, data) = Self::parse_data(input, header.uncompressed_data_size())?;
-        let compressed_size = pre_parse_input_size - input.len() + 2; // +2 for the zlib header 🤷
+        let (remaining_input, data) = Self::parse_data(input, header.uncompressed_data_size())?;
+        let compressed_size = pre_parse_input_size - remaining_input.len();
+
+        // Store the compressed data bytes (before they were consumed by parse_data)
+        let compressed_data = input[..compressed_size].to_vec();
 
         // If this is a delta object, parse and display the delta instructions
         let obj_type = header.obj_type();
@@ -250,10 +254,11 @@ impl Object {
             };
 
         Ok((
-            input,
+            remaining_input,
             Self {
                 header,
                 uncompressed_data,
+                compressed_data,
                 compressed_size,
                 data_offset: 0,
             },

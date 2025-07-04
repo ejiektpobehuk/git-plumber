@@ -197,6 +197,19 @@ impl HeaderSection {
     }
 }
 
+// Add Adler-32 checksum calculation function
+fn calculate_adler32(data: &[u8]) -> u32 {
+    let mut a: u32 = 1;
+    let mut b: u32 = 0;
+
+    for &byte in data {
+        a = (a + byte as u32) % 65521;
+        b = (b + a) % 65521;
+    }
+
+    (b << 16) | a
+}
+
 fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
     let mut detail = String::new();
     let mut lines: Vec<Line> = Vec::new();
@@ -680,7 +693,367 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                 Style::default().add_modifier(Modifier::BOLD),
             ));
             lines.push(Line::from("─".repeat(30)));
-            lines.push(Line::from("gzip compressed data"));
+            lines.push(Line::from(" [zlib header][deflate blocks][checksum]"));
+            lines.push(Line::from(" [2 bytes]    [variable]     [4 bytes]"));
+            lines.push(Line::from(""));
+            lines.push(Line::from(" [Decompressed data preview]"));
+            lines.push(Line::from(""));
+
+            lines.push(Line::styled(
+                "ZLIB COMPRESSION HEADER",
+                Style::default().add_modifier(Modifier::BOLD),
+            ));
+            lines.push(Line::from(""));
+
+            if object_data.compressed_data.len() >= 2 {
+                lines.push(Line::from(
+                    "The object data is compressed using zlib (RFC 1950):",
+                ));
+                lines.push(Line::from(""));
+
+                // Show actual first byte (CMF)
+                let byte1 = object_data.compressed_data[0];
+                lines.push(Line::from(
+                    [
+                        Span::from("Byte 1"),
+                        Span::styled("   CMF", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from(" - "),
+                        Span::styled("C", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from("ompression "),
+                        Span::styled("m", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from("ethod and "),
+                        Span::styled("f", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from("lags"),
+                    ]
+                    .to_vec(),
+                ));
+                let mut cmf_line: Vec<Span> = Vec::new();
+                cmf_line.push(Span::styled(
+                    "  |",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
+                cmf_line.push(Span::styled(
+                    format!("{:04b}", byte1 >> 4),
+                    Style::default().fg(colors[0]),
+                ));
+                cmf_line.push(Span::styled(
+                    format!("{:04b}", byte1 & 0x0F),
+                    Style::default().fg(colors[1]),
+                ));
+                cmf_line.push(Span::from("┊"));
+                cmf_line.push(Span::from(" - 0x"));
+                cmf_line.push(Span::styled(
+                    format!("{:01X}", byte1 >> 4),
+                    Style::default().fg(colors[0]),
+                ));
+                cmf_line.push(Span::styled(
+                    format!("{:01X}", byte1 & 0x0F),
+                    Style::default().fg(colors[1]),
+                ));
+                lines.push(Line::from(cmf_line));
+
+                let cinfo = (byte1 >> 4) & 0x0F;
+                let cm = byte1 & 0x0F;
+                let mut cinfo_line: Vec<Span> = Vec::new();
+                cinfo_line.push(Span::from("   ├──╯"));
+                cinfo_line.push(Span::from("╰──┴─ "));
+                cinfo_line.push(Span::from("CINFO: "));
+                cinfo_line.push(Span::from(
+                    (format!("{} - {} window size", cinfo, 1 << (cinfo + 8))),
+                ));
+                lines.push(Line::from(cinfo_line));
+                lines.push(Line::from(format!(
+                    "   ╰─ CM: {} - {}",
+                    cm,
+                    if cm == 8 {
+                        "deflate compression method"
+                    } else {
+                        "unknown compression method"
+                    }
+                )));
+                lines.push(Line::from(""));
+
+                // Show actual second byte (FLG)
+                let byte2 = object_data.compressed_data[1];
+                lines.push(Line::from(
+                    [
+                        Span::from("Byte 2"),
+                        Span::styled("   FLG", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from(" - "),
+                        Span::styled("Fl", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from("a"),
+                        Span::styled("g", Style::default().add_modifier(Modifier::BOLD)),
+                        Span::from("s"),
+                    ]
+                    .to_vec(),
+                ));
+                let mut flg_line: Vec<Span> = Vec::new();
+                flg_line.push(Span::styled(
+                    "  ┊",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
+                flg_line.push(Span::styled(
+                    format!("{:02b}", byte2 >> 6),
+                    Style::default().fg(colors[0]),
+                ));
+                flg_line.push(Span::styled(
+                    format!("{:01b}", (byte2 >> 5) & 0x01),
+                    Style::default().fg(colors[1]),
+                ));
+                flg_line.push(Span::styled(
+                    format!("{:05b}", byte2 & 0x1F),
+                    Style::default().fg(colors[2]),
+                ));
+                flg_line.push(Span::styled(
+                    "|",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
+                flg_line.push(Span::from(" - 0x"));
+                flg_line.push(Span::from(format!("{:02X}", byte2)));
+                lines.push(Line::from(flg_line));
+
+                let flevel = byte2 >> 6;
+                let fdict = (byte2 >> 5) & 0x01;
+                let fcheck = byte2 & 0x1F;
+
+                let mut fcheck_line: Vec<Span> = Vec::new();
+                fcheck_line.push(Span::styled("   ├╯", Style::default().fg(colors[0])));
+                fcheck_line.push(Span::styled("│", Style::default().fg(colors[1])));
+                fcheck_line.push(Span::styled("╰───┴─ ", Style::default().fg(colors[2])));
+                fcheck_line.push(Span::from("FCHECK: "));
+                fcheck_line.push(Span::styled(
+                    format!("{:05b}", fcheck),
+                    Style::default().fg(colors[2]),
+                ));
+                let checksum = ((byte1 as u16) * 256 + (byte2 as u16)) % 31;
+                fcheck_line.push(Span::from(" - checksum bits "));
+                if checksum == 0 {
+                    fcheck_line.push(Span::styled("✓", Style::default().fg(Color::Green)));
+                } else {
+                    fcheck_line.push(Span::styled("⚠", Style::default().fg(Color::Red)));
+                }
+                lines.push(Line::from(fcheck_line));
+                let mut fdict_line: Vec<Span> = Vec::new();
+                fdict_line.push(Span::styled("   │", Style::default().fg(colors[0])));
+                fdict_line.push(Span::styled(" ╰─ ", Style::default().fg(colors[1])));
+                fdict_line.push(Span::from("FDICT: "));
+                fdict_line.push(Span::styled(
+                    format!("{}", fdict),
+                    Style::default().fg(colors[1]),
+                ));
+                fdict_line.push(Span::from(format!(
+                    " - {}",
+                    if fdict == 0 {
+                        "no dictionary is used"
+                    } else {
+                        "a dictionary is used"
+                    }
+                )));
+                lines.push(Line::from(fdict_line));
+                let mut flevel_line: Vec<Span> = Vec::new();
+                flevel_line.push(Span::styled("   ╰─ ", Style::default().fg(colors[2])));
+                flevel_line.push(Span::from("FLEVEL: "));
+                flevel_line.push(Span::styled(
+                    format!("{}", flevel),
+                    Style::default().fg(colors[2]),
+                ));
+                flevel_line.push(Span::from(format!(
+                    " - {}",
+                    match flevel {
+                        0 => "fastest compression",
+                        1 => "fast compression",
+                        2 => "default compression",
+                        3 => "maximum compression",
+                        _ => "unknown",
+                    }
+                )));
+                lines.push(Line::from(flevel_line));
+
+                lines.push(Line::from(""));
+
+                // Show deflate block header (starts at byte 3)
+                if object_data.compressed_data.len() >= 3 {
+                    lines.push(Line::styled(
+                        "DEFLATE BLOCK HEADER",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ));
+                    lines.push(Line::from(""));
+
+                    let byte3 = object_data.compressed_data[2];
+                    let bfinal = byte3 & 0x01;
+                    let btype = (byte3 >> 1) & 0x03;
+                    let remaining_bits = byte3 >> 3;
+
+                    lines.push(Line::from("Byte 3   Start of deflate compressed data"));
+                    let mut deflate_line: Vec<Span> = Vec::new();
+                    deflate_line.push(Span::styled(
+                        "  |",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ));
+                    deflate_line.push(Span::styled(
+                        format!("{:05b}", remaining_bits),
+                        Style::default().fg(Color::Gray),
+                    ));
+                    deflate_line.push(Span::styled(
+                        format!("{:02b}", btype),
+                        Style::default().fg(colors[0]),
+                    ));
+                    deflate_line.push(Span::styled(
+                        format!("{:01b}", bfinal),
+                        Style::default().fg(colors[1]),
+                    ));
+                    deflate_line.push(Span::from("┊"));
+                    deflate_line.push(Span::from(" - 0x"));
+                    deflate_line.push(Span::from(format!("{:02X}", byte3)));
+                    lines.push(Line::from(deflate_line));
+
+                    let mut bfinal_line: Vec<Span> = Vec::new();
+                    bfinal_line.push(Span::styled("   ├───╯", Style::default().fg(Color::Gray)));
+                    bfinal_line.push(Span::styled("├╯", Style::default().fg(colors[0])));
+                    bfinal_line.push(Span::styled("╰─ ", Style::default().fg(colors[1])));
+                    bfinal_line.push(Span::from("BFINAL: "));
+                    bfinal_line.push(Span::styled(
+                        format!("{}", bfinal),
+                        Style::default().fg(colors[2]),
+                    ));
+                    lines.push(Line::from(bfinal_line));
+
+                    let mut btype_line: Vec<Span> = Vec::new();
+                    btype_line.push(Span::styled("   │", Style::default().fg(Color::Gray)));
+                    btype_line.push(Span::styled("    ╰─ ", Style::default().fg(colors[0])));
+                    btype_line.push(Span::from("BTYPE: "));
+                    btype_line.push(Span::styled(
+                        format!("{}", btype),
+                        Style::default().fg(colors[1]),
+                    ));
+                    btype_line.push(Span::from(format!(
+                        " - {}",
+                        match btype {
+                            0 => "no compression (stored)",
+                            1 => "fixed Huffman codes",
+                            2 => "dynamic Huffman codes",
+                            3 => "reserved (error)",
+                            _ => "unknown",
+                        }
+                    )));
+                    lines.push(Line::from(btype_line));
+
+                    let mut remaining_bits_line: Vec<Span> = Vec::new();
+                    remaining_bits_line
+                        .push(Span::styled("   ╰─ ", Style::default().fg(Color::Gray)));
+                    remaining_bits_line.push(Span::from(format!(
+                        "start of {}",
+                        match btype {
+                            0 => "literal data length field",
+                            1 => "fixed Huffman compressed data",
+                            2 => "dynamic Huffman table definition",
+                            3 => "invalid data",
+                            _ => "unknown data",
+                        }
+                    )));
+                    lines.push(Line::from(remaining_bits_line));
+
+                    lines.push(Line::from(""));
+
+                    lines.push(Line::from(format!(
+                        "Bytes [ {} - {} ] contain compressed data",
+                        4,
+                        object_data.compressed_data.len() - 3 - 1
+                    )));
+                }
+
+                lines.push(Line::from(""));
+
+                // Show Adler-32 checksum
+                if object_data.compressed_data.len() >= 6 {
+                    lines.push(Line::styled(
+                        "ADLER-32 CHECKSUM",
+                        Style::default().add_modifier(Modifier::BOLD),
+                    ));
+                    lines.push(Line::from(""));
+
+                    let len = object_data.compressed_data.len();
+                    let checksum_bytes = &object_data.compressed_data[len - 4..];
+
+                    // Calculate expected checksum from uncompressed data
+                    let calculated_checksum = calculate_adler32(&object_data.uncompressed_data);
+
+                    // Extract stored checksum (big-endian format)
+                    let stored_checksum = u32::from_be_bytes([
+                        checksum_bytes[0],
+                        checksum_bytes[1],
+                        checksum_bytes[2],
+                        checksum_bytes[3],
+                    ]);
+                    let mut stored_checksum_colored: Vec<_> = Vec::new();
+
+                    // Show each checksum byte
+                    for (i, &byte) in checksum_bytes.iter().enumerate() {
+                        let byte_num = len - 4 + i + 1;
+                        let mut byte_line: Vec<Span> = Vec::new();
+                        byte_line.push(Span::from(format!("Byte {} ", byte_num)));
+                        byte_line.push(if i == 0 {
+                            Span::styled("  |", Style::default().add_modifier(Modifier::BOLD))
+                        } else {
+                            Span::from("  ┊")
+                        });
+                        byte_line.push(Span::styled(
+                            format!("{:08b}", byte),
+                            Style::default().fg(colors[i % colors.len()]),
+                        ));
+                        byte_line.push(
+                            (if i == checksum_bytes.len() - 1 {
+                                Span::styled("|", Style::default().add_modifier(Modifier::BOLD))
+                            } else {
+                                Span::from("┊")
+                            }),
+                        );
+                        byte_line.push(Span::from(" - 0x"));
+                        byte_line.push(Span::styled(
+                            format!("{:02X}", byte),
+                            Style::default().fg(colors[i % colors.len()]),
+                        ));
+                        stored_checksum_colored.push(Span::styled(
+                            format!("{:02X}", byte),
+                            Style::default().fg(colors[i % colors.len()]),
+                        ));
+                        lines.push(Line::from(byte_line));
+                    }
+
+                    lines.push(Line::from(""));
+
+                    // Show checksum verification
+                    lines.push(Line::from("Checksum verification:"));
+                    stored_checksum_colored.insert(0, Span::from("  - Stored checksum:   0x"));
+                    lines.push(Line::from(stored_checksum_colored));
+                    lines.push(Line::from(format!(
+                        "  - Calculated checksum: 0x{:08X}",
+                        calculated_checksum
+                    )));
+
+                    let is_valid = stored_checksum == calculated_checksum;
+                    let mut verification_line: Vec<Span> = Vec::new();
+                    verification_line.push(Span::from("  - Verification: "));
+                    if is_valid {
+                        verification_line.push(Span::from("checksum matches "));
+                        verification_line
+                            .push(Span::styled("✓", Style::default().fg(Color::Green)));
+                    } else {
+                        verification_line.push(Span::from("checksum mismatch "));
+                        verification_line
+                            .push(Span::styled("✗", Style::default().fg(Color::Red)));
+                    }
+                    lines.push(Line::from(verification_line));
+                } else {
+                    lines.push(Line::from(
+                        "After the 2-byte header comes the deflate-compressed data,",
+                    ));
+                    lines.push(Line::from("followed by a 4-byte Adler-32 checksum."));
+                }
+            } else {
+                lines.push(Line::from("No compressed data available to analyze."));
+            }
+
             lines.push(Line::from(""));
             lines.push(Line::from("Calculated values:"));
             lines.push(Line::from(format!(
@@ -696,16 +1069,21 @@ fn generate_pack_object_detail_content(pack_obj: &PackObject) -> Text<'static> {
                 lines.push(Line::from(format!("  - SHA-1: {}", sha1)));
             }
 
+            lines.push(Line::from(""));
             let content_str = String::from_utf8_lossy(&object_data.uncompressed_data);
             if content_str.len() <= 1000 {
-                lines.push(Line::from("Content:"));
+                lines.push(Line::styled(
+                    "DATA PREVIEW",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
                 lines.push(Line::from(""));
                 lines.push(Line::from(content_str.to_string()));
             } else {
-                lines.push(Line::from(format!(
-                    "Content (first 1000 chars):\n{}",
-                    &content_str[..1000]
-                )));
+                lines.push(Line::styled(
+                    "DATA PREVIEW (truncated)",
+                    Style::default().add_modifier(Modifier::BOLD),
+                ));
+                lines.push(Line::from(format!("{}", &content_str[..1000])));
                 lines.push(Line::from("... (truncated)\n".to_string()));
             }
         }
