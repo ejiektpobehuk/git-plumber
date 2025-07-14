@@ -354,7 +354,7 @@ impl<'a> Adler32Formatter<'a> {
     ) {
         lines.push(Line::from("Checksum verification:"));
 
-        let mut stored_line = vec![Span::from("  - Stored checksum:   0x")];
+        let mut stored_line = vec![Span::from("  - Stored checksum:     0x")];
         stored_line.extend(colored_spans);
         lines.push(Line::from(stored_line));
 
