@@ -5,8 +5,6 @@ use std::fmt;
 pub const COLORS: [Color; 4] = [Color::Blue, Color::Magenta, Color::Cyan, Color::Red];
 pub const PREVIEW_SIZE_LIMIT: usize = 1000;
 pub const HEX_PREVIEW_LIMIT: usize = 32;
-pub const DEFLATE_HEADER_SIZE: usize = 2;
-pub const ADLER32_SIZE: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum HeaderSection {

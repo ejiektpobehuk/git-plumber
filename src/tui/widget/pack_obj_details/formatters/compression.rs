@@ -1,7 +1,9 @@
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
-use crate::tui::widget::pack_obj_details::config::{ADLER32_SIZE, COLORS, calculate_adler32};
+use crate::tui::widget::pack_obj_details::config::{COLORS, calculate_adler32};
+
+const ADLER32_SIZE: usize = 4;
 
 // Separate formatters for specific sections
 pub struct ZlibHeaderFormatter<'a> {
