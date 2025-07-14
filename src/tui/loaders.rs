@@ -196,8 +196,7 @@ impl AppState {
                             let obj_id = object_id.as_deref().unwrap_or("Unknown object ID");
 
                             let info = format!(
-                                "Type: Loose Object\nObject ID: {}\nSize: {}",
-                                obj_id, size_str
+                                "Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}"
                             );
                             Message::LoadGitObjectInfo(Ok(info))
                         }
@@ -336,7 +335,7 @@ impl AppState {
                                 let obj_type = object.header.obj_type();
                                 let size = object.header.uncompressed_data_size();
                                 let mut hasher = Sha1::new();
-                                let header = format!("{} {}\0", obj_type, size);
+                                let header = format!("{obj_type} {size}\0");
                                 hasher.update(header.as_bytes());
                                 hasher.update(&object.uncompressed_data);
                                 let sha1 = Some(format!("{:x}", hasher.finalize()));

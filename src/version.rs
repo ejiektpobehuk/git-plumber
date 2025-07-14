@@ -16,6 +16,12 @@ pub struct VersionInfo {
     pub rustc_version: &'static str,
 }
 
+impl Default for VersionInfo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VersionInfo {
     pub fn new() -> Self {
         Self {
@@ -37,7 +43,7 @@ impl VersionInfo {
         // 3. Building in debug mode
         self.is_dirty
             || self.profile == "debug"
-            || self.git_version.map_or(false, |git_ver| {
+            || self.git_version.is_some_and(|git_ver| {
                 // Parse git version like "v0.1.0-15-ge1c9641" to detect commits after tag
                 git_ver.contains('-') && !git_ver.ends_with("-0-g")
             })
@@ -97,16 +103,16 @@ impl fmt::Display for VersionInfo {
 
         if self.is_development_build() {
             if let Some(git_version) = self.git_version {
-                writeln!(f, "Git version notation: {}", git_version)?;
+                writeln!(f, "Git version notation: {git_version}")?;
             }
             if let Some(commit_hash) = self.commit_hash {
-                writeln!(f, "Commit hash: {}", commit_hash)?;
+                writeln!(f, "Commit hash: {commit_hash}")?;
             }
             if let Some(commits_ahead) = self
                 .git_version
                 .and_then(|v| v.split('-').nth(1).and_then(|n| n.parse::<u32>().ok()))
             {
-                writeln!(f, "Commits since last tag: {}", commits_ahead)?;
+                writeln!(f, "Commits since last tag: {commits_ahead}")?;
             }
 
             if self.is_dirty {

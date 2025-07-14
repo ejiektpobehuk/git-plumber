@@ -337,7 +337,7 @@ fn render_git_tree(
         &state.git_objects.flat_view,
         Some(state.git_objects.selected_index),
         state.git_objects.scroll_position,
-        &format!("{}/.git", project_name),
+        &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
         |i, (depth, obj), is_selected| {
             // Create indentation based on depth

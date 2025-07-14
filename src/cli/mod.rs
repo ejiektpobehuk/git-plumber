@@ -83,7 +83,7 @@ pub fn run() -> Result<(), String> {
                         }
                         Ok(())
                     }
-                    Err(e) => Err(format!("Error listing files: {}", e)),
+                    Err(e) => Err(format!("Error listing files: {e}")),
                 }
             }
         }
@@ -108,7 +108,7 @@ pub fn run() -> Result<(), String> {
                             }
                             Ok(())
                         }
-                        Err(e) => Err(format!("Error listing pack files: {}", e)),
+                        Err(e) => Err(format!("Error listing pack files: {e}")),
                     }
                 }
             }

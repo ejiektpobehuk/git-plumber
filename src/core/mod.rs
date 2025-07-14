@@ -122,7 +122,7 @@ impl GitPlumber {
                 }
                 Ok(())
             }
-            Err(e) => Err(format!("Error parsing pack file: {}", e)),
+            Err(e) => Err(format!("Error parsing pack file: {e}")),
         }
     }
 }

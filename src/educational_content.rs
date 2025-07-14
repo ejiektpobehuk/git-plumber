@@ -106,8 +106,7 @@ impl EducationalContent {
             .cloned()
             .unwrap_or_else(|| {
                 Text::from(format!(
-                    "Category: {}\n\nThis groups related Git objects together.",
-                    category_name
+                    "Category: {category_name}\n\nThis groups related Git objects together."
                 ))
             })
     }
@@ -123,8 +122,7 @@ impl EducationalContent {
     /// Get preview content for a loose object
     pub fn get_loose_object_preview(&self, object_id: &str) -> Text<'static> {
         Text::from(format!(
-            "Loose Object Preview\n\nObject ID: {}\n\nThis is a raw Git object stored as a single file.\nUse 'cat-file' command to examine its contents.",
-            object_id
+            "Loose Object Preview\n\nObject ID: {object_id}\n\nThis is a raw Git object stored as a single file.\nUse 'cat-file' command to examine its contents."
         ))
     }
 

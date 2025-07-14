@@ -293,7 +293,7 @@ impl Object {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let obj_type = self.header.obj_type();
-        writeln!(f, "Object type: {}", obj_type)?;
+        writeln!(f, "Object type: {obj_type}")?;
         writeln!(f, "Object size: {}", self.header.uncompressed_data_size())?;
         writeln!(f, "Object compressed size: {}", self.compressed_size)?;
 
