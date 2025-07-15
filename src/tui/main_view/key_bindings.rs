@@ -61,10 +61,27 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                 }
             }
             KeyCode::Enter => match &state.preview_state {
-                PreviewState::Regular(state) => match state.focus {
-                    RegularFocus::GitObjects => Some(Message::MainNavigation(
-                        MainNavigation::FocusEducationalOrList,
-                    )),
+                PreviewState::Regular(preview_state) => match preview_state.focus {
+                    RegularFocus::GitObjects => {
+                        // Check if the selected object is a loose object
+                        if let Some((_, git_object)) = state
+                            .git_objects
+                            .flat_view
+                            .get(state.git_objects.selected_index)
+                        {
+                            if matches!(git_object.obj_type, GitObjectType::LooseObject { .. }) {
+                                Some(Message::OpenLooseObjectView)
+                            } else {
+                                Some(Message::MainNavigation(
+                                    MainNavigation::FocusEducationalOrList,
+                                ))
+                            }
+                        } else {
+                            Some(Message::MainNavigation(
+                                MainNavigation::FocusEducationalOrList,
+                            ))
+                        }
+                    }
                     _ => None,
                 },
                 PreviewState::Pack(state) => match state.focus {

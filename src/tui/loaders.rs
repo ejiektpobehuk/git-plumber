@@ -108,11 +108,12 @@ impl AppState {
                 // Add Loose Objects category
                 let mut loose_objects_category = GitObject::new_category("objects");
 
-                // Load loose objects (just sample a few for demonstration)
-                match plumber.list_loose_objects(10) {
+                // Load loose objects with parsed content
+                match plumber.list_parsed_loose_objects(10) {
                     Ok(loose_objects) => {
-                        for path in loose_objects {
-                            loose_objects_category.add_child(GitObject::new_loose_object(path));
+                        for parsed_obj in loose_objects {
+                            loose_objects_category
+                                .add_child(GitObject::new_parsed_loose_object(parsed_obj));
                         }
                     }
                     Err(e) => {
@@ -186,19 +187,31 @@ impl AppState {
                             Message::LoadGitObjectInfo(Ok(info))
                         }
                         GitObjectType::LooseObject {
-                            size, object_id, ..
+                            size,
+                            object_id,
+                            parsed_object,
+                            ..
                         } => {
-                            // Use cached loose object data
+                            // Use cached loose object data if available, otherwise show basic info
                             let size_str = match size {
                                 Some(size) => format!("{size} bytes"),
                                 None => "Unknown size".to_string(),
                             };
                             let obj_id = object_id.as_deref().unwrap_or("Unknown object ID");
 
-                            let info = format!(
-                                "Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}"
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
+                            let detailed_info = if let Some(parsed_obj) = parsed_object {
+                                format!(
+                                    "Type: {} (Loose Object)\nObject ID: {}\nSize: {}\n\n{}",
+                                    parsed_obj.object_type,
+                                    obj_id,
+                                    size_str,
+                                    Self::format_parsed_object_details(parsed_obj)
+                                )
+                            } else {
+                                format!("Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}")
+                            };
+
+                            Message::LoadGitObjectInfo(Ok(detailed_info))
                         }
                         GitObjectType::Category(name) => {
                             // For categories, show number of children
@@ -260,13 +273,23 @@ impl AppState {
                                 .get_ref_preview(ref_content);
                             Message::LoadEducationalContent(Ok(preview))
                         }
-                        GitObjectType::LooseObject { object_id, .. } => {
-                            // Use cached object ID for preview
-                            let obj_id = object_id.as_deref().unwrap_or("Unknown");
-                            let preview = self
-                                .educational_content_provider
-                                .get_loose_object_preview(obj_id);
-                            Message::LoadEducationalContent(Ok(preview))
+                        GitObjectType::LooseObject {
+                            object_id,
+                            parsed_object,
+                            ..
+                        } => {
+                            // Generate custom preview showing the compressed file structure
+                            if let Some(parsed_obj) = parsed_object {
+                                let preview = Self::generate_loose_object_preview(parsed_obj);
+                                Message::LoadEducationalContent(Ok(preview))
+                            } else {
+                                // Fallback to generic preview if no parsed object
+                                let obj_id = object_id.as_deref().unwrap_or("Unknown");
+                                let preview = self
+                                    .educational_content_provider
+                                    .get_loose_object_preview(obj_id);
+                                Message::LoadEducationalContent(Ok(preview))
+                            }
                         }
                     }
                 } else {
@@ -359,5 +382,241 @@ impl AppState {
             }
             _ => Message::LoadPackObjects(Err("Sent to wrong View".to_string())),
         }
+    }
+
+    /// Format detailed information for parsed loose objects
+    fn format_parsed_object_details(parsed_obj: &crate::git::loose_object::LooseObject) -> String {
+        use crate::git::loose_object::ParsedContent;
+
+        match parsed_obj.get_parsed_content() {
+            Some(ParsedContent::Commit(commit)) => {
+                format!(
+                    "Commit Details:\n  Tree: {}\n  Parents: {}\n  Author: {}\n  Committer: {}\n  Message: \"{}\"",
+                    commit.tree,
+                    if commit.parents.is_empty() {
+                        "none (root commit)".to_string()
+                    } else {
+                        commit.parents.join(", ")
+                    },
+                    commit.author,
+                    commit.committer,
+                    commit.message.lines().next().unwrap_or("").trim()
+                )
+            }
+            Some(ParsedContent::Tree(tree)) => {
+                let mut details = format!("Tree Details:\n  {} entries:\n", tree.entries.len());
+                for (i, entry) in tree.entries.iter().enumerate() {
+                    if i >= 5 {
+                        // Limit to first 5 entries
+                        details.push_str(&format!(
+                            "  ... and {} more entries",
+                            tree.entries.len() - 5
+                        ));
+                        break;
+                    }
+                    details.push_str(&format!(
+                        "    {} {} {}\n",
+                        entry.mode,
+                        &entry.sha1[..8],
+                        entry.name
+                    ));
+                }
+                details
+            }
+            Some(ParsedContent::Blob(content)) => {
+                let content_preview = if parsed_obj.is_binary() {
+                    format!("Binary content ({} bytes)", content.len())
+                } else {
+                    let content_str = String::from_utf8_lossy(content);
+                    let preview = if content_str.len() > 200 {
+                        format!("{}...", &content_str[..200])
+                    } else {
+                        content_str.to_string()
+                    };
+                    format!("Text content preview:\n{preview}")
+                };
+                format!("Blob Details:\n  {content_preview}")
+            }
+            Some(ParsedContent::Tag(tag)) => {
+                format!(
+                    "Tag Details:\n  Tag: {}\n  Object: {} ({})\n  Tagger: {}\n  Message: \"{}\"",
+                    tag.tag,
+                    tag.object,
+                    tag.object_type,
+                    tag.tagger.as_deref().unwrap_or("unknown"),
+                    tag.message.lines().next().unwrap_or("").trim()
+                )
+            }
+            None => "Failed to parse object content".to_string(),
+        }
+    }
+
+    /// Generate a preview showing the loose object's compressed file structure
+    fn generate_loose_object_preview(
+        parsed_obj: &crate::git::loose_object::LooseObject,
+    ) -> ratatui::text::Text<'static> {
+        use ratatui::style::{Modifier, Style};
+        use ratatui::text::{Line, Text};
+
+        let mut lines = vec![
+            // Explain the file structure
+            Line::from("Git stores loose objects as compressed files with this structure:"),
+            Line::from(""),
+            Line::from("┌──────────────────────────────────┐"),
+            Line::from("│ Compressed File (zlib format)    │"),
+            Line::from("│ ┌──────────────────────────────┐ │"),
+            Line::from("│ │ Header: \"<type> <size>\\0\"    │ │"),
+            Line::from("│ │ Content: <actual object data>│ │"),
+            Line::from("│ └──────────────────────────────┘ │"),
+            Line::from("└──────────────────────────────────┘"),
+            Line::from(""),
+            // Show the actual header for this object
+            Line::styled(
+                "HEADER CONTENT",
+                Style::default().add_modifier(Modifier::BOLD),
+            ),
+            Line::from("─".repeat(20)),
+            Line::from(""),
+        ];
+
+        let header_text = format!("{} {}\\0", parsed_obj.object_type, parsed_obj.size);
+        lines.push(Line::from(format!("Header: \"{header_text}\"")));
+        lines.push(Line::from(format!("  - Type: {}", parsed_obj.object_type)));
+        lines.push(Line::from(format!("  - Size: {} bytes", parsed_obj.size)));
+        lines.push(Line::from("  - Null terminator: \\0"));
+        lines.push(Line::from(""));
+
+        // Show content preview
+        lines.push(Line::styled(
+            "CONTENT PREVIEW",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from("─".repeat(20)));
+        lines.push(Line::from(""));
+
+        // Type-specific preview
+        match parsed_obj.object_type {
+            crate::git::loose_object::LooseObjectType::Commit => {
+                lines.push(Line::from("Content type: Commit metadata"));
+                if let Some(crate::git::loose_object::ParsedContent::Commit(commit)) =
+                    parsed_obj.get_parsed_content()
+                {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from("Sample content:"));
+                    lines.push(Line::from(format!("  tree {}", commit.tree)));
+                    for parent in &commit.parents {
+                        lines.push(Line::from(format!("  parent {parent}")));
+                    }
+                    lines.push(Line::from(format!("  author {}", commit.author)));
+                    lines.push(Line::from(format!("  committer {}", commit.committer)));
+                    lines.push(Line::from(""));
+                    let message_preview = commit.message.lines().next().unwrap_or("").trim();
+                    lines.push(Line::from(format!("  {message_preview}")));
+                    if commit.message.lines().count() > 1 {
+                        lines.push(Line::from("  ..."));
+                    }
+                }
+            }
+            crate::git::loose_object::LooseObjectType::Tree => {
+                lines.push(Line::from("Content type: Directory listing"));
+                if let Some(crate::git::loose_object::ParsedContent::Tree(tree)) =
+                    parsed_obj.get_parsed_content()
+                {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from("Sample content (binary format):"));
+                    lines.push(Line::from(format!(
+                        "  {} entries total",
+                        tree.entries.len()
+                    )));
+                    for (i, entry) in tree.entries.iter().enumerate() {
+                        if i >= 3 {
+                            // Show first 3 entries
+                            lines.push(Line::from("  ..."));
+                            break;
+                        }
+                        lines.push(Line::from(format!(
+                            "  {} {} <20-byte-sha1>",
+                            entry.mode, entry.name
+                        )));
+                    }
+                }
+            }
+            crate::git::loose_object::LooseObjectType::Blob => {
+                lines.push(Line::from("Content type: File content"));
+                if let Some(crate::git::loose_object::ParsedContent::Blob(content)) =
+                    parsed_obj.get_parsed_content()
+                {
+                    lines.push(Line::from(""));
+                    if parsed_obj.is_binary() {
+                        lines.push(Line::from("Binary content preview:"));
+                        let preview_size = content.len().min(32);
+                        let hex_preview: String = content[..preview_size]
+                            .iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        lines.push(Line::from(format!(
+                            "  {} {}",
+                            hex_preview,
+                            if content.len() > 32 { "..." } else { "" }
+                        )));
+                    } else {
+                        lines.push(Line::from("Text content preview:"));
+                        let content_str = String::from_utf8_lossy(content);
+                        let preview = if content_str.len() > 100 {
+                            format!("{}...", &content_str[..100])
+                        } else {
+                            content_str.to_string()
+                        };
+                        // Show first few lines
+                        for (i, line) in preview.lines().enumerate() {
+                            if i >= 5 {
+                                // Show first 5 lines
+                                lines.push(Line::from("  ..."));
+                                break;
+                            }
+                            lines.push(Line::from(format!("  {line}")));
+                        }
+                    }
+                }
+            }
+            crate::git::loose_object::LooseObjectType::Tag => {
+                lines.push(Line::from("Content type: Tag metadata"));
+                if let Some(crate::git::loose_object::ParsedContent::Tag(tag)) =
+                    parsed_obj.get_parsed_content()
+                {
+                    lines.push(Line::from(""));
+                    lines.push(Line::from("Sample content:"));
+                    lines.push(Line::from(format!("  object {}", tag.object)));
+                    lines.push(Line::from(format!("  type {}", tag.object_type)));
+                    lines.push(Line::from(format!("  tag {}", tag.tag)));
+                    if let Some(ref tagger) = tag.tagger {
+                        lines.push(Line::from(format!("  tagger {tagger}")));
+                    }
+                    lines.push(Line::from(""));
+                    let message_preview = tag.message.lines().next().unwrap_or("").trim();
+                    lines.push(Line::from(format!("  {message_preview}")));
+                    if tag.message.lines().count() > 1 {
+                        lines.push(Line::from("  ..."));
+                    }
+                }
+            }
+        }
+
+        lines.push(Line::from(""));
+        lines.push(Line::styled(
+            "COMPRESSION INFO",
+            Style::default().add_modifier(Modifier::BOLD),
+        ));
+        lines.push(Line::from("─".repeat(20)));
+        lines.push(Line::from(""));
+        lines.push(Line::from("• File is compressed using zlib (RFC 1950)"));
+        lines.push(Line::from("• Decompressed size matches the size in header"));
+        lines.push(Line::from("• Git uses this format for all loose objects"));
+        lines.push(Line::from(
+            "• Object ID is SHA-1 hash of the decompressed content",
+        ));
+
+        Text::from(lines)
     }
 }

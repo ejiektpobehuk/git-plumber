@@ -3,6 +3,8 @@ use std::time::SystemTime;
 
 // Import main view types from the main_view module
 use crate::educational_content::EducationalContent;
+use crate::git::loose_object::LooseObject;
+use crate::tui::loose_details::LooseObjectViewState;
 use crate::tui::main_view::MainViewState;
 use crate::tui::pack_details::PackViewState;
 
@@ -31,9 +33,9 @@ pub enum GitObjectType {
         content: Option<String>,
     },
     LooseObject {
-        path: PathBuf,
         size: Option<u64>,
         object_id: Option<String>,
+        parsed_object: Option<LooseObject>,
     },
 }
 
@@ -107,38 +109,21 @@ impl GitObject {
         }
     }
 
-    pub fn new_loose_object(path: PathBuf) -> Self {
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
-
-        // Load loose object details
-        let (size, object_id) = match std::fs::metadata(&path) {
-            Ok(metadata) => {
-                let file_size = metadata.len();
-                let parent_name = path
-                    .parent()
-                    .and_then(|p| p.file_name())
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let file_name = path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().to_string())
-                    .unwrap_or_default();
-                let obj_id = format!("{parent_name}{file_name}");
-                (Some(file_size), Some(obj_id))
-            }
-            Err(_) => (None, None),
+    pub fn new_parsed_loose_object(parsed_object: LooseObject) -> Self {
+        // Create a display name that includes the object type
+        let short_id = if parsed_object.object_id.len() >= 8 {
+            &parsed_object.object_id[..8]
+        } else {
+            &parsed_object.object_id
         };
+        let name = format!("{} {}", parsed_object.object_type, short_id);
 
         Self {
             name,
             obj_type: GitObjectType::LooseObject {
-                path,
-                size,
-                object_id,
+                size: Some(parsed_object.size as u64),
+                object_id: Some(parsed_object.object_id.clone()),
+                parsed_object: Some(parsed_object),
             },
             children: Vec::new(),
             expanded: false,
@@ -173,6 +158,7 @@ impl GitObject {
 pub enum AppView {
     Main { state: MainViewState },
     PackObjectDetail { state: PackViewState },
+    LooseObjectDetail { state: LooseObjectViewState },
 }
 
 // Store layout dimensions for accurate scrolling

@@ -1,9 +1,10 @@
 use super::model::{MainViewState, PackColumnPreviousFocus, PackFocus, PreviewState};
 use super::{PackPreViewState, RegularFocus, RegularPreViewState};
+use crate::tui::loose_details::LooseObjectViewState;
 use crate::tui::message::{MainNavigation, Message};
 use crate::tui::model::{AppState, AppView, GitObjectType};
 use crate::tui::pack_details::PackViewState;
-use crate::tui::widget::PackObjectWidget;
+use crate::tui::widget::{PackObjectWidget, loose_obj_details::LooseObjectWidget};
 
 impl AppState {
     // Handle git object selection with all associated updates
@@ -694,6 +695,33 @@ impl AppState {
 
                     // Push current view onto stack and transition to pack view
                     self.push_view(pack_view);
+                }
+            }
+            Message::OpenLooseObjectView => {
+                if let AppView::Main {
+                    state: MainViewState { git_objects, .. },
+                } = &self.view
+                {
+                    // Get the currently selected loose object
+                    if let Some((_, git_object)) =
+                        git_objects.flat_view.get(git_objects.selected_index)
+                    {
+                        if let GitObjectType::LooseObject {
+                            parsed_object: Some(loose_obj),
+                            ..
+                        } = &git_object.obj_type
+                        {
+                            // Create the new loose object view
+                            let loose_view = AppView::LooseObjectDetail {
+                                state: LooseObjectViewState {
+                                    loose_widget: LooseObjectWidget::new(loose_obj.clone()),
+                                },
+                            };
+
+                            // Push current view onto stack and transition to loose object view
+                            self.push_view(loose_view);
+                        }
+                    }
                 }
             }
             Message::OpenMainView => {

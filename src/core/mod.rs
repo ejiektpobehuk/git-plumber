@@ -95,6 +95,20 @@ impl GitPlumber {
         }
     }
 
+    /// List parsed loose objects in the repository
+    pub fn list_parsed_loose_objects(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<crate::git::loose_object::LooseObject>, RepositoryError> {
+        match &self.repository {
+            Some(repo) => repo.list_parsed_loose_objects(limit),
+            None => Err(RepositoryError::NotGitRepository(format!(
+                "{} is not a git repository",
+                self.repo_path.display()
+            ))),
+        }
+    }
+
     /// Parse and display a pack file
     pub fn parse_pack_file(&self, path: &Path) -> Result<(), String> {
         // Read the pack file

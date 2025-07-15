@@ -12,8 +12,10 @@ pub enum Message {
     LoadPackObjects(Result<Vec<PackObject>, String>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
+    LooseObjectNavigation(LooseObjectNavigation),
     OpenMainView,
     OpenPackView,
+    OpenLooseObjectView,
 }
 
 #[derive(Debug)]
@@ -49,6 +51,14 @@ pub enum MainNavigation {
 
 #[derive(Debug)]
 pub enum PackNavigation {
+    ScrollUp,
+    ScrollDown,
+    ScrollToTop,
+    ScrollToBottom,
+}
+
+#[derive(Debug)]
+pub enum LooseObjectNavigation {
     ScrollUp,
     ScrollDown,
     ScrollToTop,

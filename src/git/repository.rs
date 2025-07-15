@@ -1,3 +1,4 @@
+use crate::git::loose_object::{LooseObject, LooseObjectError};
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -9,6 +10,35 @@ pub enum RepositoryError {
 
     #[error("Not a git repository: {0}")]
     NotGitRepository(String),
+
+    #[error("Loose object error: {0}")]
+    LooseObjectError(#[from] LooseObjectError),
+}
+
+/// Statistics about loose objects in the repository
+#[derive(Debug, Clone, Default)]
+pub struct LooseObjectStats {
+    pub total_count: usize,
+    pub total_size: usize,
+    pub commit_count: usize,
+    pub tree_count: usize,
+    pub blob_count: usize,
+    pub tag_count: usize,
+}
+
+impl LooseObjectStats {
+    /// Get a formatted summary of the statistics
+    pub fn summary(&self) -> String {
+        format!(
+            "Total: {} objects ({} bytes)\nCommits: {}, Trees: {}, Blobs: {}, Tags: {}",
+            self.total_count,
+            self.total_size,
+            self.commit_count,
+            self.tree_count,
+            self.blob_count,
+            self.tag_count
+        )
+    }
 }
 
 /// Represents a Git repository
@@ -144,6 +174,102 @@ impl Repository {
         }
 
         Ok(loose_objects)
+    }
+
+    /// Read and parse a specific loose object by its file path
+    pub fn read_loose_object(&self, path: &Path) -> Result<LooseObject, RepositoryError> {
+        Ok(LooseObject::read_from_path(path)?)
+    }
+
+    /// Read and parse a loose object by its SHA-1 hash
+    pub fn read_loose_object_by_hash(&self, hash: &str) -> Result<LooseObject, RepositoryError> {
+        if hash.len() != 40 {
+            return Err(RepositoryError::LooseObjectError(
+                LooseObjectError::InvalidFormat("Hash must be 40 characters".to_string()),
+            ));
+        }
+
+        let (dir, file) = hash.split_at(2);
+        let path = self.path.join(".git/objects").join(dir).join(file);
+
+        self.read_loose_object(&path)
+    }
+
+    /// List loose objects with their parsed content
+    pub fn list_parsed_loose_objects(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<LooseObject>, RepositoryError> {
+        let loose_object_paths = self.list_loose_objects(limit)?;
+        let mut parsed_objects = Vec::new();
+
+        for path in loose_object_paths {
+            match self.read_loose_object(&path) {
+                Ok(object) => parsed_objects.push(object),
+                Err(e) => {
+                    // Log the error but continue processing other objects
+                    eprintln!("Warning: Failed to parse loose object {path:?}: {e}");
+                }
+            }
+        }
+
+        Ok(parsed_objects)
+    }
+
+    /// Check if a loose object exists for the given hash
+    pub fn loose_object_exists(&self, hash: &str) -> bool {
+        if hash.len() != 40 {
+            return false;
+        }
+
+        let (dir, file) = hash.split_at(2);
+        let path = self.path.join(".git/objects").join(dir).join(file);
+
+        path.exists() && path.is_file()
+    }
+
+    /// Get statistics about loose objects in the repository
+    pub fn get_loose_object_stats(&self) -> Result<LooseObjectStats, RepositoryError> {
+        let objects_dir = self.path.join(".git/objects");
+        if !objects_dir.exists() {
+            return Ok(LooseObjectStats::default());
+        }
+
+        let mut stats = LooseObjectStats::default();
+
+        for entry in fs::read_dir(&objects_dir)? {
+            let entry = entry?;
+            let dir_name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip info and pack directories
+            if dir_name == "info" || dir_name == "pack" || !entry.path().is_dir() {
+                continue;
+            }
+
+            if let Ok(subentries) = fs::read_dir(entry.path()) {
+                for subentry in subentries.flatten() {
+                    if let Ok(object) = self.read_loose_object(&subentry.path()) {
+                        stats.total_count += 1;
+                        stats.total_size += object.size;
+
+                        match object.object_type {
+                            crate::git::loose_object::LooseObjectType::Commit => {
+                                stats.commit_count += 1
+                            }
+                            crate::git::loose_object::LooseObjectType::Tree => {
+                                stats.tree_count += 1
+                            }
+                            crate::git::loose_object::LooseObjectType::Blob => {
+                                stats.blob_count += 1
+                            }
+                            crate::git::loose_object::LooseObjectType::Tag => stats.tag_count += 1,
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(stats)
     }
 }
 

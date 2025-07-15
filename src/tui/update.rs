@@ -102,12 +102,16 @@ impl AppState {
                 self.update(objects_msg, plumber);
             }
 
-            Message::MainNavigation(_) | Message::OpenPackView => {
+            Message::MainNavigation(_) | Message::OpenPackView | Message::OpenLooseObjectView => {
                 return self.handle_main_view_mode_message(msg, plumber);
             }
 
             Message::PackNavigation(_) => {
                 return self.handle_pack_view_mode_message(msg);
+            }
+
+            Message::LooseObjectNavigation(_) => {
+                return self.handle_loose_object_view_mode_message(msg);
             }
 
             Message::OpenMainView => {

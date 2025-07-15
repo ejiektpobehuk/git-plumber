@@ -19,6 +19,7 @@ mod model;
 mod view;
 
 // Include the main view module
+mod loose_details;
 mod main_view;
 mod pack_details;
 mod widget;
@@ -94,6 +95,9 @@ fn run_app<B: ratatui::backend::Backend>(
                     }
                     model::AppView::PackObjectDetail { .. } => {
                         crate::tui::pack_details::handle_key_event(key, app)
+                    }
+                    model::AppView::LooseObjectDetail { .. } => {
+                        crate::tui::loose_details::handle_key_event(key, app)
                     }
                 } {
                     // Update the application state

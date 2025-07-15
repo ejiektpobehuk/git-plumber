@@ -38,6 +38,10 @@ pub fn draw_ui(f: &mut ratatui::Frame, app: &mut AppState) {
             crate::tui::pack_details::render(f, app, chunks[1]);
             crate::tui::pack_details::navigation_hints(app)
         }
+        AppView::LooseObjectDetail { .. } => {
+            crate::tui::loose_details::render(f, app, chunks[1]);
+            crate::tui::loose_details::navigation_hints(app)
+        }
     };
 
     let mut decorated_hints = Vec::new();
