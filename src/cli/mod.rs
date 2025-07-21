@@ -1,6 +1,8 @@
 use clap::{CommandFactory, Parser, Subcommand};
 use std::path::PathBuf;
 
+pub mod formatters;
+
 #[derive(Parser)]
 #[command(name = "git-plumber")]
 #[command(about = "Explorer for git internals, the plumbing", long_about = None)]
@@ -90,8 +92,8 @@ pub fn run() -> Result<(), String> {
         Some(Commands::Pack { file }) => {
             match file {
                 Some(file_path) => {
-                    // Parse the specified pack file
-                    plumber.parse_pack_file(file_path)
+                    // Parse the specified pack file with rich formatting
+                    plumber.parse_pack_file_rich(file_path)
                 }
                 None => {
                     // No file specified, list available pack files

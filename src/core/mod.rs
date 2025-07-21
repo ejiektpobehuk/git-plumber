@@ -139,4 +139,39 @@ impl GitPlumber {
             Err(e) => Err(format!("Error parsing pack file: {e}")),
         }
     }
+
+    /// Parse and display a pack file with rich formatting (like TUI but without data cropping)
+    pub fn parse_pack_file_rich(&self, path: &Path) -> Result<(), String> {
+        use crate::cli::formatters::CliPackFormatter;
+
+        // Read the pack file
+        let pack_data = std::fs::read(path).map_err(|e| format!("Error reading file: {e}"))?;
+
+        // Parse the pack file header
+        match crate::git::pack::Header::parse(&pack_data) {
+            Ok((mut remaining_data, header)) => {
+                let mut objects = Vec::new();
+
+                // Parse all objects
+                for _i in 0..header.object_count {
+                    match crate::git::pack::Object::parse(remaining_data) {
+                        Ok((new_remaining_data, object)) => {
+                            objects.push(object);
+                            remaining_data = new_remaining_data;
+                        }
+                        Err(e) => {
+                            return Err(format!("Error parsing object: {e}"));
+                        }
+                    }
+                }
+
+                // Format and display the rich output
+                let formatted_output = CliPackFormatter::format_pack_file(&header, &objects);
+                print!("{formatted_output}");
+
+                Ok(())
+            }
+            Err(e) => Err(format!("Error parsing pack file: {e}")),
+        }
+    }
 }

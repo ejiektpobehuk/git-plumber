@@ -15,14 +15,14 @@ use crate::tui::view::draw_ui;
 // Include helper functions and view logic
 mod helpers;
 mod message;
-mod model;
+pub mod model; // Made public for CLI formatter
 mod view;
 
 // Include the main view module
 mod loose_details;
 mod main_view;
 mod pack_details;
-mod widget;
+pub mod widget; // Made public for CLI formatter
 
 // Include the split update modules
 mod loaders;
