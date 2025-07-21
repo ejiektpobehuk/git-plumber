@@ -109,16 +109,26 @@ impl AppState {
                 let mut loose_objects_category = GitObject::new_category("objects");
 
                 // Load loose objects with parsed content
-                match plumber.list_parsed_loose_objects(10) {
-                    Ok(loose_objects) => {
-                        for parsed_obj in loose_objects {
-                            loose_objects_category
-                                .add_child(GitObject::new_parsed_loose_object(parsed_obj));
+                match plumber.get_loose_object_stats() {
+                    Ok(stats) => {
+                        // Use total_count to load all loose objects
+                        match plumber.list_parsed_loose_objects(stats.total_count) {
+                            Ok(loose_objects) => {
+                                for parsed_obj in loose_objects {
+                                    loose_objects_category
+                                        .add_child(GitObject::new_parsed_loose_object(parsed_obj));
+                                }
+                            }
+                            Err(e) => {
+                                return Message::LoadGitObjects(Err(format!(
+                                    "Error loading loose objects: {e}"
+                                )));
+                            }
                         }
                     }
                     Err(e) => {
                         return Message::LoadGitObjects(Err(format!(
-                            "Error loading loose objects: {e}"
+                            "Error getting loose object stats: {e}"
                         )));
                     }
                 }
