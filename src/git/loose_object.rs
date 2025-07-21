@@ -30,10 +30,10 @@ pub enum LooseObjectType {
 impl std::fmt::Display for LooseObjectType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LooseObjectType::Commit => write!(f, "commit"),
-            LooseObjectType::Tree => write!(f, "tree"),
-            LooseObjectType::Blob => write!(f, "blob"),
-            LooseObjectType::Tag => write!(f, "tag"),
+            Self::Commit => write!(f, "commit"),
+            Self::Tree => write!(f, "tree"),
+            Self::Blob => write!(f, "blob"),
+            Self::Tag => write!(f, "tag"),
         }
     }
 }
@@ -43,10 +43,10 @@ impl std::str::FromStr for LooseObjectType {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "commit" => Ok(LooseObjectType::Commit),
-            "tree" => Ok(LooseObjectType::Tree),
-            "blob" => Ok(LooseObjectType::Blob),
-            "tag" => Ok(LooseObjectType::Tag),
+            "commit" => Ok(Self::Commit),
+            "tree" => Ok(Self::Tree),
+            "blob" => Ok(Self::Blob),
+            "tag" => Ok(Self::Tag),
             _ => Err(LooseObjectError::UnknownType(s.to_string())),
         }
     }
@@ -119,6 +119,15 @@ pub struct LooseObject {
 
 impl LooseObject {
     /// Read and parse a loose object from the given path
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The file path cannot be read
+    /// - The object ID cannot be extracted from the path
+    /// - The file cannot be decompressed
+    /// - The object format is invalid
+    /// - The object type is unknown
     pub fn read_from_path(path: &Path) -> Result<Self, LooseObjectError> {
         // Extract object ID from path
         let object_id = Self::extract_object_id(path)?;
@@ -206,24 +215,24 @@ impl LooseObject {
         // Parse type-specific content
         let parsed_content = match object_type {
             LooseObjectType::Commit => {
-                Self::parse_commit_content(content).map(ParsedContent::Commit)
+                Some(ParsedContent::Commit(Self::parse_commit_content(content)))
             }
-            LooseObjectType::Tree => Self::parse_tree_content(content).map(ParsedContent::Tree),
-            LooseObjectType::Blob => Ok(ParsedContent::Blob(content.to_vec())),
-            LooseObjectType::Tag => Self::parse_tag_content(content).map(ParsedContent::Tag),
+            LooseObjectType::Tree => Some(ParsedContent::Tree(Self::parse_tree_content(content))),
+            LooseObjectType::Blob => Some(ParsedContent::Blob(content.to_vec())),
+            LooseObjectType::Tag => Some(ParsedContent::Tag(Self::parse_tag_content(content))),
         };
 
-        Ok(LooseObject {
+        Ok(Self {
             object_type,
             size,
             content: content.to_vec(),
             object_id,
-            parsed_content: parsed_content.ok(),
+            parsed_content,
         })
     }
 
     /// Parse commit object content
-    fn parse_commit_content(content: &[u8]) -> Result<CommitObject, LooseObjectError> {
+    fn parse_commit_content(content: &[u8]) -> CommitObject {
         let content_str = String::from_utf8_lossy(content);
         let lines = content_str.lines();
 
@@ -266,7 +275,7 @@ impl LooseObject {
             }
         }
 
-        Ok(CommitObject {
+        CommitObject {
             tree,
             parents,
             author,
@@ -274,11 +283,11 @@ impl LooseObject {
             committer,
             committer_date,
             message,
-        })
+        }
     }
 
     /// Parse tree object content
-    fn parse_tree_content(content: &[u8]) -> Result<TreeObject, LooseObjectError> {
+    fn parse_tree_content(content: &[u8]) -> TreeObject {
         let mut entries = Vec::new();
         let mut i = 0;
 
@@ -314,12 +323,11 @@ impl LooseObject {
 
             // Determine object type from mode
             let object_type = match mode.as_str() {
-                "100644" => TreeEntryType::Blob,
                 "100755" => TreeEntryType::Executable,
                 "120000" => TreeEntryType::Symlink,
                 "160000" => TreeEntryType::Submodule,
                 "040000" => TreeEntryType::Tree,
-                _ => TreeEntryType::Blob, // Default fallback
+                _ => TreeEntryType::Blob, // Default fallback for "100644" and others
             };
 
             entries.push(TreeEntry {
@@ -330,11 +338,11 @@ impl LooseObject {
             });
         }
 
-        Ok(TreeObject { entries })
+        TreeObject { entries }
     }
 
     /// Parse tag object content
-    fn parse_tag_content(content: &[u8]) -> Result<TagObject, LooseObjectError> {
+    fn parse_tag_content(content: &[u8]) -> TagObject {
         let content_str = String::from_utf8_lossy(content);
         let lines = content_str.lines();
 
@@ -371,29 +379,32 @@ impl LooseObject {
             }
         }
 
-        Ok(TagObject {
+        TagObject {
             object,
             object_type,
             tag,
             tagger,
             tagger_date,
             message,
-        })
+        }
     }
 
     /// Get the content as a UTF-8 string (for text objects like commits)
+    #[must_use]
     pub fn content_as_string(&self) -> String {
         String::from_utf8_lossy(&self.content).to_string()
     }
 
     /// Check if this object is binary (likely a blob)
+    #[must_use]
     pub fn is_binary(&self) -> bool {
         // Simple heuristic: if content contains null bytes, it's likely binary
         self.content.contains(&0) || matches!(self.object_type, LooseObjectType::Blob)
     }
 
     /// Get parsed content if available
-    pub fn get_parsed_content(&self) -> Option<&ParsedContent> {
+    #[must_use]
+    pub const fn get_parsed_content(&self) -> Option<&ParsedContent> {
         self.parsed_content.as_ref()
     }
 }
@@ -461,7 +472,7 @@ mod tests {
     fn test_parse_commit_content() {
         let content = b"tree 1234567890123456789012345678901234567890\nparent abcdef1234567890123456789012345678901234\nauthor John Doe <john@example.com> 1234567890 +0000\ncommitter John Doe <john@example.com> 1234567890 +0000\n\nInitial commit\n";
 
-        let commit = LooseObject::parse_commit_content(content).unwrap();
+        let commit = LooseObject::parse_commit_content(content);
         assert_eq!(commit.tree, "1234567890123456789012345678901234567890");
         assert_eq!(commit.parents.len(), 1);
         assert_eq!(

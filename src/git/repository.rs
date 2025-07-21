@@ -28,9 +28,10 @@ pub struct LooseObjectStats {
 
 impl LooseObjectStats {
     /// Get a formatted summary of the statistics
+    #[must_use]
     pub fn summary(&self) -> String {
         format!(
-            "Total: {} objects ({} bytes)\nCommits: {}, Trees: {}, Blobs: {}, Tags: {}",
+            "Total: {} objects ({} bytes)\nCommits: {}, Trees: {}, Blobs: {}, Annotated Tags: {}",
             self.total_count,
             self.total_size,
             self.commit_count,
@@ -48,6 +49,11 @@ pub struct Repository {
 
 impl Repository {
     /// Creates a new Repository instance from a path
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The provided path does not contain a .git directory
     pub fn new(path: impl AsRef<Path>) -> Result<Self, RepositoryError> {
         let path = path.as_ref().to_path_buf();
         let git_dir = path.join(".git");
@@ -62,11 +68,17 @@ impl Repository {
     }
 
     /// Returns the path to the repository
+    #[must_use]
     pub fn get_path(&self) -> &Path {
         &self.path
     }
 
     /// Lists all pack files in the repository
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading the objects/pack directory
     pub fn list_pack_files(&self) -> Result<Vec<PathBuf>, RepositoryError> {
         let pack_dir = self.path.join(".git/objects/pack");
 
@@ -87,11 +99,21 @@ impl Repository {
     }
 
     /// Lists all head refs (local branches) in the repository
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading the refs/heads directory
     pub fn list_head_refs(&self) -> Result<Vec<PathBuf>, RepositoryError> {
-        self.list_refs_in_dir(self.path.join(".git/refs/heads"))
+        Self::list_refs_in_dir(self.path.join(".git/refs/heads"))
     }
 
-    /// Lists all remote refs in the repository
+    /// Lists all remote refs grouped by remote name
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading the refs/remotes directory
     pub fn list_remote_refs(&self) -> Result<Vec<(String, Vec<PathBuf>)>, RepositoryError> {
         let remotes_dir = self.path.join(".git/refs/remotes");
         if !remotes_dir.exists() {
@@ -104,7 +126,7 @@ impl Repository {
             if entry.path().is_dir() {
                 let remote_name = entry.file_name().to_string_lossy().to_string();
 
-                let remote_refs = self.list_refs_in_dir(entry.path())?;
+                let remote_refs = Self::list_refs_in_dir(entry.path())?;
                 remotes.push((remote_name, remote_refs));
             }
         }
@@ -113,18 +135,28 @@ impl Repository {
     }
 
     /// Lists all tag refs in the repository
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading the refs/tags directory
     pub fn list_tag_refs(&self) -> Result<Vec<PathBuf>, RepositoryError> {
-        self.list_refs_in_dir(self.path.join(".git/refs/tags"))
+        Self::list_refs_in_dir(self.path.join(".git/refs/tags"))
     }
 
     /// Checks if stash ref exists
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when checking for stash refs
     pub fn has_stash_ref(&self) -> Result<bool, RepositoryError> {
         let stash_path = self.path.join(".git/refs/stash");
-        Ok(stash_path.exists() && stash_path.is_file())
+        Ok(stash_path.exists())
     }
 
     /// Helper method to list refs in a directory
-    fn list_refs_in_dir(&self, dir_path: PathBuf) -> Result<Vec<PathBuf>, RepositoryError> {
+    fn list_refs_in_dir(dir_path: PathBuf) -> Result<Vec<PathBuf>, RepositoryError> {
         if !dir_path.exists() {
             return Ok(Vec::new());
         }
@@ -143,6 +175,11 @@ impl Repository {
 
     /// Lists a sample of loose objects in the repository
     /// Limit parameter controls the maximum number of objects to return
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading loose object directories
     pub fn list_loose_objects(&self, limit: usize) -> Result<Vec<PathBuf>, RepositoryError> {
         let objects_dir = self.path.join(".git/objects");
         if !objects_dir.exists() {
@@ -176,12 +213,24 @@ impl Repository {
         Ok(loose_objects)
     }
 
-    /// Read and parse a specific loose object by its file path
+    /// Reads and parses a loose object from the given path
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The file cannot be read
+    /// - The object cannot be decompressed or parsed
     pub fn read_loose_object(&self, path: &Path) -> Result<LooseObject, RepositoryError> {
         Ok(LooseObject::read_from_path(path)?)
     }
 
-    /// Read and parse a loose object by its SHA-1 hash
+    /// Reads and parses a loose object by its hash
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The object file cannot be found or read
+    /// - The object cannot be decompressed or parsed
     pub fn read_loose_object_by_hash(&self, hash: &str) -> Result<LooseObject, RepositoryError> {
         if hash.len() != 40 {
             return Err(RepositoryError::LooseObjectError(
@@ -195,7 +244,13 @@ impl Repository {
         self.read_loose_object(&path)
     }
 
-    /// List loose objects with their parsed content
+    /// List parsed loose objects with a limit
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading loose object directories  
+    /// - Objects cannot be parsed or decompressed
     pub fn list_parsed_loose_objects(
         &self,
         limit: usize,
@@ -208,7 +263,10 @@ impl Repository {
                 Ok(object) => parsed_objects.push(object),
                 Err(e) => {
                     // Log the error but continue processing other objects
-                    eprintln!("Warning: Failed to parse loose object {path:?}: {e}");
+                    eprintln!(
+                        "Warning: Failed to parse loose object {}: {e}",
+                        path.display()
+                    );
                 }
             }
         }
@@ -216,7 +274,8 @@ impl Repository {
         Ok(parsed_objects)
     }
 
-    /// Check if a loose object exists for the given hash
+    /// Check if a loose object exists by its hash
+    #[must_use]
     pub fn loose_object_exists(&self, hash: &str) -> bool {
         if hash.len() != 40 {
             return false;
@@ -228,7 +287,13 @@ impl Repository {
         path.exists() && path.is_file()
     }
 
-    /// Get statistics about loose objects in the repository
+    /// Get statistics about all loose objects in the repository
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading loose object directories
+    /// - Objects cannot be parsed or analyzed
     pub fn get_loose_object_stats(&self) -> Result<LooseObjectStats, RepositoryError> {
         let objects_dir = self.path.join(".git/objects");
         if !objects_dir.exists() {
@@ -254,13 +319,13 @@ impl Repository {
 
                         match object.object_type {
                             crate::git::loose_object::LooseObjectType::Commit => {
-                                stats.commit_count += 1
+                                stats.commit_count += 1;
                             }
                             crate::git::loose_object::LooseObjectType::Tree => {
-                                stats.tree_count += 1
+                                stats.tree_count += 1;
                             }
                             crate::git::loose_object::LooseObjectType::Blob => {
-                                stats.blob_count += 1
+                                stats.blob_count += 1;
                             }
                             crate::git::loose_object::LooseObjectType::Tag => stats.tag_count += 1,
                         }
