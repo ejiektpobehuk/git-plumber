@@ -269,4 +269,235 @@ impl GitPlumber {
             Err(e) => Err(format!("Error parsing pack file: {e}")),
         }
     }
+
+    /// View a file as a loose object with rich formatting
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The file cannot be read or parsed as a loose object
+    /// - The formatting operations fail
+    pub fn view_file_as_object(&self, path: &Path) -> Result<(), String> {
+        use crate::cli::formatters::CliLooseFormatter;
+
+        self.repository.as_ref().map_or_else(
+            || {
+                Err(format!(
+                    "Not a git repository: {}",
+                    self.repo_path.display()
+                ))
+            },
+            |repo| match repo.read_loose_object(path) {
+                Ok(loose_obj) => {
+                    let formatted_output = CliLooseFormatter::format_loose_object(&loose_obj);
+                    print!("{formatted_output}");
+                    Ok(())
+                }
+                Err(e) => Err(format!("Error reading loose object: {e}")),
+            },
+        )
+    }
+
+    /// View an object by hash with rich formatting
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The object cannot be found by hash
+    /// - Multiple objects match a partial hash (disambiguation needed)
+    /// - The formatting operations fail
+    pub fn view_object_by_hash(&self, hash: &str) -> Result<(), String> {
+        use crate::cli::formatters::{CliLooseFormatter, CliPackFormatter};
+        use std::fmt::Write;
+
+        match self.repository.as_ref() {
+            Some(_repo) => {
+                // First try as loose object
+                if let Ok(loose_obj) = self.find_loose_object_by_partial_hash(hash) {
+                    let formatted_output = CliLooseFormatter::format_loose_object(&loose_obj);
+                    print!("{formatted_output}");
+                    return Ok(());
+                }
+
+                // If not found in loose objects, search pack files
+                if let Ok(pack_obj) = self.find_pack_object_by_partial_hash(hash) {
+                    // Format pack object using existing formatter - create single object "pack file"
+                    if let Some(ref object_data) = pack_obj.object_data {
+                        let mut output = String::new();
+                        writeln!(&mut output, "\x1b[1mPACK OBJECT (found by hash)\x1b[0m").unwrap();
+                        writeln!(&mut output, "{}", "─".repeat(50)).unwrap();
+                        writeln!(&mut output).unwrap();
+
+                        // Create a PackObject from the found object and format it
+                        let formatted_pack_obj = crate::tui::model::PackObject {
+                            index: pack_obj.index,
+                            obj_type: pack_obj.obj_type.clone(),
+                            size: pack_obj.size,
+                            sha1: pack_obj.sha1.clone(),
+                            base_info: pack_obj.base_info.clone(),
+                            object_data: Some(object_data.clone()),
+                        };
+
+                        let mut widget =
+                            crate::tui::widget::pack_obj_details::PackObjectWidget::new(
+                                formatted_pack_obj,
+                            );
+                        let formatted_text = widget.text();
+
+                        // Convert ratatui Text to ANSI colored string (reuse formatter logic)
+                        let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
+                        output.push_str(&colored_text);
+
+                        print!("{output}");
+                    } else {
+                        // Fallback to basic info if no object data
+                        println!("Pack Object (found by hash):");
+                        println!("SHA1: {}", pack_obj.sha1.as_deref().unwrap_or("unknown"));
+                        println!("Type: {}", pack_obj.obj_type);
+                        println!("Size: {} bytes", pack_obj.size);
+                    }
+                    return Ok(());
+                }
+
+                Err(format!("Object not found: {hash}"))
+            }
+            None => Err(format!(
+                "Not a git repository: {}",
+                self.repo_path.display()
+            )),
+        }
+    }
+
+    /// Find a loose object by partial hash (4-40 characters)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - No matching objects are found
+    /// - Multiple objects match the partial hash
+    fn find_loose_object_by_partial_hash(
+        &self,
+        partial_hash: &str,
+    ) -> Result<crate::git::loose_object::LooseObject, String> {
+        // For full hash (40 chars), use direct lookup
+        if partial_hash.len() == 40 {
+            return self
+                .repository
+                .as_ref()
+                .expect("Repository should be available for hash lookup")
+                .read_loose_object_by_hash(partial_hash)
+                .map_err(|e| format!("Object not found: {e}"));
+        }
+
+        // For partial hash, we need to search all loose objects
+        match self.list_parsed_loose_objects(10000) {
+            // Large limit for comprehensive search
+            Ok(objects) => {
+                let matches: Vec<_> = objects
+                    .into_iter()
+                    .filter(|obj| obj.object_id.starts_with(partial_hash))
+                    .collect();
+
+                match matches.len() {
+                    0 => Err(format!("No loose objects found matching: {partial_hash}")),
+                    1 => Ok(matches
+                        .into_iter()
+                        .next()
+                        .expect("Should have exactly one match")),
+                    _ => {
+                        let mut error_msg = format!("Multiple objects match '{partial_hash}':\n");
+                        for obj in matches {
+                            use std::fmt::Write;
+                            writeln!(&mut error_msg, "  {} ({})", obj.object_id, obj.object_type)
+                                .expect("Writing to string should not fail");
+                        }
+                        Err(error_msg)
+                    }
+                }
+            }
+            Err(e) => Err(format!("Error searching loose objects: {e}")),
+        }
+    }
+
+    /// Find a pack object by partial hash (4-40 characters)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - No matching objects are found
+    /// - Multiple objects match the partial hash
+    /// - Pack files cannot be read or parsed
+    fn find_pack_object_by_partial_hash(
+        &self,
+        partial_hash: &str,
+    ) -> Result<crate::tui::model::PackObject, String> {
+        use crate::git::pack::{Header, Object};
+        use sha1::Digest;
+
+        // Get all pack files
+        let pack_files = self
+            .list_pack_files()
+            .map_err(|e| format!("Error listing pack files: {e}"))?;
+
+        let mut matches = Vec::new();
+
+        // Search through each pack file
+        for pack_path in pack_files {
+            let pack_data =
+                std::fs::read(&pack_path).map_err(|e| format!("Error reading pack file: {e}"))?;
+
+            if let Ok((mut remaining_data, header)) = Header::parse(&pack_data) {
+                // Parse all objects in this pack file
+                for index in 0..header.object_count {
+                    if let Ok((new_remaining_data, object)) = Object::parse(remaining_data) {
+                        // Calculate SHA-1 hash for this object
+                        let obj_type = object.header.obj_type();
+                        let size = object.header.uncompressed_data_size();
+                        let mut hasher = sha1::Sha1::new();
+                        let header_str = format!("{obj_type} {size}\0");
+                        hasher.update(header_str.as_bytes());
+                        hasher.update(&object.uncompressed_data);
+                        let sha1 = format!("{:x}", hasher.finalize());
+
+                        // Check if this hash matches our partial hash
+                        if sha1.starts_with(partial_hash) {
+                            let pack_obj = crate::tui::model::PackObject {
+                                index: index as usize + 1,
+                                obj_type: obj_type.to_string(),
+                                size: u32::try_from(size).unwrap_or(u32::MAX),
+                                sha1: Some(sha1),
+                                base_info: None, // TODO: Add delta info if needed
+                                object_data: Some(object),
+                            };
+                            matches.push(pack_obj);
+                        }
+
+                        remaining_data = new_remaining_data;
+                    }
+                }
+            }
+        }
+
+        match matches.len() {
+            0 => Err(format!("No pack objects found matching: {partial_hash}")),
+            1 => Ok(matches
+                .into_iter()
+                .next()
+                .expect("Should have exactly one match")),
+            _ => {
+                let mut error_msg = format!("Multiple pack objects match '{partial_hash}':\n");
+                for obj in matches {
+                    use std::fmt::Write;
+                    writeln!(
+                        &mut error_msg,
+                        "  {} ({})",
+                        obj.sha1.as_deref().unwrap_or("unknown"),
+                        obj.obj_type
+                    )
+                    .expect("Writing to string should not fail");
+                }
+                Err(error_msg)
+            }
+        }
+    }
 }

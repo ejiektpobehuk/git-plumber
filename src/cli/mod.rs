@@ -3,6 +3,23 @@ use std::path::PathBuf;
 
 pub mod formatters;
 
+/// Determine if a string looks like a git object hash
+fn is_likely_hash(input: &str) -> bool {
+    // Must be 4-40 characters and all hex
+    if input.len() < 4 || input.len() > 40 {
+        return false;
+    }
+
+    // Check if all characters are valid hex
+    input.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Determine if a string looks like a file path
+fn is_likely_path(input: &str) -> bool {
+    // Contains path separators or file extensions
+    input.contains('/') || input.contains('\\') || input.contains('.')
+}
+
 #[derive(Parser)]
 #[command(name = "git-plumber")]
 #[command(about = "Explorer for git internals, the plumbing", long_about = None)]
@@ -32,11 +49,14 @@ pub enum Commands {
         object_type: String,
     },
 
-    /// View a pack file
-    Pack {
-        /// Path to the pack file
-        #[arg(required = false)]
-        file: Option<PathBuf>,
+    /// View an object or file with detailed formatting
+    View {
+        /// Object hash (4-40 hex chars) or file path to view
+        #[arg(
+            required = true,
+            help = "Object hash (4-40 characters) or path to file"
+        )]
+        target: String,
     },
 }
 
@@ -166,31 +186,55 @@ pub fn run() -> Result<(), String> {
                 }
             }
         }
-        Some(Commands::Pack { file }) => {
-            file.as_ref().map_or_else(
-                || {
-                    // No file specified, list available pack files
-                    match plumber.list_pack_files() {
-                        Ok(pack_files) => {
-                            if pack_files.is_empty() {
-                                println!("No pack files found");
-                            } else {
-                                println!("Available pack files:");
-                                for (i, file) in pack_files.iter().enumerate() {
-                                    println!("{}. {}", i + 1, file.display());
-                                }
-                                println!("\nUse 'pack <file_path>' to view a specific pack file");
-                            }
-                            Ok(())
-                        }
-                        Err(e) => Err(format!("Error listing pack files: {e}")),
+        Some(Commands::View { target }) => {
+            // Determine if target is a hash or path
+            if is_likely_path(target) && !is_likely_hash(target) {
+                // Treat as file path
+                let path = PathBuf::from(target);
+                if path.exists() {
+                    // Check if it's a pack file or other git object file
+                    if path.extension().and_then(|s| s.to_str()) == Some("pack") {
+                        plumber.parse_pack_file_rich(&path)
+                    } else {
+                        // Try to parse as loose object file
+                        plumber.view_file_as_object(&path)
                     }
-                },
-                |file_path| {
-                    // Parse the specified pack file with rich formatting
-                    plumber.parse_pack_file_rich(file_path)
-                },
-            )
+                } else {
+                    Err(format!("File not found: {}", path.display()))
+                }
+            } else if is_likely_hash(target) {
+                // Treat as object hash
+                plumber.view_object_by_hash(target)
+            } else {
+                // Ambiguous - try both approaches
+                let path = PathBuf::from(target);
+                if path.exists() {
+                    // File exists, treat as path
+                    if path.extension().and_then(|s| s.to_str()) == Some("pack") {
+                        plumber.parse_pack_file_rich(&path)
+                    } else {
+                        plumber.view_file_as_object(&path)
+                    }
+                } else if target.chars().all(|c| c.is_ascii_hexdigit()) {
+                    // Looks like hex but too short or too long
+                    if target.len() < 4 {
+                        Err(format!(
+                            "Hash too short: '{target}'. Git object hashes must be at least 4 characters long."
+                        ))
+                    } else if target.len() > 40 {
+                        Err(format!(
+                            "Hash too long: '{target}'. Git object hashes must be at most 40 characters long."
+                        ))
+                    } else {
+                        // Valid length hex but object not found
+                        plumber.view_object_by_hash(target)
+                    }
+                } else {
+                    Err(format!(
+                        "Invalid target: '{target}' is neither a valid file path nor object hash (hashes must be 4-40 hex characters)"
+                    ))
+                }
+            }
         }
         None => {
             let mut cmd = Cli::command();

@@ -1,6 +1,8 @@
+use crate::git::loose_object::LooseObject;
 /// CLI formatters that reuse TUI formatting logic for consistent output
 use crate::git::pack::{Object, ObjectHeader};
 use crate::tui::model::PackObject;
+use crate::tui::widget::loose_obj_details::LooseObjectWidget;
 use crate::tui::widget::pack_obj_details::PackObjectWidget;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Text;
@@ -8,9 +10,11 @@ use sha1::Digest;
 use std::fmt::Write;
 
 pub struct CliPackFormatter;
+pub struct CliLooseFormatter;
 
 impl CliPackFormatter {
     /// Format a complete pack file with header and all objects
+    #[must_use]
     pub fn format_pack_file(header: &crate::git::pack::Header, objects: &[Object]) -> String {
         let mut output = String::new();
 
@@ -63,17 +67,18 @@ impl CliPackFormatter {
     }
 
     /// Convert ratatui Text to ANSI colored string, preserving styling
-    fn text_to_ansi_string(text: &Text) -> String {
+    #[must_use]
+    pub fn text_to_ansi_string(text: &Text) -> String {
         let mut result = String::new();
 
         for line in &text.lines {
             for span in &line.spans {
                 // Convert ratatui style to ANSI escape codes
                 let ansi_start = Self::style_to_ansi_start(&span.style);
-                let ansi_end = if span.style != Style::default() {
-                    "\x1b[0m" // Reset
-                } else {
+                let ansi_end = if span.style == Style::default() {
                     ""
+                } else {
+                    "\x1b[0m" // Reset
                 };
 
                 write!(&mut result, "{}{}{}", ansi_start, span.content, ansi_end).unwrap();
@@ -173,7 +178,7 @@ impl CliPackFormatter {
         }
     }
 
-    /// Create a PackObject from an Object (similar to TUI loader logic)
+    /// Create a `PackObject` from an Object (similar to TUI loader logic)
     fn create_pack_object_from_object(object: &Object, index: usize) -> PackObject {
         let obj_type = object.header.obj_type();
         let size = object.header.uncompressed_data_size();
@@ -193,16 +198,39 @@ impl CliPackFormatter {
             ObjectHeader::RefDelta { base_ref, .. } => {
                 Some(format!("Base ref: {}", hex::encode(base_ref)))
             }
-            _ => None,
+            ObjectHeader::Regular { .. } => None,
         };
 
         PackObject {
             index,
             obj_type: obj_type.to_string(),
-            size: size as u32,
+            size: u32::try_from(size).unwrap_or(u32::MAX),
             sha1,
             base_info,
             object_data: Some(object.clone()),
         }
+    }
+}
+
+impl CliLooseFormatter {
+    /// Format a loose object with rich formatting using TUI formatters
+    #[must_use]
+    pub fn format_loose_object(loose_obj: &LooseObject) -> String {
+        let mut output = String::new();
+
+        // Format loose object header
+        writeln!(&mut output, "\x1b[1mLOOSE OBJECT\x1b[0m").unwrap();
+        writeln!(&mut output, "{}", "─".repeat(40)).unwrap();
+        writeln!(&mut output).unwrap();
+
+        // Use the TUI formatter to generate rich content
+        let mut widget = LooseObjectWidget::new(loose_obj.clone());
+        let formatted_text = widget.text();
+
+        // Convert ratatui Text to ANSI colored string
+        let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
+        writeln!(&mut output, "{colored_text}").unwrap();
+
+        output
     }
 }
