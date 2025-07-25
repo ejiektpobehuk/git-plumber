@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## Added
+
+- CLI `view` command to open loose objects and pack files
+
+### Changed
+
+- `pack` CLI command is now part of `view`
+- CLI now uses TUI widgets to view the file
+
 ## [0.1.1] - 2025-07-18
 
 ### Added
