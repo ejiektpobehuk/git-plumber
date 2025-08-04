@@ -1,4 +1,12 @@
 use std::path::PathBuf;
+impl AppState {
+    pub fn set_tx(&mut self, tx: Sender<crate::tui::message::Message>) {
+        self.tx = Some(tx);
+    }
+}
+
+use crossbeam_channel::Sender;
+
 use std::time::SystemTime;
 
 // Import main view types from the main_view module
@@ -197,6 +205,10 @@ pub struct AppState {
     // Layout dimensions for accurate scrolling
     pub layout_dimensions: LayoutDimensions,
     pub educational_content_provider: EducationalContent,
+    // Background message sender (for spawning jobs)
+    pub tx: Option<Sender<crate::tui::message::Message>>,
+    // Effects produced by update to be executed by the runner
+    pub effects: Vec<crate::tui::message::Command>,
 }
 
 impl AppState {
@@ -232,6 +244,8 @@ impl AppState {
             view_stack: Vec::new(),
             layout_dimensions: LayoutDimensions::default(),
             educational_content_provider,
+            tx: None,
+            effects: Vec::new(),
         }
     }
 

@@ -13,28 +13,32 @@ impl AppState {
         match msg {
             Message::LoadGitObjects(result) => match result {
                 Ok(()) => {
+                    // No-op here; prefer GitObjectsLoaded payload for success
                     self.error = None;
-
-                    if let AppView::Main { state } = &mut self.view {
-                        // If we have objects, select the first one and load its details
-                        if !state.git_objects.flat_view.is_empty() {
-                            // Reset index if it's out of bounds
-                            if state.git_objects.selected_index >= state.git_objects.flat_view.len()
-                            {
-                                state.git_objects.selected_index = 0;
-                            }
-                            // Load details and educational content for the selected object
-                            let details_msg = self.load_git_object_details(plumber);
-                            self.update(details_msg, plumber);
-                            let content_msg = self.load_educational_content(plumber);
-                            self.update(content_msg, plumber);
-                        }
-                    }
                 }
                 Err(e) => {
                     self.error = Some(e);
                 }
             },
+
+            Message::GitObjectsLoaded(data) => {
+                // Apply the loaded git objects list to the MainView state
+                if let AppView::Main { state } = &mut self.view {
+                    state.git_objects.list = data.git_objects_list;
+                    state.flatten_tree();
+                    if !state.git_objects.flat_view.is_empty() {
+                        if state.git_objects.selected_index >= state.git_objects.flat_view.len() {
+                            state.git_objects.selected_index = 0;
+                        }
+                        // Trigger details and educational content loads like before
+                        let details_msg = self.load_git_object_details(plumber);
+                        self.update(details_msg, plumber);
+                        let content_msg = self.load_educational_content(plumber);
+                        self.update(content_msg, plumber);
+                    }
+                    self.error = None;
+                }
+            }
 
             Message::LoadGitObjectInfo(result) => match result {
                 Ok(info) => {
@@ -60,7 +64,7 @@ impl AppState {
                 }
             },
 
-            Message::LoadPackObjects(result) => match result {
+            Message::LoadPackObjects { path, result } => match result {
                 Ok(objects) => {
                     if let AppView::Main {
                         state:
@@ -70,15 +74,19 @@ impl AppState {
                             },
                     } = &mut self.view
                     {
-                        preview_state.pack_object_list = objects;
-                        // Reset selection to first object and update widget
-                        preview_state.selected_pack_object = 0;
-                        preview_state.pack_object_list_scroll_position = 0;
-                        if !preview_state.pack_object_list.is_empty() {
-                            preview_state.pack_object_widget_state =
-                                PackObjectWidget::new(preview_state.pack_object_list[0].clone());
+                        // Only apply if the message is for the currently previewed pack
+                        if preview_state.pack_file_path == path {
+                            preview_state.pack_object_list = objects;
+                            // Reset selection to first object and update widget
+                            preview_state.selected_pack_object = 0;
+                            preview_state.pack_object_list_scroll_position = 0;
+                            if !preview_state.pack_object_list.is_empty() {
+                                preview_state.pack_object_widget_state = PackObjectWidget::new(
+                                    preview_state.pack_object_list[0].clone(),
+                                );
+                            }
+                            self.error = None;
                         }
-                        self.error = None;
                     }
                 }
                 Err(e) => {
@@ -98,8 +106,7 @@ impl AppState {
 
             Message::Refresh => {
                 // Reload everything from scratch
-                let objects_msg = self.load_git_objects(plumber);
-                self.update(objects_msg, plumber);
+                self.effects.push(crate::tui::message::Command::LoadInitial);
             }
 
             Message::MainNavigation(_) | Message::OpenPackView | Message::OpenLooseObjectView => {
@@ -122,7 +129,8 @@ impl AppState {
             Message::LoadGitObjects(_)
             | Message::LoadGitObjectInfo(_)
             | Message::LoadEducationalContent(_)
-            | Message::LoadPackObjects(_) => {
+            | Message::LoadPackObjects { .. }
+            | Message::GitObjectsLoaded(_) => {
                 return self.handle_load_result_message(msg, plumber);
             }
         }

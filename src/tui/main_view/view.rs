@@ -62,7 +62,7 @@ fn render_regular_preview_layout(
         {
             "Select an object to view details"
         } else if main_view.git_objects.flat_view.is_empty() {
-            "No Git objects found"
+            "Loading repository…"
         } else {
             &main_view.git_object_info
         };
@@ -175,7 +175,7 @@ fn render_pack_file_preview(
         {
             "Select an object to view details"
         } else if main_view.git_objects.flat_view.is_empty() {
-            "No Git objects found"
+            "Loading repository…"
         } else {
             &main_view.git_object_info
         };
@@ -199,48 +199,50 @@ fn render_pack_file_preview(
         );
         // Bottom block - Pack objects list
         // Only highlight if in ObjectPreview mode and focus is PackObjects
-        let selected_index = if preview_state.pack_object_list.is_empty() {
-            None
+        if preview_state.pack_object_list.is_empty() {
+            let loading = Paragraph::new("Loading pack objects...")
+                .block(Block::default().title("Pack Objects").borders(Borders::ALL));
+            f.render_widget(loading, content_chunks[2]);
         } else {
-            Some(
+            let selected_index = Some(
                 preview_state
                     .selected_pack_object
                     .min(preview_state.pack_object_list.len().saturating_sub(1)),
-            )
-        };
+            );
 
-        render_list_with_scrollbar(
-            f,
-            content_chunks[2],
-            &preview_state.pack_object_list,
-            selected_index,
-            preview_state.pack_object_list_scroll_position,
-            "Pack Objects",
-            matches!(preview_state.focus, PackFocus::PackObjectsList),
-            |_absolute_index, pack_obj, is_selected| {
-                let display_text = format!(
-                    "{}: {} | {} bytes{}",
-                    pack_obj.index,
-                    pack_obj.obj_type,
-                    pack_obj.size,
-                    if let Some(ref hash) = pack_obj.sha1 {
-                        format!(" | {hash}")
-                    } else {
-                        String::new()
-                    }
-                );
+            render_list_with_scrollbar(
+                f,
+                content_chunks[2],
+                &preview_state.pack_object_list,
+                selected_index,
+                preview_state.pack_object_list_scroll_position,
+                "Pack Objects",
+                matches!(preview_state.focus, PackFocus::PackObjectsList),
+                |_absolute_index, pack_obj, is_selected| {
+                    let display_text = format!(
+                        "{}: {} | {} bytes{}",
+                        pack_obj.index,
+                        pack_obj.obj_type,
+                        pack_obj.size,
+                        if let Some(ref hash) = pack_obj.sha1 {
+                            format!(" | {hash}")
+                        } else {
+                            String::new()
+                        }
+                    );
 
-                ListItem::new(display_text).style(
-                    if is_selected && matches!(preview_state.focus, PackFocus::PackObjectsList)
-                        || is_selected && is_widescreen
-                    {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    },
-                )
-            },
-        );
+                    ListItem::new(display_text).style(
+                        if is_selected && matches!(preview_state.focus, PackFocus::PackObjectsList)
+                            || is_selected && is_widescreen
+                        {
+                            Style::default().fg(Color::Yellow)
+                        } else {
+                            Style::default()
+                        },
+                    )
+                },
+            );
+        }
     }
 }
 
@@ -292,20 +294,24 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span> {
             }
             PreviewState::Regular(RegularPreViewState { focus, .. }) => match focus {
                 RegularFocus::GitObjects => {
-                    match git_objects.flat_view[git_objects.selected_index].1.obj_type {
-                        GitObjectType::Category(_) => {
-                            hints.append(&mut vec![
-                                Span::styled("←", Style::default().fg(Color::Green)),
-                                Span::styled("↕→", Style::default().fg(Color::Blue)),
-                            ]);
-                        }
-                        _ => {
-                            hints.append(&mut vec![
-                                Span::styled("←", Style::default().fg(Color::Green)),
-                                Span::styled("↕→", Style::default().fg(Color::Blue)),
-                            ]);
-                        }
-                    };
+                    if !git_objects.flat_view.is_empty()
+                        && git_objects.selected_index < git_objects.flat_view.len()
+                    {
+                        match git_objects.flat_view[git_objects.selected_index].1.obj_type {
+                            GitObjectType::Category(_) => {
+                                hints.append(&mut vec![
+                                    Span::styled("←", Style::default().fg(Color::Green)),
+                                    Span::styled("↕→", Style::default().fg(Color::Blue)),
+                                ]);
+                            }
+                            _ => {
+                                hints.append(&mut vec![
+                                    Span::styled("←", Style::default().fg(Color::Green)),
+                                    Span::styled("↕→", Style::default().fg(Color::Blue)),
+                                ]);
+                            }
+                        };
+                    }
                 }
                 RegularFocus::Preview => {
                     hints.append(&mut vec![
@@ -492,4 +498,15 @@ fn render_git_tree(
             })
         },
     );
+
+    // If there are no items yet, render a placeholder "Loading…"
+    if state.git_objects.flat_view.is_empty() {
+        use ratatui::widgets::Paragraph;
+        let placeholder = Paragraph::new("Loading…").block(
+            Block::default()
+                .title(format!("{project_name}/.git"))
+                .borders(Borders::ALL),
+        );
+        f.render_widget(placeholder, area);
+    }
 }

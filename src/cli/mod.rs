@@ -1,7 +1,33 @@
 use clap::{CommandFactory, Parser, Subcommand};
+use std::io::{self, Write};
 use std::path::PathBuf;
 
 pub mod formatters;
+
+/// Safe print function that handles broken pipe errors gracefully
+///
+/// When output is piped to commands like `head` that close early,
+/// subsequent writes will fail with a broken pipe error. This is
+/// expected behavior and should not cause the program to panic.
+pub fn safe_print(content: &str) -> Result<(), String> {
+    match io::stdout().write_all(content.as_bytes()) {
+        Ok(()) => {
+            // Attempt to flush, but ignore broken pipe errors
+            match io::stdout().flush() {
+                Ok(()) => Ok(()),
+                Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+                Err(e) => Err(format!("Error flushing stdout: {e}")),
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        Err(e) => Err(format!("Error writing to stdout: {e}")),
+    }
+}
+
+/// Safe println function that handles broken pipe errors gracefully
+pub fn safe_println(content: &str) -> Result<(), String> {
+    safe_print(&format!("{content}\n"))
+}
 
 /// Determine if a string looks like a git object hash
 fn is_likely_hash(input: &str) -> bool {
@@ -74,7 +100,7 @@ pub fn run() -> Result<(), String> {
 
     // Handle version flag first
     if cli.version {
-        print!("{}", crate::version::get_version_info());
+        safe_print(&crate::version::get_version_info().to_string())?;
         return Ok(());
     }
 
@@ -92,11 +118,11 @@ pub fn run() -> Result<(), String> {
                     match plumber.list_pack_files() {
                         Ok(pack_files) => {
                             if pack_files.is_empty() {
-                                println!("No pack files found");
+                                safe_println("No pack files found")?;
                             } else {
-                                println!("Found {} pack files:", pack_files.len());
+                                safe_println(&format!("Found {} pack files:", pack_files.len()))?;
                                 for (i, file) in pack_files.iter().enumerate() {
-                                    println!("{}. {}", i + 1, file.display());
+                                    safe_println(&format!("{}. {}", i + 1, file.display()))?;
                                 }
                             }
                             Ok(())
@@ -108,27 +134,27 @@ pub fn run() -> Result<(), String> {
                     // List loose objects only
                     match plumber.get_loose_object_stats() {
                         Ok(stats) => {
-                            println!("Loose object statistics:");
-                            println!("{}", stats.summary());
-                            println!();
+                            safe_println("Loose object statistics:")?;
+                            safe_println(&stats.summary())?;
+                            safe_println("")?;
 
                             // Show all loose objects
                             match plumber.list_parsed_loose_objects(stats.total_count) {
                                 Ok(loose_objects) => {
                                     if loose_objects.is_empty() {
-                                        println!("No loose objects found");
+                                        safe_println("No loose objects found")?;
                                     } else {
-                                        println!("Loose objects:");
+                                        safe_println("Loose objects:")?;
                                         for (i, obj) in loose_objects.iter().enumerate() {
                                             let (short_hash, rest_hash) = obj.object_id.split_at(8);
-                                            println!(
+                                            safe_println(&format!(
                                                 "{}. \x1b[1m{}\x1b[22m{} ({}) - {} bytes",
                                                 i + 1,
                                                 short_hash,
                                                 rest_hash,
                                                 obj.object_type,
                                                 obj.size
-                                            );
+                                            ))?;
                                         }
                                     }
                                     Ok(())
@@ -145,36 +171,36 @@ pub fn run() -> Result<(), String> {
                     let mut error_messages = Vec::new();
 
                     // List pack files
-                    println!("Pack files:");
+                    safe_println("Pack files:")?;
                     match plumber.list_pack_files() {
                         Ok(pack_files) => {
                             if pack_files.is_empty() {
-                                println!("  No pack files found");
+                                safe_println("  No pack files found")?;
                             } else {
                                 for file in pack_files {
-                                    println!("  {}", file.display());
+                                    safe_println(&format!("  {}", file.display()))?;
                                 }
                             }
                         }
                         Err(e) => {
                             has_error = true;
                             error_messages.push(format!("Error listing pack files: {e}"));
-                            println!("  Error listing pack files: {e}");
+                            safe_println(&format!("  Error listing pack files: {e}"))?;
                         }
                     }
 
-                    println!();
+                    safe_println("")?;
 
                     // List loose objects
-                    println!("Loose objects:");
+                    safe_println("Loose objects:")?;
                     match plumber.get_loose_object_stats() {
                         Ok(stats) => {
-                            println!("  {}", stats.summary().replace('\n', "\n  "));
+                            safe_println(&format!("  {}", stats.summary().replace('\n', "\n  ")))?;
                         }
                         Err(e) => {
                             has_error = true;
                             error_messages.push(format!("Error getting loose object stats: {e}"));
-                            println!("  Error getting loose object stats: {e}");
+                            safe_println(&format!("  Error getting loose object stats: {e}"))?;
                         }
                     }
 

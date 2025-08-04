@@ -18,6 +18,7 @@ crossterm = "0.29.0"
 hex = "0.4.3"
 sha1 = "0.10.6"
 rayon = "1.10.0"
+crossbeam-channel = "0.5"
 
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }

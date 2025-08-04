@@ -355,9 +355,10 @@ impl AppState {
                                 }
                             }
                             Err(e) => {
-                                return Message::LoadPackObjects(Err(format!(
-                                    "Error parsing pack header: {e:?}"
-                                )));
+                                return Message::LoadPackObjects {
+                                    path: pack_path.clone(),
+                                    result: Err(format!("Error parsing pack header: {e:?}")),
+                                };
                             }
                         }
 
@@ -383,14 +384,21 @@ impl AppState {
                             })
                             .collect();
 
-                        Message::LoadPackObjects(Ok(objects))
+                        Message::LoadPackObjects {
+                            path: pack_path.clone(),
+                            result: Ok(objects),
+                        }
                     }
-                    Err(e) => {
-                        Message::LoadPackObjects(Err(format!("Error reading pack file: {e}")))
-                    }
+                    Err(e) => Message::LoadPackObjects {
+                        path: pack_path.clone(),
+                        result: Err(format!("Error reading pack file: {e}")),
+                    },
                 }
             }
-            _ => Message::LoadPackObjects(Err("Sent to wrong View".to_string())),
+            _ => Message::LoadPackObjects {
+                path: pack_path.clone(),
+                result: Err("Sent to wrong View".to_string()),
+            },
         }
     }
 

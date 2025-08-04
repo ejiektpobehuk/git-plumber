@@ -205,13 +205,13 @@ impl GitPlumber {
         // Parse the pack file
         match crate::git::pack::Header::parse(&pack_data) {
             Ok((objects_data, header)) => {
-                println!("Pack version: {}", header.version);
-                println!("Number of objects: {}", header.object_count);
+                crate::cli::safe_println(&format!("Pack version: {}", header.version))?;
+                crate::cli::safe_println(&format!("Number of objects: {}", header.object_count))?;
                 let mut remaining_data = objects_data;
                 for i in 0..header.object_count {
                     match crate::git::pack::Object::parse(remaining_data) {
                         Ok((new_remaining_data, object)) => {
-                            println!("{object}");
+                            crate::cli::safe_println(&format!("{object}"))?;
                             remaining_data = new_remaining_data;
                         }
                         Err(e) => {
@@ -219,7 +219,7 @@ impl GitPlumber {
                         }
                     }
                     if i < header.object_count - 1 {
-                        println!("--------------------------------");
+                        crate::cli::safe_println("--------------------------------")?;
                     }
                 }
                 Ok(())
@@ -262,7 +262,7 @@ impl GitPlumber {
 
                 // Format and display the rich output
                 let formatted_output = CliPackFormatter::format_pack_file(&header, &objects);
-                print!("{formatted_output}");
+                crate::cli::safe_print(&formatted_output)?;
 
                 Ok(())
             }
@@ -290,7 +290,7 @@ impl GitPlumber {
             |repo| match repo.read_loose_object(path) {
                 Ok(loose_obj) => {
                     let formatted_output = CliLooseFormatter::format_loose_object(&loose_obj);
-                    print!("{formatted_output}");
+                    crate::cli::safe_print(&formatted_output)?;
                     Ok(())
                 }
                 Err(e) => Err(format!("Error reading loose object: {e}")),
@@ -315,7 +315,7 @@ impl GitPlumber {
                 // First try as loose object
                 if let Ok(loose_obj) = self.find_loose_object_by_partial_hash(hash) {
                     let formatted_output = CliLooseFormatter::format_loose_object(&loose_obj);
-                    print!("{formatted_output}");
+                    crate::cli::safe_print(&formatted_output)?;
                     return Ok(());
                 }
 
@@ -348,13 +348,16 @@ impl GitPlumber {
                         let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
                         output.push_str(&colored_text);
 
-                        print!("{output}");
+                        crate::cli::safe_print(&output)?;
                     } else {
                         // Fallback to basic info if no object data
-                        println!("Pack Object (found by hash):");
-                        println!("SHA1: {}", pack_obj.sha1.as_deref().unwrap_or("unknown"));
-                        println!("Type: {}", pack_obj.obj_type);
-                        println!("Size: {} bytes", pack_obj.size);
+                        crate::cli::safe_println("Pack Object (found by hash):")?;
+                        crate::cli::safe_println(&format!(
+                            "SHA1: {}",
+                            pack_obj.sha1.as_deref().unwrap_or("unknown")
+                        ))?;
+                        crate::cli::safe_println(&format!("Type: {}", pack_obj.obj_type))?;
+                        crate::cli::safe_println(&format!("Size: {} bytes", pack_obj.size))?;
                     }
                     return Ok(());
                 }
