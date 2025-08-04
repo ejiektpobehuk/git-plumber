@@ -56,7 +56,7 @@ pub fn run_tui(plumber: crate::GitPlumber) -> Result<(), String> {
     app.effects.push(crate::tui::message::Command::LoadInitial);
 
     // Main event loop
-    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx);
+    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx.clone());
 
     // Clean up
     disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {e}"))?;
@@ -110,6 +110,10 @@ fn run_app<B: ratatui::backend::Backend>(
             }
         }
     };
+
+    // Execute any queued effects before entering the loop (e.g., initial LoadInitial)
+    run_commands(app);
+    app.effects.clear();
 
     loop {
         // Update layout dimensions based on current terminal size
