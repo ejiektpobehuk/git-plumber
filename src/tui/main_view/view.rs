@@ -491,10 +491,25 @@ fn render_git_tree(
 
             let display_text = format!("{}{}{}", indent, prefix, obj.name);
 
-            ListItem::new(display_text).style(if is_selected {
-                Style::default().fg(Color::Yellow)
-            } else {
-                Style::default()
+            let key = MainViewState::selection_key(obj);
+
+            ListItem::new(display_text).style({
+                // Optional highlight for changed items
+                let mut style = if is_selected {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                };
+                if let Some(until) = state.changed_keys.get(&key).copied() {
+                    if until > std::time::Instant::now() {
+                        // apply green background even if selected
+                        style = style.bg(Color::Green);
+                    } else {
+                        // Expired: drop it lazily
+                        state.changed_keys.remove(&key);
+                    }
+                }
+                style
             })
         },
     );

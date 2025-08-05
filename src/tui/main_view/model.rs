@@ -1,4 +1,7 @@
 use crate::educational_content::EducationalContent;
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
 use crate::tui::message::Message;
 use crate::tui::model::GitObject;
 use crate::tui::model::GitObjectType;
@@ -84,6 +87,24 @@ pub struct MainViewState {
     pub git_object_info: String,
     pub preview_state: PreviewState,
     pub educational_content: Text<'static>,
+    // Live update persistence
+    pub last_selection: Option<SelectionIdentity>,
+    pub last_scroll_positions: Option<ScrollSnapshot>,
+    // Optional change highlighting: use per-item timers
+    pub changed_keys: HashMap<String, Instant>,
+    // First-load guard to avoid initial mass highlight
+    pub has_loaded_once: bool,
+}
+#[derive(Debug, Clone)]
+pub struct SelectionIdentity {
+    pub key: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScrollSnapshot {
+    pub git_list_scroll: usize,
+    pub preview_scroll: usize,
+    pub pack_list_scroll: usize,
 }
 
 impl MainViewState {
@@ -93,12 +114,37 @@ impl MainViewState {
             git_object_info: String::new(),
             educational_content: ed_provider.get_default_content(),
             preview_state: PreviewState::Regular(RegularPreViewState::new()),
+            last_selection: None,
+            last_scroll_positions: None,
+            changed_keys: HashMap::new(),
+            has_loaded_once: false,
+        }
+    }
+    // Build a stable key for selection and change tracking
+    pub fn selection_key(obj: &GitObject) -> String {
+        match &obj.obj_type {
+            GitObjectType::Category(name) => format!("category:{name}"),
+            GitObjectType::Pack { path, .. } => format!("pack:{}", path.display()),
+            GitObjectType::Ref { path, .. } => format!("ref:{}", path.display()),
+            GitObjectType::LooseObject { object_id, .. } => {
+                format!("loose:{}", object_id.clone().unwrap_or_default())
+            }
+        }
+    }
+
+    pub fn current_selection_key(&self) -> Option<String> {
+        if self.git_objects.selected_index < self.git_objects.flat_view.len() {
+            let (_, obj) = &self.git_objects.flat_view[self.git_objects.selected_index];
+            Some(Self::selection_key(obj))
+        } else {
+            None
         }
     }
 
     // Flatten the tree for display
     pub fn flatten_tree(&mut self) {
-        self.git_objects.flat_view.clear();
+        let previous_flat = std::mem::take(&mut self.git_objects.flat_view);
+        self.git_objects.flat_view = Vec::with_capacity(previous_flat.len().max(16));
 
         // Clone the objects first to avoid borrowing issues
         let list_clone = self.git_objects.list.clone();
@@ -106,6 +152,29 @@ impl MainViewState {
         // Add each top-level object
         for obj in &list_clone {
             self.flatten_node_recursive(obj, 0);
+        }
+
+        // Compute changed keys (optional highlight)
+        if self.has_loaded_once {
+            let old_keys: HashSet<String> = previous_flat
+                .iter()
+                .map(|(_, o)| Self::selection_key(o))
+                .collect();
+            let new_keys: HashSet<String> = self
+                .git_objects
+                .flat_view
+                .iter()
+                .map(|(_, o)| Self::selection_key(o))
+                .collect();
+            // Merge per-item timers: keep existing timers for keys that still exist and haven't expired
+            let now = Instant::now();
+            self.changed_keys
+                .retain(|k, &mut until| until > now && new_keys.contains(k));
+            // Add new keys with fresh 5s timers
+            for k in new_keys.difference(&old_keys) {
+                self.changed_keys
+                    .insert(k.clone(), now + Duration::from_secs(5));
+            }
         }
     }
 
@@ -187,8 +256,12 @@ impl MainViewState {
                         }
                     }
                 }
-                self.git_objects.selected_index =
-                    new_index.min(self.git_objects.flat_view.len() - 1);
+                if !self.git_objects.flat_view.is_empty() {
+                    self.git_objects.selected_index =
+                        new_index.min(self.git_objects.flat_view.len() - 1);
+                } else {
+                    self.git_objects.selected_index = 0;
+                }
             }
         }
         Message::LoadGitObjects(Ok(()))

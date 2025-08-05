@@ -78,7 +78,7 @@ pub fn render_list_with_scrollbar<T>(
     scroll_position: usize,
     title: &str,
     is_focused: bool,
-    item_renderer: impl Fn(usize, &T, bool) -> ListItem,
+    mut item_renderer: impl FnMut(usize, &T, bool) -> ListItem,
 ) {
     let visible_height = area.height as usize - 2; // Account for borders
     let total_items = items.len();
@@ -95,8 +95,9 @@ pub fn render_list_with_scrollbar<T>(
         .map(|(relative_index, item)| {
             let absolute_index = start + relative_index;
             let is_selected = selected_index == Some(absolute_index);
-            item_renderer(absolute_index, item, is_selected)
+            (absolute_index, item, is_selected)
         })
+        .map(|(absolute_index, item, is_selected)| item_renderer(absolute_index, item, is_selected))
         .collect();
 
     // Create the list widget
