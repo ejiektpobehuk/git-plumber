@@ -9,6 +9,7 @@ use super::RegularFocus;
 pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
     match &app.view {
         AppView::Main { state } => match key.code {
+            KeyCode::Char('r') => Some(Message::Refresh),
             KeyCode::Char('q') | KeyCode::Esc => Some(Message::Quit),
             KeyCode::Char('t') => Some(Message::MainNavigation(MainNavigation::ToggleExpand)),
             KeyCode::Char('h') | KeyCode::Left => {

@@ -209,6 +209,8 @@ pub struct AppState {
     pub tx: Option<Sender<crate::tui::message::Message>>,
     // Effects produced by update to be executed by the runner
     pub effects: Vec<crate::tui::message::Command>,
+    // Keep FS watcher alive for the lifetime of the app
+    pub fs_watcher: Option<notify::RecommendedWatcher>,
 }
 
 impl AppState {
@@ -238,6 +240,7 @@ impl AppState {
             repo_path,
             project_name,
             error: None,
+            fs_watcher: None,
             view: AppView::Main {
                 state: MainViewState::new(&educational_content_provider),
             },

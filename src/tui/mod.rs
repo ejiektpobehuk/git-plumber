@@ -20,6 +20,9 @@ mod message;
 pub mod model; // Made public for CLI formatter
 mod view;
 
+// FS watcher
+mod watcher;
+
 // Include the main view module
 mod loose_details;
 mod main_view;
@@ -54,6 +57,15 @@ pub fn run_tui(plumber: crate::GitPlumber) -> Result<(), String> {
 
     // Enqueue initial load as a Command; runner will execute it
     app.effects.push(crate::tui::message::Command::LoadInitial);
+
+    // Main event loop
+    // Start filesystem watcher for live updates
+    if let Ok(w) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone()) {
+        app.fs_watcher = Some(w);
+    } else if let Err(e) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone())
+    {
+        eprintln!("Watcher error: {e}");
+    }
 
     // Main event loop
     let result = run_app(&mut terminal, &mut app, &plumber, rx, tx.clone());
