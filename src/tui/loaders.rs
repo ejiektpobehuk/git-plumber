@@ -12,6 +12,15 @@ impl AppState {
     pub fn load_git_objects(&mut self, plumber: &crate::GitPlumber) -> Message {
         match &mut self.view {
             AppView::Main { state } => {
+                // Pre-build pipeline: snapshot old state for change detection
+                let (old_positions, old_nodes) = if state.has_loaded_once {
+                    state.snapshot_old_positions()
+                } else {
+                    (
+                        std::collections::HashMap::new(),
+                        std::collections::HashMap::new(),
+                    )
+                };
                 // Clear existing objects
                 state.git_objects.list.clear();
 
@@ -134,6 +143,14 @@ impl AppState {
                 }
                 state.git_objects.list.push(loose_objects_category);
 
+                // Sort lists for display consistency (natural sort for categories except "objects")
+                MainViewState::sort_tree_for_display(&mut state.git_objects.list);
+
+                // If this is not the first successful load, detect tree changes to drive UI effects
+                if state.has_loaded_once {
+                    let _ = state.detect_tree_changes(&old_positions, &old_nodes);
+                }
+
                 // Flatten the tree for display
                 state.flatten_tree();
 
@@ -153,7 +170,8 @@ impl AppState {
         match &self.view {
             AppView::Main { state } => {
                 if !state.git_objects.flat_view.is_empty() {
-                    let (_, obj) = &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let (_, obj, _) =
+                        &state.git_objects.flat_view[state.git_objects.selected_index];
                     match &obj.obj_type {
                         GitObjectType::Pack {
                             size,
@@ -201,6 +219,8 @@ impl AppState {
                             object_id,
                             parsed_object,
                             ..
+                    // tuple now contains (depth, object, status)
+
                         } => {
                             // Use cached loose object data if available, otherwise show basic info
                             let size_str = match size {
@@ -246,11 +266,13 @@ impl AppState {
         match &self.view {
             AppView::Main { state } => {
                 if !state.git_objects.flat_view.is_empty() {
-                    let (_, obj) = &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let (_, obj, _) =
+                        &state.git_objects.flat_view[state.git_objects.selected_index];
                     match &obj.obj_type {
                         GitObjectType::Category(name) => {
-                            let content =
-                                self.educational_content_provider.get_category_content(name);
+                            let content = self
+                                .educational_content_provider
+                                .get_category_content(name);
                             Message::LoadEducationalContent(Ok(content))
                         }
                         // For actual objects, show previews instead of educational content

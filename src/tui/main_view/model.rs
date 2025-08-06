@@ -1,14 +1,98 @@
 use crate::educational_content::EducationalContent;
-use std::collections::{HashMap, HashSet};
-use std::time::{Duration, Instant};
-
 use crate::tui::message::Message;
-use crate::tui::model::GitObject;
-use crate::tui::model::GitObjectType;
-use crate::tui::model::PackObject;
+use crate::tui::model::{GitObject, GitObjectType, PackObject};
 use crate::tui::widget::PackObjectWidget;
 use ratatui::text::Text;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+// ===== Natural sort helpers (module scope) =====
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum NatPart {
+    Str(String),
+    Num(u128),
+}
+
+impl Ord for NatPart {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use NatPart::*;
+        match (self, other) {
+            (Str(a), Str(b)) => a.cmp(b),
+            (Num(a), Num(b)) => a.cmp(b),
+            (Str(_), Num(_)) => std::cmp::Ordering::Less,
+            (Num(_), Str(_)) => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for NatPart {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn natural_key(s: &str) -> Vec<NatPart> {
+    let mut parts = Vec::new();
+    let mut buf = String::new();
+    let mut is_digit: Option<bool> = None;
+
+    for ch in s.chars() {
+        let d = ch.is_ascii_digit();
+        match is_digit {
+            None => {
+                is_digit = Some(d);
+                buf.push(ch.to_ascii_lowercase());
+            }
+            Some(prev) if prev == d => {
+                buf.push(ch.to_ascii_lowercase());
+            }
+            Some(_) => {
+                if let Some(true) = is_digit {
+                    parts.push(NatPart::Num(buf.parse::<u128>().unwrap_or(0)));
+                } else {
+                    parts.push(NatPart::Str(buf.clone()));
+                }
+                buf.clear();
+                is_digit = Some(d);
+                buf.push(ch.to_ascii_lowercase());
+            }
+        }
+    }
+    if !buf.is_empty() {
+        if let Some(true) = is_digit {
+            parts.push(NatPart::Num(buf.parse::<u128>().unwrap_or(0)));
+        } else {
+            parts.push(NatPart::Str(buf));
+        }
+    }
+    parts
+}
+
+// ===== Ghost overlay types =====
+
+#[derive(Debug, Clone)]
+pub struct Ghost {
+    pub until: Instant,
+    pub parent_key: Option<String>,
+    pub sibling_index: usize,
+    pub display: GitObject,
+}
+
+#[derive(Debug, Clone)]
+pub struct OldPosition {
+    pub parent_key: Option<String>,
+    pub sibling_index: usize,
+}
+
+// ===== View state types =====
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RenderStatus {
+    Normal,
+    PendingRemoval,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackFocus {
@@ -66,7 +150,7 @@ impl RegularPreViewState {
 #[derive(Debug, Clone)]
 pub struct GitObjectsState {
     pub list: Vec<GitObject>,
-    pub flat_view: Vec<(usize, GitObject)>,
+    pub flat_view: Vec<(usize, GitObject, RenderStatus)>,
     pub scroll_position: usize,
     pub selected_index: usize,
 }
@@ -82,6 +166,22 @@ impl GitObjectsState {
     }
 }
 
+impl MainViewState {
+    /// Cleanup timers; returns true if anything changed
+    pub fn prune_timeouts(&mut self) -> bool {
+        let now = Instant::now();
+        let before_ghosts = self.ghosts.len();
+        self.ghosts.retain(|_, g| g.until > now);
+        let ghosts_changed = before_ghosts != self.ghosts.len();
+
+        let before_changed = self.changed_keys.len();
+        self.changed_keys.retain(|_, until| *until > now);
+        let changed_changed = before_changed != self.changed_keys.len();
+
+        ghosts_changed || changed_changed
+    }
+}
+
 pub struct MainViewState {
     pub git_objects: GitObjectsState,
     pub git_object_info: String,
@@ -90,11 +190,14 @@ pub struct MainViewState {
     // Live update persistence
     pub last_selection: Option<SelectionIdentity>,
     pub last_scroll_positions: Option<ScrollSnapshot>,
-    // Optional change highlighting: use per-item timers
+    // Additions highlighting: per-item timers
     pub changed_keys: HashMap<String, Instant>,
-    // First-load guard to avoid initial mass highlight
+    // Deleted item overlay (red background), not mutating the tree
+    pub ghosts: HashMap<String, Ghost>,
+    // First-load guard
     pub has_loaded_once: bool,
 }
+
 #[derive(Debug, Clone)]
 pub struct SelectionIdentity {
     pub key: String,
@@ -117,10 +220,13 @@ impl MainViewState {
             last_selection: None,
             last_scroll_positions: None,
             changed_keys: HashMap::new(),
+            ghosts: HashMap::new(),
             has_loaded_once: false,
         }
     }
-    // Build a stable key for selection and change tracking
+
+    // ===== Selection key (stable identity) =====
+
     pub fn selection_key(obj: &GitObject) -> String {
         match &obj.obj_type {
             GitObjectType::Category(name) => format!("category:{name}"),
@@ -134,53 +240,293 @@ impl MainViewState {
 
     pub fn current_selection_key(&self) -> Option<String> {
         if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let (_, obj) = &self.git_objects.flat_view[self.git_objects.selected_index];
+            let (_, obj, _) = &self.git_objects.flat_view[self.git_objects.selected_index];
             Some(Self::selection_key(obj))
         } else {
             None
         }
     }
 
-    // Flatten the tree for display
-    pub fn flatten_tree(&mut self) {
-        let previous_flat = std::mem::take(&mut self.git_objects.flat_view);
-        self.git_objects.flat_view = Vec::with_capacity(previous_flat.len().max(16));
+    // ===== Change detection (snapshot/compare) =====
 
-        // Clone the objects first to avoid borrowing issues
-        let list_clone = self.git_objects.list.clone();
-
-        // Add each top-level object
-        for obj in &list_clone {
-            self.flatten_node_recursive(obj, 0);
+    pub fn snapshot_old_positions(
+        &self,
+    ) -> (HashMap<String, OldPosition>, HashMap<String, GitObject>) {
+        fn walk(
+            out_pos: &mut HashMap<String, OldPosition>,
+            out_nodes: &mut HashMap<String, GitObject>,
+            children: &Vec<GitObject>,
+            parent_key: Option<String>,
+        ) {
+            for (idx, child) in children.iter().enumerate() {
+                let key = MainViewState::selection_key(child);
+                out_pos.insert(
+                    key.clone(),
+                    OldPosition {
+                        parent_key: parent_key.clone(),
+                        sibling_index: idx,
+                    },
+                );
+                out_nodes.insert(key.clone(), child.clone());
+                if let GitObjectType::Category(_) = child.obj_type {
+                    walk(out_pos, out_nodes, &child.children, Some(key));
+                }
+            }
         }
 
-        // Compute changed keys (optional highlight)
-        if self.has_loaded_once {
-            let old_keys: HashSet<String> = previous_flat
-                .iter()
-                .map(|(_, o)| Self::selection_key(o))
-                .collect();
-            let new_keys: HashSet<String> = self
-                .git_objects
-                .flat_view
-                .iter()
-                .map(|(_, o)| Self::selection_key(o))
-                .collect();
-            // Merge per-item timers: keep existing timers for keys that still exist and haven't expired
-            let now = Instant::now();
+        let mut positions = HashMap::new();
+        let mut nodes = HashMap::new();
+        walk(&mut positions, &mut nodes, &self.git_objects.list, None);
+        (positions, nodes)
+    }
+
+    fn collect_all_keys(&self) -> HashSet<String> {
+        fn walk_keys(children: &Vec<GitObject>, acc: &mut HashSet<String>) {
+            for child in children {
+                let key = MainViewState::selection_key(child);
+                acc.insert(key);
+                if let GitObjectType::Category(_) = child.obj_type {
+                    walk_keys(&child.children, acc);
+                }
+            }
+        }
+        let mut keys = HashSet::new();
+        walk_keys(&self.git_objects.list, &mut keys);
+        keys
+    }
+
+    pub fn detect_tree_changes(
+        &mut self,
+        old_positions: &HashMap<String, OldPosition>,
+        old_nodes: &HashMap<String, GitObject>,
+    ) -> (HashSet<String>, HashSet<String>) {
+        let new_keys = self.collect_all_keys();
+        let old_keys: HashSet<String> = old_positions.keys().cloned().collect();
+
+        let added_keys: HashSet<String> = new_keys.difference(&old_keys).cloned().collect();
+        let deleted_keys: HashSet<String> = old_keys.difference(&new_keys).cloned().collect();
+
+        let now = Instant::now();
+
+        // Additions (green, 5s)
+        self.changed_keys
+            .retain(|k, until| *until > now && new_keys.contains(k));
+        for k in &added_keys {
+            // If there was a ghost for this key (re-appeared), drop it
+            self.ghosts.remove(k);
             self.changed_keys
-                .retain(|k, &mut until| until > now && new_keys.contains(k));
-            // Add new keys with fresh 5s timers
-            for k in new_keys.difference(&old_keys) {
-                self.changed_keys
-                    .insert(k.clone(), now + Duration::from_secs(5));
+                .insert(k.clone(), now + Duration::from_secs(5));
+        }
+
+        // Deletions -> ghosts overlay (red, 5s)
+        self.ghosts
+            .retain(|k, g| g.until > now && !new_keys.contains(k));
+        let ghost_duration = Duration::from_secs(5);
+        for k in &deleted_keys {
+            if self.ghosts.contains_key(k) {
+                continue;
+            }
+            if let Some(old_node) = old_nodes.get(k) {
+                let (parent_key, sibling_index) = if let Some(pos) = old_positions.get(k) {
+                    (pos.parent_key.clone(), pos.sibling_index)
+                } else {
+                    (None, 0)
+                };
+                self.ghosts.insert(
+                    k.clone(),
+                    Ghost {
+                        until: now + ghost_duration,
+                        parent_key,
+                        sibling_index,
+                        display: old_node.clone(),
+                    },
+                );
+            }
+        }
+
+        (added_keys, deleted_keys)
+    }
+
+    // ===== Sorting (natural sort for categories, except "objects") =====
+
+    pub fn sort_tree_for_display(nodes: &mut [GitObject]) {
+        for node in nodes.iter_mut() {
+            if let GitObjectType::Category(ref name) = node.obj_type {
+                if name != "objects" {
+                    node.children
+                        .sort_by(|a, b| natural_key(&a.name).cmp(&natural_key(&b.name)));
+                }
+                MainViewState::sort_tree_for_display(&mut node.children);
             }
         }
     }
 
-    // Recursive helper to flatten a node and its children
+    // ===== Flatten + overlay =====
+
+    pub fn flatten_tree(&mut self) {
+        self.git_objects.flat_view.clear();
+        self.git_objects.flat_view.reserve(16);
+
+        // Clone to avoid borrow issues while recursing
+        let list_clone = self.git_objects.list.clone();
+        for obj in &list_clone {
+            self.flatten_node_recursive(obj, 0);
+        }
+
+        // Interleave ghosts overlay based on stored positions
+        let now = Instant::now();
+        self.ghosts.retain(|_, g| g.until > now);
+        if !self.ghosts.is_empty() {
+            // Group ghosts by parent_key
+            let mut by_parent: HashMap<Option<String>, Vec<(usize, String)>> = HashMap::new();
+            for (k, g) in &self.ghosts {
+                by_parent
+                    .entry(g.parent_key.clone())
+                    .or_default()
+                    .push((g.sibling_index, k.clone()));
+            }
+            for v in by_parent.values_mut() {
+                v.sort_by_key(|(idx, _)| *idx);
+            }
+
+            let mut output: Vec<(usize, GitObject, RenderStatus)> =
+                self.git_objects.flat_view.clone();
+
+            // Top-level ghosts: precise mapping by sibling_index against top-level order
+            if let Some(top_list) = by_parent.get(&None) {
+                let top_keys: Vec<String> = self
+                    .git_objects
+                    .list
+                    .iter()
+                    .map(MainViewState::selection_key)
+                    .collect();
+
+                let find_top_flat_index =
+                    |key: &str, flat: &[(usize, GitObject, RenderStatus)]| -> Option<usize> {
+                        flat.iter()
+                            .position(|(d, o, _)| *d == 0 && MainViewState::selection_key(o) == key)
+                    };
+
+                let end_of_top_level = {
+                    let last_top_idx = output
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, (d, _, _))| *d == 0)
+                        .map(|(i, _)| i)
+                        .next_back();
+                    match last_top_idx {
+                        Some(i) => {
+                            let mut j = i + 1;
+                            while j < output.len() {
+                                if output[j].0 == 0 {
+                                    break;
+                                }
+                                j += 1;
+                            }
+                            j
+                        }
+                        None => 0,
+                    }
+                };
+
+                for (sibling_index, ghost_key) in top_list.iter().rev() {
+                    if let Some(g) = self.ghosts.get(ghost_key) {
+                        let insert_at = if *sibling_index < top_keys.len() {
+                            if let Some(idx) =
+                                find_top_flat_index(&top_keys[*sibling_index], &output)
+                            {
+                                idx
+                            } else {
+                                end_of_top_level
+                            }
+                        } else {
+                            end_of_top_level
+                        };
+                        output.insert(
+                            insert_at,
+                            (0, g.display.clone(), RenderStatus::PendingRemoval),
+                        );
+                    }
+                }
+            }
+
+            // Nested ghosts: if parent expanded, place among visible children at sibling_index;
+            // otherwise place right after parent row
+            for (parent, list) in by_parent.into_iter() {
+                if parent.is_none() {
+                    continue;
+                }
+                if let Some(parent_key) = parent {
+                    if let Some(parent_row) = output
+                        .iter()
+                        .position(|(_, o, _)| Self::selection_key(o) == parent_key)
+                    {
+                        let parent_depth = output[parent_row].0;
+                        let parent_expanded =
+                            if let GitObjectType::Category(_) = output[parent_row].1.obj_type {
+                                output[parent_row].1.expanded
+                            } else {
+                                false
+                            };
+
+                        let mut child_rows: Vec<usize> = Vec::new();
+                        if parent_expanded {
+                            let mut i = parent_row + 1;
+                            while i < output.len() {
+                                let (d, _, _) = &output[i];
+                                if *d <= parent_depth {
+                                    break;
+                                }
+                                if *d == parent_depth + 1 {
+                                    child_rows.push(i);
+                                }
+                                i += 1;
+                            }
+                        }
+
+                        for (sibling_index, ghost_key) in list.into_iter().rev() {
+                            if let Some(g) = self.ghosts.get(&ghost_key) {
+                                let insert_at = if parent_expanded {
+                                    if sibling_index < child_rows.len() {
+                                        child_rows[sibling_index]
+                                    } else {
+                                        child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
+                                    }
+                                } else {
+                                    parent_row + 1
+                                };
+                                output.insert(
+                                    insert_at,
+                                    (
+                                        parent_depth + 1,
+                                        g.display.clone(),
+                                        RenderStatus::PendingRemoval,
+                                    ),
+                                );
+                                for r in &mut child_rows {
+                                    if *r >= insert_at {
+                                        *r += 1;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            self.git_objects.flat_view = output;
+        }
+
+        // Cleanup expired changed-keys timers
+        let now = Instant::now();
+        self.changed_keys.retain(|_, until| *until > now);
+    }
+
+    // Recursive flattener
     fn flatten_node_recursive(&mut self, node: &GitObject, depth: usize) {
-        self.git_objects.flat_view.push((depth, node.clone()));
+        self.git_objects
+            .flat_view
+            .push((depth, node.clone(), RenderStatus::Normal));
 
         if node.expanded {
             for child in &node.children {
@@ -208,18 +554,15 @@ impl MainViewState {
         }
     }
 
-    // Toggle expansion state of the selected node
+    // Toggle expansion for categories
     pub fn toggle_expand(&mut self) -> Message {
         if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let (_, selected_obj) =
+            let (_, selected_obj, _) =
                 &self.git_objects.flat_view[self.git_objects.selected_index].clone();
 
-            // Only toggle expand for Category type objects
             if let GitObjectType::Category(category_name) = &selected_obj.obj_type {
-                // Store the name for re-selection later
                 let name_to_find = category_name.clone();
 
-                // Find and toggle a category
                 fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
                     if let GitObjectType::Category(name) = &obj.obj_type {
                         if name == target_name {
@@ -227,7 +570,6 @@ impl MainViewState {
                             return true;
                         }
                     }
-
                     for child in &mut obj.children {
                         if find_and_toggle_category(child, target_name) {
                             return true;
@@ -236,19 +578,17 @@ impl MainViewState {
                     false
                 }
 
-                // Search through all top-level objects
                 for obj in &mut self.git_objects.list {
                     if find_and_toggle_category(obj, &name_to_find) {
                         break;
                     }
                 }
 
-                // Rebuild the flattened view
                 self.flatten_tree();
 
-                // Try to keep the selected item visible
+                // Keep the selected category visible
                 let mut new_index = 0;
-                for (i, (_, obj)) in self.git_objects.flat_view.iter().enumerate() {
+                for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
                     if let GitObjectType::Category(name) = &obj.obj_type {
                         if name == &name_to_find {
                             new_index = i;

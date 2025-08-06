@@ -147,7 +147,21 @@ fn run_app<B: ratatui::backend::Backend>(
                     run_commands(app);
                 }
             }
-            recv(ticker) -> _ => { /* periodic tick, could trigger refreshes */ }
+            recv(ticker) -> _ => {
+                // Periodic maintenance: expire ephemeral highlights (new + deleted)
+                let mut needs_redraw = false;
+                if let crate::tui::model::AppView::Main { state } = &mut app.view {
+                    if state.prune_timeouts() {
+                        state.flatten_tree();
+                        needs_redraw = true;
+                    }
+                }
+                if needs_redraw {
+                    terminal
+                        .draw(|f| draw_ui(f, app))
+                        .map_err(|e| format!("Failed to draw: {e}"))?;
+                }
+            }
             default => {
                 // Non-blocking keyboard handling
                 if event::poll(Duration::from_millis(0))

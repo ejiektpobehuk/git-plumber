@@ -195,7 +195,7 @@ impl AppState {
                             // Extract the information we need before calling update to avoid borrow conflicts
                             let has_items = !state.git_objects.flat_view.is_empty();
                             let selected_index = state.git_objects.selected_index;
-                            let is_pack = if let Some((_, git_object)) =
+                            let is_pack = if let Some((_, git_object, _)) =
                                 state.git_objects.flat_view.get(selected_index)
                             {
                                 matches!(git_object.obj_type, GitObjectType::Pack { .. })
@@ -220,13 +220,13 @@ impl AppState {
                         if !state.git_objects.flat_view.is_empty()
                             && state.git_objects.selected_index < state.git_objects.flat_view.len()
                         {
-                            let (current_depth, _) =
+                            let (current_depth, _, _) =
                                 &state.git_objects.flat_view[state.git_objects.selected_index];
 
                             if *current_depth > 0 {
                                 // Find parent category by looking backwards for an object at depth - 1
                                 for i in (0..state.git_objects.selected_index).rev() {
-                                    let (parent_depth, parent_obj) =
+                                    let (parent_depth, parent_obj, _) =
                                         &state.git_objects.flat_view[i];
                                     if *parent_depth == current_depth - 1 {
                                         if let GitObjectType::Category(_) = &parent_obj.obj_type {
@@ -703,7 +703,7 @@ impl AppState {
                 } = &self.view
                 {
                     // Get the currently selected loose object
-                    if let Some((_, git_object)) =
+                    if let Some((_, git_object, _)) =
                         git_objects.flat_view.get(git_objects.selected_index)
                     {
                         if let GitObjectType::LooseObject {
@@ -751,7 +751,7 @@ impl AppState {
         if let AppView::Main { state } = &mut self.view {
             if is_pack {
                 // Ensure we have a Pack preview state
-                if let Some((_, git_object)) = state.git_objects.flat_view.get(selected_index) {
+                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index) {
                     if let GitObjectType::Pack { path, .. } = &git_object.obj_type {
                         match &state.preview_state {
                             PreviewState::Pack(pack_state)

@@ -25,7 +25,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         if !state.git_objects.flat_view.is_empty()
                             && state.git_objects.selected_index < state.git_objects.flat_view.len()
                         {
-                            let (current_depth, selected_obj) =
+                            let (current_depth, selected_obj, _) =
                                 &state.git_objects.flat_view[state.git_objects.selected_index];
                             match &selected_obj.obj_type {
                                 GitObjectType::Category(_) => {
@@ -65,7 +65,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                 PreviewState::Regular(preview_state) => match preview_state.focus {
                     RegularFocus::GitObjects => {
                         // Check if the selected object is a loose object
-                        if let Some((_, git_object)) = state
+                        if let Some((_, git_object, _)) = state
                             .git_objects
                             .flat_view
                             .get(state.git_objects.selected_index)

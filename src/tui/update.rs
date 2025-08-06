@@ -24,7 +24,26 @@ impl AppState {
             Message::GitObjectsLoaded(data) => {
                 // Apply the loaded git objects list to the MainView state
                 if let AppView::Main { state } = &mut self.view {
+                    // Snapshot for change detection if we already had a successful load
+                    let (old_positions, old_nodes) = if state.has_loaded_once {
+                        state.snapshot_old_positions()
+                    } else {
+                        (
+                            std::collections::HashMap::new(),
+                            std::collections::HashMap::new(),
+                        )
+                    };
+
                     state.git_objects.list = data.git_objects_list;
+
+                    // Ensure natural sorting for categories except "objects"
+                    MainViewState::sort_tree_for_display(&mut state.git_objects.list);
+
+                    // Detect changes (added/deleted) to drive highlighting/ghosts
+                    if state.has_loaded_once {
+                        let _ = state.detect_tree_changes(&old_positions, &old_nodes);
+                    }
+
                     state.flatten_tree();
 
                     // Try to restore previous selection
@@ -33,7 +52,7 @@ impl AppState {
                             .git_objects
                             .flat_view
                             .iter()
-                            .position(|(_, o)| MainViewState::selection_key(o) == sel.key)
+                            .position(|(_, o, _)| MainViewState::selection_key(o) == sel.key)
                         {
                             state.git_objects.selected_index = idx;
                         } else if state.git_objects.selected_index
@@ -164,6 +183,8 @@ impl AppState {
                         preview_scroll,
                         pack_list_scroll,
                     });
+
+                    // Ghosts are pruned during flatten_tree; no explicit cleanup needed here.
                 }
                 // Reload everything from scratch
                 self.effects.push(crate::tui::message::Command::LoadInitial);

@@ -345,7 +345,7 @@ fn render_git_tree(
         state.git_objects.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
-        |i, (depth, obj), is_selected| {
+        |i, (depth, obj, status), is_selected| {
             // Create indentation based on depth
             let indent = if *depth > 0 {
                 let mut indent = String::new();
@@ -358,7 +358,7 @@ fn render_git_tree(
                         // Find the ancestor of the current item at depth d+1
                         let mut ancestor_index = None;
                         for k in (0..i).rev() {
-                            let (ancestor_depth, _) = &state.git_objects.flat_view[k];
+                            let (ancestor_depth, _, _) = &state.git_objects.flat_view[k];
                             if *ancestor_depth == d + 1 {
                                 ancestor_index = Some(k);
                                 break;
@@ -371,7 +371,7 @@ fn render_git_tree(
                         if let Some(ancestor_idx) = ancestor_index {
                             let mut has_sibling = false;
                             for j in (ancestor_idx + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
                                 if *next_depth == d + 1 {
                                     has_sibling = true;
                                     break;
@@ -404,7 +404,7 @@ fn render_git_tree(
                             let is_last = {
                                 let mut is_last = true;
                                 for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _) = &state.git_objects.flat_view[j];
+                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
                                     if *next_depth == *depth {
                                         is_last = false;
                                         break;
@@ -423,7 +423,9 @@ fn render_git_tree(
                         let is_last = {
                             let mut is_last = true;
                             for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                // next_depth check considers tuple (usize, GitObject, RenderStatus)
+
                                 if *next_depth == *depth {
                                     is_last = false;
                                     break;
@@ -438,13 +440,15 @@ fn render_git_tree(
                 }
                 GitObjectType::Category(_) => {
                     if *depth == 0 {
+                        // PATCH: adjusted tuple pattern matching for flat_view entries to include RenderStatus
+
                         "  "
                     } else {
                         // Find if this is the last category at this depth
                         let is_last = {
                             let mut is_last = true;
                             for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _) = &state.git_objects.flat_view[j];
+                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
                                 if *next_depth == *depth {
                                     is_last = false;
                                     break;
@@ -463,7 +467,7 @@ fn render_git_tree(
                         // Look ahead to find the next item at the same depth
                         let mut is_last = true;
                         for j in (i + 1)..state.git_objects.flat_view.len() {
-                            let (next_depth, _) = &state.git_objects.flat_view[j];
+                            let (next_depth, _, _) = &state.git_objects.flat_view[j];
                             if *next_depth == *depth {
                                 is_last = false;
                                 break;
@@ -494,12 +498,16 @@ fn render_git_tree(
             let key = MainViewState::selection_key(obj);
 
             ListItem::new(display_text).style({
-                // Optional highlight for changed items
+                // Optional highlight for changed items and pending removals
                 let mut style = if is_selected {
                     Style::default().fg(Color::Yellow)
                 } else {
                     Style::default()
                 };
+                // Pending removal takes precedence: red background
+                if matches!(status, super::model::RenderStatus::PendingRemoval) {
+                    style = style.bg(Color::Red);
+                }
                 if let Some(until) = state.changed_keys.get(&key).copied() {
                     if until > std::time::Instant::now() {
                         // apply green background even if selected
