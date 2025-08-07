@@ -270,9 +270,8 @@ impl AppState {
                         &state.git_objects.flat_view[state.git_objects.selected_index];
                     match &obj.obj_type {
                         GitObjectType::Category(name) => {
-                            let content = self
-                                .educational_content_provider
-                                .get_category_content(name);
+                            let content =
+                                self.educational_content_provider.get_category_content(name);
                             Message::LoadEducationalContent(Ok(content))
                         }
                         // For actual objects, show previews instead of educational content

@@ -1,7 +1,94 @@
+use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Direction, Layout};
+
+fn apply_git_tree_highlight_fx(
+    buf: &mut Buffer,
+    area: ratatui::layout::Rect,
+    state: &crate::tui::main_view::MainViewState,
+    reduced: bool,
+    now: std::time::Instant,
+) {
+    let (hold_ms, shrink_ms) = if reduced {
+        (5000_u64, 0_u64)
+    } else {
+        (1000_u64, 4000_u64)
+    };
+    let total = hold_ms + shrink_ms;
+
+    // Use inner content area (exclude borders) so row indexing matches rendered list rows
+    let start_row = area.y.saturating_add(1);
+    let end_row = area.y.saturating_add(area.height.saturating_sub(1));
+    let start_col = area.x.saturating_add(1);
+    let width = area.width.saturating_sub(2);
+
+    for (row_idx, y) in (start_row..end_row).enumerate() {
+        let idx = state.git_objects.scroll_position + row_idx;
+        if idx >= state.git_objects.flat_view.len() {
+            continue;
+        }
+        let (_depth, obj, status) = &state.git_objects.flat_view[idx];
+        let key = crate::tui::main_view::MainViewState::selection_key(obj);
+
+        let mut color: Option<ratatui::style::Color> = None;
+        let mut start: Option<std::time::Instant> = None;
+
+        if let Some(until) = state.changed_keys.get(&key).copied() {
+            if until > now {
+                color = Some(ratatui::style::Color::Green);
+                start = Some(until - std::time::Duration::from_millis(total));
+            }
+        }
+        if matches!(status, crate::tui::main_view::RenderStatus::PendingRemoval) {
+            if let Some(g) = state.ghosts.get(&key) {
+                if g.until > now {
+                    color = Some(ratatui::style::Color::Red);
+                    start = Some(g.until - std::time::Duration::from_millis(total));
+                }
+            }
+        }
+
+        let (bg, start_at) = match (color, start) {
+            (Some(c), Some(s)) => (c, s),
+            _ => continue,
+        };
+
+        let n_cols: u16 = if reduced {
+            if now.duration_since(start_at).as_millis() as u64 <= hold_ms {
+                width
+            } else {
+                0
+            }
+        } else {
+            let elapsed = now.saturating_duration_since(start_at);
+            if elapsed.as_millis() as u64 <= hold_ms {
+                width
+            } else {
+                let after = elapsed - std::time::Duration::from_millis(hold_ms);
+                if after.as_millis() as u64 >= shrink_ms {
+                    0
+                } else {
+                    let p = after.as_secs_f32() / (shrink_ms as f32 / 1000.0);
+                    ((width as f32) * (1.0 - p)).ceil() as u16
+                }
+            }
+        };
+
+        if n_cols == 0 {
+            continue;
+        }
+
+        let hi = n_cols.min(width);
+        for dx in 0..hi {
+            let x = start_col + dx;
+            if let Some(cell) = buf.cell_mut((x, y)) { let s = cell.style().bg(bg); cell.set_style(s); }
+        }
+    }
+}
+
 use ratatui::style::{Color, Style};
 use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
+use std::time::Instant;
 
 use super::model::{MainViewState, PackFocus, RegularFocus};
 use super::{PackPreViewState, PreviewState, RegularPreViewState};
@@ -10,6 +97,7 @@ use crate::tui::model::{AppState, AppView, GitObjectType};
 
 pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout::Rect) {
     let project_name = app.project_name.clone();
+    let reduced = app.reduced_motion;
     if let AppView::Main { state } = &mut app.view {
         // Split main content into two blocks
         let content_chunks = Layout::default()
@@ -23,7 +111,15 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
             )
             .split(area);
 
-        render_git_tree(f, state, project_name, content_chunks[0]);
+        render_git_tree(f, state, project_name, content_chunks[0], reduced);
+        // Apply cell-based highlight after rendering the tree
+        apply_git_tree_highlight_fx(
+            f.buffer_mut(),
+            content_chunks[0],
+            state,
+            reduced,
+            Instant::now(),
+        );
         match &state.preview_state {
             PreviewState::Regular(_) => {
                 render_regular_preview_layout(f, state, &app.error, content_chunks[1])
@@ -336,6 +432,7 @@ fn render_git_tree(
     state: &mut MainViewState,
     project_name: String,
     area: ratatui::layout::Rect,
+    reduced: bool,
 ) {
     render_list_with_scrollbar(
         f,
@@ -345,7 +442,7 @@ fn render_git_tree(
         state.git_objects.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
-        |i, (depth, obj, status), is_selected| {
+        |i, (depth, obj, _status), is_selected| { let _ = reduced;
             // Create indentation based on depth
             let indent = if *depth > 0 {
                 let mut indent = String::new();
@@ -494,30 +591,15 @@ fn render_git_tree(
             };
 
             let display_text = format!("{}{}{}", indent, prefix, obj.name);
+            let _key = MainViewState::selection_key(obj);
 
-            let key = MainViewState::selection_key(obj);
-
+            // Simple item rendering; highlight is applied in a post-render cell pass
             ListItem::new(display_text).style({
-                // Optional highlight for changed items and pending removals
-                let mut style = if is_selected {
+                if is_selected {
                     Style::default().fg(Color::Yellow)
                 } else {
                     Style::default()
-                };
-                // Pending removal takes precedence: red background
-                if matches!(status, super::model::RenderStatus::PendingRemoval) {
-                    style = style.bg(Color::Red);
                 }
-                if let Some(until) = state.changed_keys.get(&key).copied() {
-                    if until > std::time::Instant::now() {
-                        // apply green background even if selected
-                        style = style.bg(Color::Green);
-                    } else {
-                        // Expired: drop it lazily
-                        state.changed_keys.remove(&key);
-                    }
-                }
-                style
             })
         },
     );

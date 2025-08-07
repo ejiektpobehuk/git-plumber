@@ -1,4 +1,63 @@
 use crossbeam_channel::{Receiver, select, tick, unbounded};
+pub fn run_tui_with_options(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), String> {
+    // Terminal initialization
+    enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
+    let mut stdout = io::stdout();
+    stdout
+        .execute(EnterAlternateScreen)
+        .map_err(|e| format!("Failed to enter alternate screen: {e}"))?;
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal =
+        Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {e}"))?;
+
+    // Initialize application state
+    let mut app = AppState::new(plumber.get_repo_path().to_path_buf());
+    app.reduced_motion = opts.reduced_motion;
+
+    // Background channel for worker -> UI messages
+    let (tx, rx) = unbounded::<crate::tui::message::Message>();
+    app.set_tx(tx.clone());
+
+    // Enqueue initial load as a Command; runner will execute it
+    app.effects.push(crate::tui::message::Command::LoadInitial);
+
+    // Start filesystem watcher for live updates
+    if let Ok(w) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone()) {
+        app.fs_watcher = Some(w);
+    } else if let Err(e) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone())
+    {
+        eprintln!("Watcher error: {e}");
+    }
+
+    // Main event loop
+    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx.clone());
+
+    // Clean up
+    disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {e}"))?;
+    terminal
+        .backend_mut()
+        .execute(LeaveAlternateScreen)
+        .map_err(|e| format!("Failed to leave alternate screen: {e}"))?;
+    terminal
+        .show_cursor()
+        .map_err(|e| format!("Failed to show cursor: {e}"))?;
+
+    result
+}
+
+pub fn run_tui(plumber: crate::GitPlumber) -> Result<(), String> {
+    run_tui_with_options(
+        plumber,
+        RunOptions {
+            reduced_motion: false,
+        },
+    )
+}
+
+pub struct RunOptions {
+    pub reduced_motion: bool,
+}
+
 use crossterm::ExecutableCommand;
 use crossterm::event::{self, Event};
 use crossterm::terminal::{
@@ -36,52 +95,6 @@ mod navigation;
 mod pure_loaders;
 mod scrolling;
 mod update;
-
-pub fn run_tui(plumber: crate::GitPlumber) -> Result<(), String> {
-    // Terminal initialization
-    enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
-    let mut stdout = io::stdout();
-    stdout
-        .execute(EnterAlternateScreen)
-        .map_err(|e| format!("Failed to enter alternate screen: {e}"))?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal =
-        Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {e}"))?;
-
-    // Initialize application state
-    let mut app = AppState::new(plumber.get_repo_path().to_path_buf());
-
-    // Background channel for worker -> UI messages
-    let (tx, rx) = unbounded::<crate::tui::message::Message>();
-    app.set_tx(tx.clone());
-
-    // Enqueue initial load as a Command; runner will execute it
-    app.effects.push(crate::tui::message::Command::LoadInitial);
-
-    // Main event loop
-    // Start filesystem watcher for live updates
-    if let Ok(w) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone()) {
-        app.fs_watcher = Some(w);
-    } else if let Err(e) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone())
-    {
-        eprintln!("Watcher error: {e}");
-    }
-
-    // Main event loop
-    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx.clone());
-
-    // Clean up
-    disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {e}"))?;
-    terminal
-        .backend_mut()
-        .execute(LeaveAlternateScreen)
-        .map_err(|e| format!("Failed to leave alternate screen: {e}"))?;
-    terminal
-        .show_cursor()
-        .map_err(|e| format!("Failed to show cursor: {e}"))?;
-
-    result
-}
 
 fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
@@ -151,6 +164,10 @@ fn run_app<B: ratatui::backend::Backend>(
                 // Periodic maintenance: expire ephemeral highlights (new + deleted)
                 let mut needs_redraw = false;
                 if let crate::tui::model::AppView::Main { state } = &mut app.view {
+                    // Redraw while animations are active
+                    if !state.changed_keys.is_empty() || !state.ghosts.is_empty() {
+                        needs_redraw = true;
+                    }
                     if state.prune_timeouts() {
                         state.flatten_tree();
                         needs_redraw = true;

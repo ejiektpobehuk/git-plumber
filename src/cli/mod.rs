@@ -64,7 +64,11 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Start the TUI interface
-    Tui {},
+    Tui {
+        /// Reduce motion/animations in the TUI
+        #[arg(long = "reduced-motion", short = 'm', action = clap::ArgAction::SetTrue)]
+        reduced_motion: bool,
+    },
 
     /// List objects
     List {
@@ -107,10 +111,12 @@ pub fn run() -> Result<(), String> {
     let plumber = crate::GitPlumber::new(&cli.repo_path);
 
     match &cli.command {
-        Some(Commands::Tui {}) => {
-            // This will be implemented later
-            crate::tui::run_tui(plumber)
-        }
+        Some(Commands::Tui { reduced_motion }) => crate::tui::run_tui_with_options(
+            plumber,
+            crate::tui::RunOptions {
+                reduced_motion: *reduced_motion,
+            },
+        ),
         Some(Commands::List { object_type }) => {
             match object_type.as_str() {
                 "pack" => {

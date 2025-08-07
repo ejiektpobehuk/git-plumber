@@ -211,6 +211,8 @@ pub struct AppState {
     pub effects: Vec<crate::tui::message::Command>,
     // Keep FS watcher alive for the lifetime of the app
     pub fs_watcher: Option<notify::RecommendedWatcher>,
+    // Preferences
+    pub reduced_motion: bool,
 }
 
 impl AppState {
@@ -249,6 +251,8 @@ impl AppState {
             educational_content_provider,
             tx: None,
             effects: Vec::new(),
+            // Default; overwritten by run_tui_with_options
+            reduced_motion: false,
         }
     }
 
