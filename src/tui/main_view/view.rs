@@ -342,7 +342,7 @@ fn render_pack_file_preview(
     }
 }
 
-pub fn navigation_hints(app: &AppState) -> Vec<Span> {
+pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
     let is_wide_screen = app.is_wide_screen();
     let mut hints = Vec::new();
     if let AppView::Main { state } = &app.view {

@@ -19,7 +19,7 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
     }
 }
 
-pub fn navigation_hints(app: &AppState) -> Vec<Span> {
+pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
     match &app.view {
         AppView::LooseObjectDetail { .. } => {
             vec![
