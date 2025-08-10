@@ -81,9 +81,7 @@ For planned features checkout [issues at GitHub](https://github.com/ejiektpobehu
 
 **Major goals**:
 
-- Navigation hints
 - Support for all native git files
-- Clear "unsupported" indicators
 - Internationalization (i18n)
 - [git-bug](https://github.com/git-bug/git-bug) support
 - [jj](https://github.com/jj-vcs/jj) support
@@ -91,6 +89,17 @@ For planned features checkout [issues at GitHub](https://github.com/ejiektpobehu
 **PRs/issues welcome — no need to be a git guru!**
 Beginners and documentation helpers are especially appreciated.
 If something is unclear, that’s a sign the app can get better: lease [open an issue](https://github.com/ejiektpobehuk/git-plumber/issues/new) or start a discussion!
+
+Read the project’s Guiding Principles and contribution tips in [CONTRIBUTING.md](https://github.com/ejiektpobehuk/git-plumber/blob/main/CHANGELOG.md).
+
+---
+
+## Why the 'git-plumber' name?
+
+In Git terms, “porcelain” is the friendly VCS user-facing interface, while “plumbing” is the low-level machinery underneath — the content‑addressed filesystem with packfiles, deltas and much more.
+It's described in more details in  [Pro Git, Chapter 10.1 Git Internals - Plumbing and Porcelain](https://git-scm.com/book/en/v2/Git-Internals-Plumbing-and-Porcelain).
+
+`git-plumber` helps you to explore the plumbing part.
 
 ---
 
