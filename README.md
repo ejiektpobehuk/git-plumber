@@ -90,7 +90,7 @@ For planned features checkout [issues at GitHub](https://github.com/ejiektpobehu
 Beginners and documentation helpers are especially appreciated.
 If something is unclear, that’s a sign the app can get better: lease [open an issue](https://github.com/ejiektpobehuk/git-plumber/issues/new) or start a discussion!
 
-Read the project’s Guiding Principles and contribution tips in [CONTRIBUTING.md](https://github.com/ejiektpobehuk/git-plumber/blob/main/CHANGELOG.md).
+Read the project’s Guiding Principles and contribution tips in [CONTRIBUTING.md](https://github.com/ejiektpobehuk/git-plumber/blob/main/CONTRIBUTING.md).
 
 ---
 
