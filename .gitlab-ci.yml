@@ -1,0 +1,320 @@
+stages:
+  - check
+  - test
+  - build
+  - cache
+  - release
+  - container
+
+default:
+  image: rust:1-bookworm
+  before_script:
+    - rustup show
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry
+      - .cargo/git
+    policy: pull-push
+
+variables:
+  CARGO_TERM_COLOR: always
+  GITHUB_REPO: "ejiektpobehuk/git-plumber"
+  CARGO_INCREMENTAL: "0"
+
+workflow:
+  rules:
+    # Always run for version tags (releases)
+    - if: '$CI_COMMIT_TAG'
+      when: always
+    # Run pipelines only when relevant project files change
+    - changes:
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
+        - flake.nix
+        - flake.lock
+        - .gitlab-ci.yml
+        - .github/docker/Dockerfile
+      when: always
+    # Skip for everything else (e.g., docs-only changes)
+    - when: never
+
+# Template for GitLab hosted macOS runners (beta, suitable for OSS)
+.macos_saas_runners:
+  tags:
+    - saas-macos-medium-m1
+  image: macos-15-xcode-16
+  variables:
+    HOMEBREW_NO_AUTO_UPDATE: "1"
+  before_script:
+    - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    - export PATH="$HOME/.cargo/bin:$PATH"
+    - rustup default stable
+
+# Template for GitLab hosted Windows runners (beta)
+.windows_saas_runners:
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    - Set-ExecutionPolicy Bypass -Scope Process -Force
+    - Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -UseBasicParsing -OutFile rustup-init.exe
+    - ./rustup-init.exe -y
+    - $Env:PATH = "$Env:USERPROFILE\.cargo\bin;$Env:PATH"
+    - rustup default stable
+
+# Run clippy only when Rust sources or cargo files change
+clippy:
+  stage: check
+  rules:
+    - changes:
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
+  script:
+    - rustup component add clippy
+    - cargo clippy --all-targets --all-features -- -D warnings
+  allow_failure: true
+
+# Run tests only when Rust sources or cargo files change
+test:
+  stage: test
+  rules:
+    - changes:
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
+  script:
+    - cargo test --all-features --locked
+
+# Shared template for Linux builds
+.linux_build:
+  stage: build
+  needs: ["clippy", "test"]
+  rules:
+    - changes:
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
+    - if: "$CI_COMMIT_TAG"
+  before_script:
+    - !reference [default, before_script]
+    - rustup target add "$TARGET"
+    - |
+      if [ -n "${EXTRA_APT:-}" ]; then
+        apt-get update && apt-get install -y --no-install-recommends ${EXTRA_APT}
+      fi
+  cache:
+    key:
+      prefix: "$TARGET"
+      files:
+        - Cargo.lock
+    paths:
+      - target
+      - .cargo/registry
+      - .cargo/git
+    policy: pull-push
+  script:
+    - cargo build --release --target "$TARGET" --locked
+    - mkdir -p dist
+    - cp "target/$TARGET/release/git-plumber" "dist/$OUT"
+  artifacts:
+    expire_in: 7 days
+    when: on_success
+    paths:
+      - dist/
+
+# DRY: Linux builds via matrix
+build:linux:
+  extends: [.linux_build]
+  parallel:
+    matrix:
+      - TARGET: x86_64-unknown-linux-gnu
+        OUT: git-plumber-linux-x86_64
+      - TARGET: x86_64-unknown-linux-musl
+        OUT: git-plumber-linux-x86_64-static
+        RUSTFLAGS: "-C target-feature=+crt-static"
+        EXTRA_APT: "musl-tools musl-dev"
+      - TARGET: aarch64-unknown-linux-gnu
+        OUT: git-plumber-linux-aarch64
+        EXTRA_APT: "gcc-aarch64-linux-gnu"
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      - TARGET: aarch64-unknown-linux-musl
+        OUT: git-plumber-linux-aarch64-static
+        RUSTFLAGS: "-C target-feature=+crt-static"
+        EXTRA_APT: "musl-tools musl-dev gcc-aarch64-linux-gnu"
+        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+
+# macOS builds — require self-hosted macOS runners with corresponding tags
+macos:build:x86_64:
+  stage: build
+  extends: [.macos_saas_runners]
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  script:
+    - rustup target add x86_64-apple-darwin
+    - cargo build --release --target x86_64-apple-darwin --locked
+    - mkdir -p dist
+    - cp target/x86_64-apple-darwin/release/git-plumber dist/git-plumber-macos-x86_64
+  artifacts:
+    expire_in: 7 days
+    when: on_success
+    paths:
+      - dist/git-plumber-macos-x86_64
+
+macos:build:arm64:
+  stage: build
+  extends: [.macos_saas_runners]
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  script:
+    - rustup target add aarch64-apple-darwin
+    - cargo build --release --target aarch64-apple-darwin --locked
+    - mkdir -p dist
+    - cp target/aarch64-apple-darwin/release/git-plumber dist/git-plumber-macos-aarch64
+  artifacts:
+    expire_in: 7 days
+    when: on_success
+    paths:
+      - dist/git-plumber-macos-aarch64
+
+# Windows builds (MSVC) — require self-hosted Windows runners tagged accordingly
+windows:build:x86_64:
+  stage: build
+  extends: [.windows_saas_runners]
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  script:
+    - rustup target add x86_64-pc-windows-msvc
+    - cargo build --release --target x86_64-pc-windows-msvc --locked
+    - New-Item -ItemType Directory -Path dist -Force | Out-Null
+    - Copy-Item 'target\x86_64-pc-windows-msvc\release\git-plumber.exe' 'dist\git-plumber-windows-x86_64.exe'
+  artifacts:
+    expire_in: 7 days
+    when: on_success
+    paths:
+      - dist/git-plumber-windows-x86_64.exe
+
+windows:build:arm64:
+  stage: build
+  tags: ["windows-arm64"]
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  before_script:
+    - powershell -NoProfile -ExecutionPolicy Bypass -Command "rustup toolchain install stable; rustup default stable; rustup target add aarch64-pc-windows-msvc"
+  script:
+    - powershell -NoProfile -ExecutionPolicy Bypass -Command "cargo build --release --target aarch64-pc-windows-msvc --locked; New-Item -ItemType Directory -Path dist -Force | Out-Null; Copy-Item 'target\\aarch64-pc-windows-msvc\\release\\git-plumber.exe' 'dist\\git-plumber-windows-aarch64.exe'"
+  artifacts:
+    expire_in: 7 days
+    when: on_success
+    paths:
+      - dist/git-plumber-windows-aarch64.exe
+
+# Optional: Nix build and push to Cachix on default branch
+nix_build_cache:
+  stage: cache
+  image: nixos/nix:2.30.2
+  needs: ["clippy", "test"]
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      changes:
+        - flake.nix
+        - flake.lock
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
+  variables:
+    NIX_CONFIG: "experimental-features = nix-command flakes"
+  script:
+    - nix-env -iA nixpkgs.cachix
+    - cachix authtoken "$CACHIX_AUTH_TOKEN"
+    - nix build .#git-plumber --no-link --print-out-paths | xargs -r cachix push git-plumber
+
+# Create GitHub Release and upload Linux artifacts on tags v*
+release:github:
+  stage: release
+  image: debian:bookworm
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends ca-certificates curl gnupg
+    - curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | tee /usr/share/keyrings/githubcli-archive-keyring.gpg >/dev/null
+    - chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+    - echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+    - apt-get update
+    - |
+      if [ -n "${GH_CLI_VERSION:-}" ]; then
+        apt-get install -y --no-install-recommends "gh=${GH_CLI_VERSION}*" || apt-get install -y --no-install-recommends gh
+      else
+        apt-get install -y --no-install-recommends gh
+      fi
+    - gh --version
+  script:
+    - ls -la dist
+    - export GH_TOKEN="$GITHUB_TOKEN"
+    - |
+      if gh release view "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
+        echo "Release exists, will upload assets (clobber)"
+      else
+        gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" --title "Release $CI_COMMIT_TAG" --notes "Automated release from GitLab CI"
+      fi
+    - gh release upload "$CI_COMMIT_TAG" dist/git-plumber-* --repo "$GITHUB_REPO" --clobber
+
+# Publish to crates.io on tags v*
+crates:publish:
+  stage: release
+  image: rust:1-bookworm
+  rules:
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  variables:
+    CARGO_REGISTRY_TOKEN: "$CRATES_TOKEN"
+  script:
+    - cargo publish --token "$CRATES_TOKEN" --locked
+
+# Publish multi-arch Docker image tagged `dev` on default branch
+docker:publish:
+  stage: container
+  image: docker:28.3.3
+  services:
+    - docker:28.3.3-dind
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  variables:
+    DOCKER_DRIVER: overlay2
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  before_script:
+    - apk add --no-cache bash coreutils
+    - docker version
+    - docker run --privileged --rm tonistiigi/binfmt --install all
+    - docker buildx create --use --name builder
+    - mkdir -p amd64 arm64
+    - mv dist/git-plumber-linux-x86_64-static amd64/git-plumber
+    - mv dist/git-plumber-linux-aarch64-static arm64/git-plumber
+    - chmod +x amd64/git-plumber arm64/git-plumber
+    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+    - echo "$GITHUB_TOKEN"   | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
+  script:
+    - |
+      TAG_ARGS=( )
+      if [[ -n "${CI_COMMIT_TAG}" ]]; then
+        TAG_ARGS+=(
+          -t "$DOCKER_USERNAME/git-plumber:latest"
+          -t "$DOCKER_USERNAME/git-plumber:${CI_COMMIT_TAG}"
+          -t "ghcr.io/$GITHUB_REPO:latest"
+          -t "ghcr.io/$GITHUB_REPO:${CI_COMMIT_TAG}"
+        )
+      else
+        TAG_ARGS+=(
+          -t "$DOCKER_USERNAME/git-plumber:dev"
+          -t "ghcr.io/$GITHUB_REPO:dev"
+        )
+      fi
+      docker buildx build \
+        --platform linux/amd64,linux/arm64 \
+        -f .github/docker/Dockerfile \
+        "${TAG_ARGS[@]}" \
+        --push .
