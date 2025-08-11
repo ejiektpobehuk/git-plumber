@@ -27,7 +27,7 @@ variables:
 workflow:
   rules:
     # Always run for version tags (releases)
-    - if: '$CI_COMMIT_TAG'
+    - if: '$CI_COMMIT_TAG =~ /^v.*/'
       when: always
     # Run pipelines only when relevant project files change
     - changes:
@@ -73,6 +73,7 @@ clippy:
         - src/**/*
         - Cargo.toml
         - Cargo.lock
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
   script:
     - rustup component add clippy
     - cargo clippy --all-targets --all-features -- -D warnings
@@ -86,6 +87,7 @@ test:
         - src/**/*
         - Cargo.toml
         - Cargo.lock
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
   script:
     - cargo test --all-features --locked
 
@@ -98,7 +100,7 @@ test:
         - src/**/*
         - Cargo.toml
         - Cargo.lock
-    - if: "$CI_COMMIT_TAG"
+    - if: "$CI_COMMIT_TAG =~ /^v.*/"
   before_script:
     - !reference [default, before_script]
     - rustup target add "$TARGET"
@@ -283,8 +285,12 @@ docker:publish:
     - job: build:linux
       artifacts: true
   rules:
-    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
     - if: "$CI_COMMIT_TAG =~ /^v.*/"
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+      changes:
+        - src/**/*
+        - Cargo.toml
+        - Cargo.lock
   variables:
     DOCKER_DRIVER: overlay2
     DOCKER_HOST: tcp://docker:2375
