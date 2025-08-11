@@ -279,6 +279,9 @@ docker:publish:
   image: docker:28.3.3
   services:
     - docker:28.3.3-dind
+  needs:
+    - job: build:linux
+      artifacts: true
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
     - if: "$CI_COMMIT_TAG =~ /^v.*/"
