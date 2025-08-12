@@ -53,6 +53,7 @@ workflow:
     - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
     - export PATH="$HOME/.cargo/bin:$PATH"
     - rustup default stable
+  allow_failure: true
 
 # Template for GitLab hosted Windows runners (beta)
 .windows_saas_runners:
@@ -139,15 +140,23 @@ build:linux:
         OUT: git-plumber-linux-x86_64-static
         RUSTFLAGS: "-C target-feature=+crt-static"
         EXTRA_APT: "musl-tools musl-dev"
-      - TARGET: aarch64-unknown-linux-gnu
-        OUT: git-plumber-linux-aarch64
-        EXTRA_APT: "gcc-aarch64-linux-gnu"
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-      - TARGET: aarch64-unknown-linux-musl
-        OUT: git-plumber-linux-aarch64-static
-        RUSTFLAGS: "-C target-feature=+crt-static"
-        EXTRA_APT: "musl-tools musl-dev gcc-aarch64-linux-gnu"
-        CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: aarch64-linux-gnu-gcc
+
+build:linux:arm64:gnu:
+  extends: [.linux_build]
+  tags: [saas-linux-small-arm64]
+  variables:
+    TARGET: aarch64-unknown-linux-gnu
+    OUT: git-plumber-linux-aarch64
+
+build:linux:arm64:musl:
+  extends: [.linux_build]
+  tags: [saas-linux-small-arm64]
+  variables:
+    TARGET: aarch64-unknown-linux-musl
+    OUT: git-plumber-linux-aarch64-static
+    RUSTFLAGS: "-C target-feature=+crt-static"
+    EXTRA_APT: "musl-tools musl-dev"
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
 
 # macOS builds — require self-hosted macOS runners with corresponding tags
 macos:build:x86_64:
@@ -198,21 +207,6 @@ windows:build:x86_64:
     when: on_success
     paths:
       - dist/git-plumber-windows-x86_64.exe
-
-windows:build:arm64:
-  stage: build
-  tags: ["windows-arm64"]
-  rules:
-    - if: "$CI_COMMIT_TAG =~ /^v.*/"
-  before_script:
-    - powershell -NoProfile -ExecutionPolicy Bypass -Command "rustup toolchain install stable; rustup default stable; rustup target add aarch64-pc-windows-msvc"
-  script:
-    - powershell -NoProfile -ExecutionPolicy Bypass -Command "cargo build --release --target aarch64-pc-windows-msvc --locked; New-Item -ItemType Directory -Path dist -Force | Out-Null; Copy-Item 'target\\aarch64-pc-windows-msvc\\release\\git-plumber.exe' 'dist\\git-plumber-windows-aarch64.exe'"
-  artifacts:
-    expire_in: 7 days
-    when: on_success
-    paths:
-      - dist/git-plumber-windows-aarch64.exe
 
 # Optional: Nix build and push to Cachix on default branch
 nix_build_cache:
@@ -283,6 +277,10 @@ docker:publish:
     - docker:28.3.3-dind
   needs:
     - job: build:linux
+      artifacts: true
+    - job: build:linux:arm64:musl
+      artifacts: true
+    - job: build:linux:arm64:gnu
       artifacts: true
   rules:
     - if: "$CI_COMMIT_TAG =~ /^v.*/"
