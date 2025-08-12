@@ -264,6 +264,8 @@ crates:publish:
   image: rust:1-bookworm
   rules:
     - if: "$CI_COMMIT_TAG =~ /^v.*/"
+  # Do not download artifacts from previous stages to keep the repo clean
+  dependencies: []
   variables:
     CARGO_REGISTRY_TOKEN: "$CRATES_TOKEN"
   script:
