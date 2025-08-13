@@ -90,10 +90,11 @@ impl AppState {
                                     (git_objects.selected_index + 1) % git_objects.flat_view.len();
                                 git_objects.selected_index = new_index;
 
-                                let is_pack = matches!(
-                                    git_objects.flat_view[new_index].1.obj_type,
-                                    GitObjectType::Pack { .. }
-                                );
+                                let is_pack = git_objects
+                                    .flat_view
+                                    .get(new_index)
+                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {
                                 (false, 0, false)
@@ -120,10 +121,11 @@ impl AppState {
                                 };
                                 git_objects.selected_index = new_index;
 
-                                let is_pack = matches!(
-                                    git_objects.flat_view[new_index].1.obj_type,
-                                    GitObjectType::Pack { .. }
-                                );
+                                let is_pack = git_objects
+                                    .flat_view
+                                    .get(new_index)
+                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {
                                 (false, 0, false)
@@ -145,10 +147,11 @@ impl AppState {
                             if !git_objects.flat_view.is_empty() {
                                 git_objects.selected_index = 0;
 
-                                let is_pack = matches!(
-                                    git_objects.flat_view[0].1.obj_type,
-                                    GitObjectType::Pack { .. }
-                                );
+                                let is_pack = git_objects
+                                    .flat_view
+                                    .get(0)
+                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .unwrap_or(false);
                                 (true, 0, is_pack)
                             } else {
                                 (false, 0, false)
@@ -171,10 +174,11 @@ impl AppState {
                                 let new_index = git_objects.flat_view.len() - 1;
                                 git_objects.selected_index = new_index;
 
-                                let is_pack = matches!(
-                                    git_objects.flat_view[new_index].1.obj_type,
-                                    GitObjectType::Pack { .. }
-                                );
+                                let is_pack = git_objects
+                                    .flat_view
+                                    .get(new_index)
+                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {
                                 (false, 0, false)
@@ -442,7 +446,7 @@ impl AppState {
                         ..
                     } = &mut self.view
                     {
-                        if pack_object_list.is_empty() {
+                        if !pack_object_list.is_empty() {
                             *selected_pack_object = pack_object_list.len() - 1;
                             // Update scroll position to show the last item
                             let visible_height = self.layout_dimensions.pack_objects_height;
