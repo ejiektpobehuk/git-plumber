@@ -93,7 +93,9 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .map(|(_, obj, _)| {
+                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {
@@ -124,7 +126,9 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .map(|(_, obj, _)| {
+                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {
@@ -150,7 +154,9 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(0)
-                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .map(|(_, obj, _)| {
+                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    })
                                     .unwrap_or(false);
                                 (true, 0, is_pack)
                             } else {
@@ -177,7 +183,9 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| matches!(obj.obj_type, GitObjectType::Pack { .. }))
+                                    .map(|(_, obj, _)| {
+                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
                             } else {

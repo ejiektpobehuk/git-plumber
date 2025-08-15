@@ -38,6 +38,15 @@ fn apply_git_tree_highlight_fx(
                 start = Some(until - std::time::Duration::from_millis(total));
             }
         }
+        // Check for modifications (orange) - lower priority than new files
+        if color.is_none() {
+            if let Some(until) = state.modified_keys.get(&key).copied() {
+                if until > now {
+                    color = Some(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
+                    start = Some(until - std::time::Duration::from_millis(total));
+                }
+            }
+        }
         if matches!(status, crate::tui::main_view::RenderStatus::PendingRemoval) {
             if let Some(g) = state.ghosts.get(&key) {
                 if g.until > now {
@@ -80,7 +89,10 @@ fn apply_git_tree_highlight_fx(
         let hi = n_cols.min(width);
         for dx in 0..hi {
             let x = start_col + dx;
-            if let Some(cell) = buf.cell_mut((x, y)) { let s = cell.style().bg(bg); cell.set_style(s); }
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                let s = cell.style().bg(bg);
+                cell.set_style(s);
+            }
         }
     }
 }
@@ -442,7 +454,8 @@ fn render_git_tree(
         state.git_objects.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
-        |i, (depth, obj, _status), is_selected| { let _ = reduced;
+        |i, (depth, obj, _status), is_selected| {
+            let _ = reduced;
             // Create indentation based on depth
             let indent = if *depth > 0 {
                 let mut indent = String::new();

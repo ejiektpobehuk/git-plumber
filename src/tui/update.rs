@@ -39,7 +39,7 @@ impl AppState {
                     // Ensure natural sorting for categories except "objects"
                     MainViewState::sort_tree_for_display(&mut state.git_objects.list);
 
-                    // Detect changes (added/deleted) to drive highlighting/ghosts
+                    // Detect changes (added/deleted/modified) to drive highlighting/ghosts
                     if state.has_loaded_once {
                         let _ = state.detect_tree_changes(&old_positions, &old_nodes);
                     }

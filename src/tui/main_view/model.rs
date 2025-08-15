@@ -4,7 +4,8 @@ use crate::tui::model::{GitObject, GitObjectType, PackObject};
 use crate::tui::widget::PackObjectWidget;
 use ratatui::text::Text;
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 // ===== Natural sort helpers (module scope) =====
@@ -178,7 +179,11 @@ impl MainViewState {
         self.changed_keys.retain(|_, until| *until > now);
         let changed_changed = before_changed != self.changed_keys.len();
 
-        ghosts_changed || changed_changed
+        let before_modified = self.modified_keys.len();
+        self.modified_keys.retain(|_, until| *until > now);
+        let modified_changed = before_modified != self.modified_keys.len();
+
+        ghosts_changed || changed_changed || modified_changed
     }
 }
 
@@ -192,6 +197,8 @@ pub struct MainViewState {
     pub last_scroll_positions: Option<ScrollSnapshot>,
     // Additions highlighting: per-item timers
     pub changed_keys: HashMap<String, Instant>,
+    // Modifications highlighting: per-item timers
+    pub modified_keys: HashMap<String, Instant>,
     // Deleted item overlay (red background), not mutating the tree
     pub ghosts: HashMap<String, Ghost>,
     // First-load guard
@@ -220,6 +227,7 @@ impl MainViewState {
             last_selection: None,
             last_scroll_positions: None,
             changed_keys: HashMap::new(),
+            modified_keys: HashMap::new(),
             ghosts: HashMap::new(),
             has_loaded_once: false,
         }
@@ -299,12 +307,29 @@ impl MainViewState {
         &mut self,
         old_positions: &HashMap<String, OldPosition>,
         old_nodes: &HashMap<String, GitObject>,
-    ) -> (HashSet<String>, HashSet<String>) {
+    ) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
         let new_keys = self.collect_all_keys();
         let old_keys: HashSet<String> = old_positions.keys().cloned().collect();
 
         let added_keys: HashSet<String> = new_keys.difference(&old_keys).cloned().collect();
         let deleted_keys: HashSet<String> = old_keys.difference(&new_keys).cloned().collect();
+
+        // Detect modifications: same key exists but content differs
+        let modified_keys: HashSet<String> = new_keys
+            .intersection(&old_keys)
+            .filter(|key| {
+                if let Some(old_node) = old_nodes.get(*key) {
+                    if let Some(new_node) = self.find_node_by_key(key) {
+                        self.is_object_modified(old_node, new_node)
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            })
+            .cloned()
+            .collect();
 
         let now = Instant::now();
 
@@ -315,6 +340,14 @@ impl MainViewState {
             // If there was a ghost for this key (re-appeared), drop it
             self.ghosts.remove(k);
             self.changed_keys
+                .insert(k.clone(), now + Duration::from_secs(5));
+        }
+
+        // Modifications (orange, 5s)
+        self.modified_keys
+            .retain(|k, until| *until > now && new_keys.contains(k));
+        for k in &modified_keys {
+            self.modified_keys
                 .insert(k.clone(), now + Duration::from_secs(5));
         }
 
@@ -344,7 +377,7 @@ impl MainViewState {
             }
         }
 
-        (added_keys, deleted_keys)
+        (added_keys, deleted_keys, modified_keys)
     }
 
     // ===== Sorting (natural sort for categories, except "objects") =====
@@ -517,9 +550,10 @@ impl MainViewState {
             self.git_objects.flat_view = output;
         }
 
-        // Cleanup expired changed-keys timers
+        // Cleanup expired timers
         let now = Instant::now();
         self.changed_keys.retain(|_, until| *until > now);
+        self.modified_keys.retain(|_, until| *until > now);
     }
 
     // Recursive flattener
@@ -605,5 +639,69 @@ impl MainViewState {
             }
         }
         Message::LoadGitObjects(Ok(()))
+    }
+
+    // ===== Modification detection helpers =====
+
+    /// Find a node in the current tree by its selection key
+    fn find_node_by_key(&self, key: &str) -> Option<&GitObject> {
+        fn search_in_children<'a>(
+            children: &'a [GitObject],
+            target_key: &str,
+        ) -> Option<&'a GitObject> {
+            for child in children {
+                let child_key = MainViewState::selection_key(child);
+                if child_key == target_key {
+                    return Some(child);
+                }
+                if let Some(found) = search_in_children(&child.children, target_key) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        search_in_children(&self.git_objects.list, key)
+    }
+
+    /// Check if an object has been modified by comparing modification times
+    fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
+        match (&old.obj_type, &new.obj_type) {
+            (
+                GitObjectType::Pack { path: old_path, .. },
+                GitObjectType::Pack { path: new_path, .. },
+            ) => self.compare_file_mtime(old_path, new_path),
+            (GitObjectType::LooseObject { .. }, GitObjectType::LooseObject { .. }) => {
+                // Loose objects are content-addressable and immutable
+                // Same object_id = same content, different object_id = different object
+                // There's no concept of "modification" for loose objects
+                false
+            }
+            (
+                GitObjectType::Ref { path: old_path, .. },
+                GitObjectType::Ref { path: new_path, .. },
+            ) => self.compare_file_mtime(old_path, new_path),
+            _ => false,
+        }
+    }
+
+    /// Compare modification times of two files
+    fn compare_file_mtime(&self, old_path: &Path, new_path: &Path) -> bool {
+        if old_path != new_path {
+            return false; // Different paths, not the same file
+        }
+
+        self.is_file_recently_modified(old_path)
+    }
+
+    /// Check if a file was modified recently (within last 2 seconds)
+    fn is_file_recently_modified(&self, path: &Path) -> bool {
+        if let Ok(meta) = fs::metadata(path) {
+            if let Ok(mtime) = meta.modified() {
+                if let Ok(elapsed) = mtime.elapsed() {
+                    return elapsed.as_secs() < 2;
+                }
+            }
+        }
+        false
     }
 }
