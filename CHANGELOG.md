@@ -2,9 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- Highlights for modified files
+- packfile extensions are acknowledged
+
+### Changed
+
+- git tree now uses actual file structure from `.git`
+
 ## [0.1.2] - 2025-08-11
 
-## Added
+### Added
 
 - CLI `view` command to open loose objects and pack files
 - Live updates when there is a change in `.git`

@@ -78,37 +78,7 @@ impl AppState {
                     let (_, obj, _) =
                         &state.git_objects.flat_view[state.git_objects.selected_index];
                     match &obj.obj_type {
-                        GitObjectType::Pack {
-                            size,
-                            modified_time,
-                            ..
-                        } => {
-                            // Use cached data for pack file
-                            let size_str = match size {
-                                Some(size) => {
-                                    if *size < 1024 {
-                                        format!("{size} bytes")
-                                    } else if *size < 1024 * 1024 {
-                                        format!("{:.2} KB", *size as f64 / 1024.0)
-                                    } else {
-                                        format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
-                                    }
-                                }
-                                None => "Unknown size".to_string(),
-                            };
 
-                            let modified = modified_time
-                                .as_ref()
-                                .map(crate::tui::model::GitObject::format_time_ago)
-                                .unwrap_or_else(|| "Unknown time".to_string());
-
-                            let info = format!(
-                                "Type: Pack File\nName: {}\nSize: {}\nLast modified: {}",
-                                obj.name, size_str, modified
-                            );
-
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
                         GitObjectType::Ref { content, .. } => {
                             // Use cached reference content
                             let ref_content =
@@ -198,6 +168,42 @@ impl AppState {
                             );
                             Message::LoadGitObjectInfo(Ok(info))
                         }
+                        GitObjectType::PackFolder { base_name, pack_group } => {
+                            let mut files = Vec::new();
+                            for (file_type, _) in pack_group.get_all_files() {
+                                files.push(file_type);
+                            }
+                            let info = format!(
+                                "Type: Pack Group\nBase name: {}\nFiles: {}",
+                                base_name, files.join(", ")
+                            );
+                            Message::LoadGitObjectInfo(Ok(info))
+                        }
+                        GitObjectType::PackFile { file_type, path, size, modified_time } => {
+                            let size_str = match size {
+                                Some(size) => {
+                                    if *size < 1024 {
+                                        format!("{size} bytes")
+                                    } else if *size < 1024 * 1024 {
+                                        format!("{:.2} KB", *size as f64 / 1024.0)
+                                    } else {
+                                        format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
+                                    }
+                                }
+                                None => "Unknown size".to_string(),
+                            };
+
+                            let modified = modified_time
+                                .as_ref()
+                                .map(crate::tui::model::GitObject::format_time_ago)
+                                .unwrap_or_else(|| "Unknown time".to_string());
+
+                            let info = format!(
+                                "Type: Pack {}\nPath: {}\nSize: {}\nLast modified: {}",
+                                file_type, path.display(), size_str, modified
+                            );
+                            Message::LoadGitObjectInfo(Ok(info))
+                        }
                     }
                 } else {
                     Message::LoadGitObjectInfo(Ok("No object selected".to_string()))
@@ -260,27 +266,6 @@ impl AppState {
                             Message::LoadEducationalContent(Ok(content))
                         }
                         // For actual objects, show previews instead of educational content
-                        GitObjectType::Pack { path, .. } => {
-                            // Try to parse pack file header for preview
-                            match std::fs::read(path) {
-                                Ok(pack_data) => {
-                                    match crate::git::pack::Header::parse(&pack_data) {
-                                        Ok((_, header)) => {
-                                            let preview = self
-                                                .educational_content_provider
-                                                .get_pack_preview(&header);
-                                            Message::LoadEducationalContent(Ok(preview))
-                                        }
-                                        Err(e) => Message::LoadEducationalContent(Err(format!(
-                                            "Error parsing pack header: {e:?}"
-                                        ))),
-                                    }
-                                }
-                                Err(e) => Message::LoadEducationalContent(Err(format!(
-                                    "Error reading file: {e}"
-                                ))),
-                            }
-                        }
                         GitObjectType::Ref { content, .. } => {
                             // Use cached reference content for preview
                             let ref_content = content.as_deref().unwrap_or("");
@@ -305,6 +290,63 @@ impl AppState {
                                     .educational_content_provider
                                     .get_loose_object_preview(obj_id);
                                 Message::LoadEducationalContent(Ok(preview))
+                            }
+                        }
+                        GitObjectType::PackFolder { .. } => {
+                            let content = self
+                                .educational_content_provider
+                                .get_category_content("Packs");
+                            Message::LoadEducationalContent(Ok(content))
+                        }
+                        GitObjectType::PackFile {
+                            file_type, path, ..
+                        } => {
+                            match file_type.as_str() {
+                                "packfile" => {
+                                    // Try to parse pack file header for preview
+                                    match std::fs::read(path) {
+                                        Ok(pack_data) => {
+                                            match crate::git::pack::Header::parse(&pack_data) {
+                                                Ok((_, header)) => {
+                                                    let preview = self
+                                                        .educational_content_provider
+                                                        .get_pack_preview(&header);
+                                                    Message::LoadEducationalContent(Ok(preview))
+                                                }
+                                                Err(e) => Message::LoadEducationalContent(Err(
+                                                    format!("Error parsing pack header: {e:?}"),
+                                                )),
+                                            }
+                                        }
+                                        Err(e) => Message::LoadEducationalContent(Err(format!(
+                                            "Error reading file: {e}"
+                                        ))),
+                                    }
+                                }
+                                "index" => {
+                                    let content = self
+                                        .educational_content_provider
+                                        .get_category_content("Pack Index");
+                                    Message::LoadEducationalContent(Ok(content))
+                                }
+                                "xedni" => {
+                                    let content = self
+                                        .educational_content_provider
+                                        .get_category_content("Reverse Index");
+                                    Message::LoadEducationalContent(Ok(content))
+                                }
+                                "mtime" => {
+                                    let content = self
+                                        .educational_content_provider
+                                        .get_category_content("Pack Mtimes");
+                                    Message::LoadEducationalContent(Ok(content))
+                                }
+                                _ => {
+                                    let content = self
+                                        .educational_content_provider
+                                        .get_category_content("Packs");
+                                    Message::LoadEducationalContent(Ok(content))
+                                }
                             }
                         }
                     }

@@ -69,14 +69,16 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
         let mut pack_folder = GitObject::new_filesystem_folder(pack_path, true);
         pack_folder.expanded = true; // Educational folders start expanded
 
-        // Load pack files using the existing logic
-        match plumber.list_pack_files() {
-            Ok(pack_files) => {
-                for pack_path in pack_files {
-                    pack_folder.add_child(GitObject::new_pack(pack_path));
+        // Load pack groups (each pack as a folder with its associated files)
+        match plumber.list_pack_groups() {
+            Ok(pack_groups) => {
+                for (_, pack_group) in pack_groups {
+                    if pack_group.is_valid() {
+                        pack_folder.add_child(GitObject::new_pack_folder(pack_group));
+                    }
                 }
             }
-            Err(e) => return Err(format!("Error loading pack files: {e}")),
+            Err(e) => return Err(format!("Error loading pack groups: {e}")),
         }
         // Mark pack folder as loaded since we populated it with pack files
         if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut pack_folder.obj_type {

@@ -1,7 +1,56 @@
 use crate::git::loose_object::{LooseObject, LooseObjectError};
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+/// Represents a group of pack-related files with the same base name
+#[derive(Debug, Clone)]
+pub struct PackGroup {
+    pub base_name: String,
+    pub pack_file: Option<PathBuf>,
+    pub idx_file: Option<PathBuf>,
+    pub rev_file: Option<PathBuf>,
+    pub mtimes_file: Option<PathBuf>,
+}
+
+impl PackGroup {
+    /// Creates a new PackGroup with the given base name
+    pub fn new(base_name: &str) -> Self {
+        Self {
+            base_name: base_name.to_string(),
+            pack_file: None,
+            idx_file: None,
+            rev_file: None,
+            mtimes_file: None,
+        }
+    }
+
+    /// Returns true if this group has at least a .pack file
+    pub fn is_valid(&self) -> bool {
+        self.pack_file.is_some()
+    }
+
+    /// Returns all available file paths in this group
+    pub fn get_all_files(&self) -> Vec<(&str, &PathBuf)> {
+        let mut files = Vec::new();
+
+        if let Some(ref path) = self.pack_file {
+            files.push(("packfile", path));
+        }
+        if let Some(ref path) = self.idx_file {
+            files.push(("index", path));
+        }
+        if let Some(ref path) = self.rev_file {
+            files.push(("xedni", path)); // reversed index
+        }
+        if let Some(ref path) = self.mtimes_file {
+            files.push(("mtime", path)); // mtimes
+        }
+
+        files
+    }
+}
 
 #[derive(Debug, Error)]
 pub enum RepositoryError {
@@ -96,6 +145,48 @@ impl Repository {
         }
 
         Ok(pack_files)
+    }
+
+    /// Lists all pack-related files grouped by their base name (without extension)
+    ///
+    /// Returns a map where keys are base names (e.g., "pack-abc123") and values are
+    /// structs containing paths to all related files (.pack, .idx, .rev, .mtimes)
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - File system operations fail when reading the objects/pack directory
+    pub fn list_pack_groups(&self) -> Result<HashMap<String, PackGroup>, RepositoryError> {
+        let pack_dir = self.path.join(".git/objects/pack");
+
+        if !pack_dir.exists() {
+            return Ok(HashMap::new());
+        }
+
+        let mut pack_groups: HashMap<String, PackGroup> = HashMap::new();
+
+        for entry in fs::read_dir(pack_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if let Some(extension) = path.extension().and_then(|ext| ext.to_str())
+                && let Some(file_stem) = path.file_stem().and_then(|stem| stem.to_str())
+            {
+                let group = pack_groups
+                    .entry(file_stem.to_string())
+                    .or_insert_with(|| PackGroup::new(file_stem));
+
+                match extension {
+                    "pack" => group.pack_file = Some(path),
+                    "idx" => group.idx_file = Some(path),
+                    "rev" => group.rev_file = Some(path),
+                    "mtimes" => group.mtimes_file = Some(path),
+                    _ => {} // Ignore other extensions
+                }
+            }
+        }
+
+        Ok(pack_groups)
     }
 
     /// Lists all head refs (local branches) in the repository

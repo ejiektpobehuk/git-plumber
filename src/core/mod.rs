@@ -50,6 +50,28 @@ impl GitPlumber {
         )
     }
 
+    /// List all pack-related files grouped by their base name
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The path is not a valid git repository
+    /// - File system operations fail when reading the objects/pack directory
+    pub fn list_pack_groups(
+        &self,
+    ) -> Result<std::collections::HashMap<String, crate::git::repository::PackGroup>, RepositoryError>
+    {
+        self.repository.as_ref().map_or_else(
+            || {
+                Err(RepositoryError::NotGitRepository(format!(
+                    "{} is not a git repository",
+                    self.repo_path.display()
+                )))
+            },
+            Repository::list_pack_groups,
+        )
+    }
+
     /// List all head refs (local branches) in the repository
     ///
     /// # Errors

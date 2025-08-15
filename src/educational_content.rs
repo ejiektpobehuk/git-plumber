@@ -106,7 +106,7 @@ impl EducationalContent {
             .cloned()
             .unwrap_or_else(|| {
                 Text::from(format!(
-                    "Category: {category_name}\n\nThis groups related Git objects together."
+                    "Category: {category_name}\n\nSupport is coming soon"
                 ))
             })
     }

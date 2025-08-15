@@ -25,8 +25,26 @@ impl AppState {
                 },
         } = &mut self.view
             && *selected_index < flat_view.len()
-            && let GitObjectType::Pack { path, .. } = &flat_view[*selected_index].1.obj_type
+            && match &flat_view[*selected_index].1.obj_type {
+                GitObjectType::PackFolder { .. } => true,
+                GitObjectType::PackFile { file_type, .. } => file_type == "packfile",
+                _ => false,
+            }
         {
+            // Extract the pack file path from the object type
+            let path = match &flat_view[*selected_index].1.obj_type {
+                GitObjectType::PackFolder { pack_group, .. } => {
+                    // Get the pack file path from the pack group
+                    if let Some(pack_path) = &pack_group.pack_file {
+                        pack_path
+                    } else {
+                        return; // No pack file in this group
+                    }
+                }
+                GitObjectType::PackFile { path, .. } => path,
+                _ => return, // This shouldn't happen due to the match above, but just in case
+            };
+
             // Load if we don't have the same pack loaded OR if the object list is empty
             if pack_file_path != path || pack_object_list.is_empty() {
                 self.effects

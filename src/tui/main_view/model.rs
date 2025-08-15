@@ -240,7 +240,11 @@ impl MainViewState {
             GitObjectType::Category(name) => format!("category:{name}"),
             GitObjectType::FileSystemFolder { path, .. } => format!("folder:{}", path.display()),
             GitObjectType::FileSystemFile { path, .. } => format!("file:{}", path.display()),
-            GitObjectType::Pack { path, .. } => format!("pack:{}", path.display()),
+
+            GitObjectType::PackFolder { base_name, .. } => format!("pack_folder:{base_name}"),
+            GitObjectType::PackFile {
+                file_type, path, ..
+            } => format!("pack_file:{}:{}", file_type, path.display()),
             GitObjectType::Ref { path, .. } => format!("ref:{}", path.display()),
             GitObjectType::LooseObject { object_id, .. } => {
                 format!("loose:{}", object_id.clone().unwrap_or_default())
@@ -744,6 +748,52 @@ impl MainViewState {
                         self.git_objects.selected_index = 0;
                     }
                 }
+                GitObjectType::PackFolder { base_name, .. } => {
+                    let base_name_to_find = base_name.clone();
+
+                    fn find_and_toggle_pack_folder(
+                        obj: &mut GitObject,
+                        target_base_name: &str,
+                    ) -> bool {
+                        if let GitObjectType::PackFolder { base_name, .. } = &obj.obj_type
+                            && base_name == target_base_name
+                        {
+                            obj.expanded = !obj.expanded;
+                            return true;
+                        }
+                        for child in &mut obj.children {
+                            if find_and_toggle_pack_folder(child, target_base_name) {
+                                return true;
+                            }
+                        }
+                        false
+                    }
+
+                    for obj in &mut self.git_objects.list {
+                        if find_and_toggle_pack_folder(obj, &base_name_to_find) {
+                            break;
+                        }
+                    }
+
+                    self.flatten_tree();
+
+                    // Keep the selected pack folder visible
+                    let mut new_index = 0;
+                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::PackFolder { base_name, .. } = &obj.obj_type
+                            && base_name == &base_name_to_find
+                        {
+                            new_index = i;
+                            break;
+                        }
+                    }
+                    if !self.git_objects.flat_view.is_empty() {
+                        self.git_objects.selected_index =
+                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    } else {
+                        self.git_objects.selected_index = 0;
+                    }
+                }
                 _ => {} // Other object types are not expandable
             }
         }
@@ -776,9 +826,15 @@ impl MainViewState {
     fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
         match (&old.obj_type, &new.obj_type) {
             (
-                GitObjectType::Pack { path: old_path, .. },
-                GitObjectType::Pack { path: new_path, .. },
-            ) => self.compare_file_mtime(old_path, new_path),
+                GitObjectType::PackFolder {
+                    base_name: old_name,
+                    ..
+                },
+                GitObjectType::PackFolder {
+                    base_name: new_name,
+                    ..
+                },
+            ) => old_name != new_name, // Pack folders are different if base names differ
             (GitObjectType::LooseObject { .. }, GitObjectType::LooseObject { .. }) => {
                 // Loose objects are content-addressable and immutable
                 // Same object_id = same content, different object_id = different object

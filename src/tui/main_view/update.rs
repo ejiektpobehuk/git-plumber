@@ -93,8 +93,12 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| {
-                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                        GitObjectType::PackFolder { .. } => true,
+                                        GitObjectType::PackFile { file_type, .. } => {
+                                            file_type == "packfile"
+                                        }
+                                        _ => false,
                                     })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
@@ -126,8 +130,12 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| {
-                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                        GitObjectType::PackFolder { .. } => true,
+                                        GitObjectType::PackFile { file_type, .. } => {
+                                            file_type == "packfile"
+                                        }
+                                        _ => false,
                                     })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
@@ -154,8 +162,12 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .first()
-                                    .map(|(_, obj, _)| {
-                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                        GitObjectType::PackFolder { .. } => true,
+                                        GitObjectType::PackFile { file_type, .. } => {
+                                            file_type == "packfile"
+                                        }
+                                        _ => false,
                                     })
                                     .unwrap_or(false);
                                 (true, 0, is_pack)
@@ -183,8 +195,12 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| {
-                                        matches!(obj.obj_type, GitObjectType::Pack { .. })
+                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                        GitObjectType::PackFolder { .. } => true,
+                                        GitObjectType::PackFile { file_type, .. } => {
+                                            file_type == "packfile"
+                                        }
+                                        _ => false,
                                     })
                                     .unwrap_or(false);
                                 (true, new_index, is_pack)
@@ -210,7 +226,7 @@ impl AppState {
                             let is_pack = if let Some((_, git_object, _)) =
                                 state.git_objects.flat_view.get(selected_index)
                             {
-                                matches!(git_object.obj_type, GitObjectType::Pack { .. })
+                                matches!(git_object.obj_type, GitObjectType::PackFolder { .. })
                             } else {
                                 false
                             };
@@ -754,9 +770,18 @@ impl AppState {
         if let AppView::Main { state } = &mut self.view {
             if is_pack {
                 // Ensure we have a Pack preview state
-                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index)
-                    && let GitObjectType::Pack { path, .. } = &git_object.obj_type
-                {
+                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index) {
+                    let path = match &git_object.obj_type {
+                        GitObjectType::PackFolder { pack_group, .. } => {
+                            if let Some(pack_path) = &pack_group.pack_file {
+                                pack_path
+                            } else {
+                                return; // No pack file in this group
+                            }
+                        }
+                        GitObjectType::PackFile { path, .. } => path,
+                        _ => return, // Not a pack-related object
+                    };
                     match &state.preview_state {
                         PreviewState::Pack(pack_state) if pack_state.pack_file_path == *path => {
                             // Same pack file, keep existing state

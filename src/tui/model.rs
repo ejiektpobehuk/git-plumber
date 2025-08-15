@@ -41,7 +41,13 @@ pub enum GitObjectType {
         size: Option<u64>,
         modified_time: Option<SystemTime>,
     },
-    Pack {
+
+    PackFolder {
+        base_name: String,
+        pack_group: crate::git::repository::PackGroup,
+    },
+    PackFile {
+        file_type: String, // "packfile", "index", "xedni", "mtime"
         path: PathBuf,
         size: Option<u64>,
         modified_time: Option<SystemTime>,
@@ -123,14 +129,39 @@ impl GitObject {
         }
     }
 
-    pub fn new_pack(path: PathBuf) -> Self {
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
+    pub fn new_pack_folder(pack_group: crate::git::repository::PackGroup) -> Self {
+        let mut pack_folder = Self {
+            name: pack_group.base_name.clone(),
+            obj_type: GitObjectType::PackFolder {
+                base_name: pack_group.base_name.clone(),
+                pack_group: pack_group.clone(),
+            },
+            children: Vec::new(),
+            expanded: false,
+        };
 
-        // Load pack file details
+        // Add children for each available file type, but exclude "packfile"
+        // since the folder itself acts as the packfile
+        for (file_type, path) in pack_group.get_all_files() {
+            if file_type != "packfile" {
+                pack_folder.add_child(Self::new_pack_file(file_type.to_string(), path.clone()));
+            }
+        }
+
+        pack_folder
+    }
+
+    pub fn new_pack_file(file_type: String, path: PathBuf) -> Self {
+        let name = match file_type.as_str() {
+            "packfile" => "packfile",
+            "index" => "index",
+            "xedni" => "xedni",
+            "mtime" => "mtime",
+            _ => "unknown",
+        }
+        .to_string();
+
+        // Load file details
         let (size, modified_time) = match std::fs::metadata(&path) {
             Ok(metadata) => {
                 let file_size = metadata.len();
@@ -142,7 +173,8 @@ impl GitObject {
 
         Self {
             name,
-            obj_type: GitObjectType::Pack {
+            obj_type: GitObjectType::PackFile {
+                file_type,
                 path,
                 size,
                 modified_time,

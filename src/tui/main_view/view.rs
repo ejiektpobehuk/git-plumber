@@ -196,6 +196,7 @@ fn render_regular_preview_layout(
                     }
                 }
                 GitObjectType::FileSystemFile { .. } => "File Info",
+                GitObjectType::PackFolder { .. } => "Pack Preview",
                 _ => "Object Preview",
             }
         } else {
@@ -616,6 +617,48 @@ fn render_git_tree(
                             is_last
                         };
                         if is_last { "└─ " } else { "├─ " }
+                    }
+                }
+                GitObjectType::PackFolder { .. } => {
+                    // PackFolder should show expansion indicators like a directory
+                    if obj.expanded {
+                        if *depth == 0 {
+                            "▼ "
+                        } else {
+                            // Find if this is the last folder at this depth
+                            let is_last = {
+                                let mut is_last = true;
+                                for j in (i + 1)..state.git_objects.flat_view.len() {
+                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                    if *next_depth == *depth {
+                                        is_last = false;
+                                        break;
+                                    } else if *next_depth < *depth {
+                                        break;
+                                    }
+                                }
+                                is_last
+                            };
+                            if is_last { "└▼ " } else { "├▼ " }
+                        }
+                    } else if *depth == 0 {
+                        "▶ "
+                    } else {
+                        // Find if this is the last folder at this depth
+                        let is_last = {
+                            let mut is_last = true;
+                            for j in (i + 1)..state.git_objects.flat_view.len() {
+                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                if *next_depth == *depth {
+                                    is_last = false;
+                                    break;
+                                } else if *next_depth < *depth {
+                                    break;
+                                }
+                            }
+                            is_last
+                        };
+                        if is_last { "└▶ " } else { "├▶ " }
                     }
                 }
                 _ => {

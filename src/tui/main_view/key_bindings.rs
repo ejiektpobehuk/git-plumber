@@ -29,7 +29,8 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                                 &state.git_objects.flat_view[state.git_objects.selected_index];
                             match &selected_obj.obj_type {
                                 GitObjectType::Category(_)
-                                | GitObjectType::FileSystemFolder { .. } => {
+                                | GitObjectType::FileSystemFolder { .. }
+                                | GitObjectType::PackFolder { .. } => {
                                     Some(Message::MainNavigation(MainNavigation::ToggleExpand))
                                 }
                                 _ => {
