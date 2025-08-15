@@ -32,28 +32,26 @@ fn apply_git_tree_highlight_fx(
         let mut color: Option<ratatui::style::Color> = None;
         let mut start: Option<std::time::Instant> = None;
 
-        if let Some(until) = state.changed_keys.get(&key).copied() {
-            if until > now {
-                color = Some(ratatui::style::Color::Green);
-                start = Some(until - std::time::Duration::from_millis(total));
-            }
+        if let Some(until) = state.changed_keys.get(&key).copied()
+            && until > now
+        {
+            color = Some(ratatui::style::Color::Green);
+            start = Some(until - std::time::Duration::from_millis(total));
         }
         // Check for modifications (orange) - lower priority than new files
-        if color.is_none() {
-            if let Some(until) = state.modified_keys.get(&key).copied() {
-                if until > now {
-                    color = Some(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
-                    start = Some(until - std::time::Duration::from_millis(total));
-                }
-            }
+        if color.is_none()
+            && let Some(until) = state.modified_keys.get(&key).copied()
+            && until > now
+        {
+            color = Some(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
+            start = Some(until - std::time::Duration::from_millis(total));
         }
-        if matches!(status, crate::tui::main_view::RenderStatus::PendingRemoval) {
-            if let Some(g) = state.ghosts.get(&key) {
-                if g.until > now {
-                    color = Some(ratatui::style::Color::Red);
-                    start = Some(g.until - std::time::Duration::from_millis(total));
-                }
-            }
+        if matches!(status, crate::tui::main_view::RenderStatus::PendingRemoval)
+            && let Some(g) = state.ghosts.get(&key)
+            && g.until > now
+        {
+            color = Some(ratatui::style::Color::Red);
+            start = Some(g.until - std::time::Duration::from_millis(total));
         }
 
         let (bg, start_at) = match (color, start) {

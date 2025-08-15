@@ -24,17 +24,13 @@ impl AppState {
                     ..
                 },
         } = &mut self.view
+            && *selected_index < flat_view.len()
+            && let GitObjectType::Pack { path, .. } = &flat_view[*selected_index].1.obj_type
         {
-            if *selected_index < flat_view.len() {
-                if let GitObjectType::Pack { path, .. } = &flat_view[*selected_index].1.obj_type {
-                    // Load if we don't have the same pack loaded OR if the object list is empty
-                    if pack_file_path != path || pack_object_list.is_empty() {
-                        self.effects
-                            .push(crate::tui::message::Command::LoadPackObjects {
-                                path: path.clone(),
-                            });
-                    }
-                }
+            // Load if we don't have the same pack loaded OR if the object list is empty
+            if pack_file_path != path || pack_object_list.is_empty() {
+                self.effects
+                    .push(crate::tui::message::Command::LoadPackObjects { path: path.clone() });
             }
         }
     }

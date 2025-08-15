@@ -263,7 +263,7 @@ impl MainViewState {
         fn walk(
             out_pos: &mut HashMap<String, OldPosition>,
             out_nodes: &mut HashMap<String, GitObject>,
-            children: &Vec<GitObject>,
+            children: &[GitObject],
             parent_key: Option<String>,
         ) {
             for (idx, child) in children.iter().enumerate() {
@@ -289,7 +289,7 @@ impl MainViewState {
     }
 
     fn collect_all_keys(&self) -> HashSet<String> {
-        fn walk_keys(children: &Vec<GitObject>, acc: &mut HashSet<String>) {
+        fn walk_keys(children: &[GitObject], acc: &mut HashSet<String>) {
             for child in children {
                 let key = MainViewState::selection_key(child);
                 acc.insert(key);
@@ -489,57 +489,56 @@ impl MainViewState {
                 if parent.is_none() {
                     continue;
                 }
-                if let Some(parent_key) = parent {
-                    if let Some(parent_row) = output
+                if let Some(parent_key) = parent
+                    && let Some(parent_row) = output
                         .iter()
                         .position(|(_, o, _)| Self::selection_key(o) == parent_key)
-                    {
-                        let parent_depth = output[parent_row].0;
-                        let parent_expanded =
-                            if let GitObjectType::Category(_) = output[parent_row].1.obj_type {
-                                output[parent_row].1.expanded
-                            } else {
-                                false
-                            };
+                {
+                    let parent_depth = output[parent_row].0;
+                    let parent_expanded =
+                        if let GitObjectType::Category(_) = output[parent_row].1.obj_type {
+                            output[parent_row].1.expanded
+                        } else {
+                            false
+                        };
 
-                        let mut child_rows: Vec<usize> = Vec::new();
-                        if parent_expanded {
-                            let mut i = parent_row + 1;
-                            while i < output.len() {
-                                let (d, _, _) = &output[i];
-                                if *d <= parent_depth {
-                                    break;
-                                }
-                                if *d == parent_depth + 1 {
-                                    child_rows.push(i);
-                                }
-                                i += 1;
+                    let mut child_rows: Vec<usize> = Vec::new();
+                    if parent_expanded {
+                        let mut i = parent_row + 1;
+                        while i < output.len() {
+                            let (d, _, _) = &output[i];
+                            if *d <= parent_depth {
+                                break;
                             }
+                            if *d == parent_depth + 1 {
+                                child_rows.push(i);
+                            }
+                            i += 1;
                         }
+                    }
 
-                        for (sibling_index, ghost_key) in list.into_iter().rev() {
-                            if let Some(g) = self.ghosts.get(&ghost_key) {
-                                let insert_at = if parent_expanded {
-                                    if sibling_index < child_rows.len() {
-                                        child_rows[sibling_index]
-                                    } else {
-                                        child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
-                                    }
+                    for (sibling_index, ghost_key) in list.into_iter().rev() {
+                        if let Some(g) = self.ghosts.get(&ghost_key) {
+                            let insert_at = if parent_expanded {
+                                if sibling_index < child_rows.len() {
+                                    child_rows[sibling_index]
                                 } else {
-                                    parent_row + 1
-                                };
-                                output.insert(
-                                    insert_at,
-                                    (
-                                        parent_depth + 1,
-                                        g.display.clone(),
-                                        RenderStatus::PendingRemoval,
-                                    ),
-                                );
-                                for r in &mut child_rows {
-                                    if *r >= insert_at {
-                                        *r += 1;
-                                    }
+                                    child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
+                                }
+                            } else {
+                                parent_row + 1
+                            };
+                            output.insert(
+                                insert_at,
+                                (
+                                    parent_depth + 1,
+                                    g.display.clone(),
+                                    RenderStatus::PendingRemoval,
+                                ),
+                            );
+                            for r in &mut child_rows {
+                                if *r >= insert_at {
+                                    *r += 1;
                                 }
                             }
                         }
@@ -598,11 +597,11 @@ impl MainViewState {
                 let name_to_find = category_name.clone();
 
                 fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
-                    if let GitObjectType::Category(name) = &obj.obj_type {
-                        if name == target_name {
-                            obj.expanded = !obj.expanded;
-                            return true;
-                        }
+                    if let GitObjectType::Category(name) = &obj.obj_type
+                        && name == target_name
+                    {
+                        obj.expanded = !obj.expanded;
+                        return true;
                     }
                     for child in &mut obj.children {
                         if find_and_toggle_category(child, target_name) {
@@ -623,11 +622,11 @@ impl MainViewState {
                 // Keep the selected category visible
                 let mut new_index = 0;
                 for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
-                    if let GitObjectType::Category(name) = &obj.obj_type {
-                        if name == &name_to_find {
-                            new_index = i;
-                            break;
-                        }
+                    if let GitObjectType::Category(name) = &obj.obj_type
+                        && name == &name_to_find
+                    {
+                        new_index = i;
+                        break;
                     }
                 }
                 if !self.git_objects.flat_view.is_empty() {
@@ -695,12 +694,11 @@ impl MainViewState {
 
     /// Check if a file was modified recently (within last 2 seconds)
     fn is_file_recently_modified(&self, path: &Path) -> bool {
-        if let Ok(meta) = fs::metadata(path) {
-            if let Ok(mtime) = meta.modified() {
-                if let Ok(elapsed) = mtime.elapsed() {
-                    return elapsed.as_secs() < 2;
-                }
-            }
+        if let Ok(meta) = fs::metadata(path)
+            && let Ok(mtime) = meta.modified()
+            && let Ok(elapsed) = mtime.elapsed()
+        {
+            return elapsed.as_secs() < 2;
         }
         false
     }

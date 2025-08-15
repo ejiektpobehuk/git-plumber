@@ -259,19 +259,18 @@ impl LooseObject {
             } else if let Some(stripped) = line.strip_prefix("parent ") {
                 parents.push(stripped.to_string());
             } else if let Some(author_line) = line.strip_prefix("author ") {
-                if let Some(date_start) = author_line.rfind(' ') {
-                    if let Some(name_end) = author_line[..date_start].rfind(' ') {
-                        author = author_line[..name_end].to_string();
-                        author_date = author_line[name_end + 1..].to_string();
-                    }
+                if let Some(date_start) = author_line.rfind(' ')
+                    && let Some(name_end) = author_line[..date_start].rfind(' ')
+                {
+                    author = author_line[..name_end].to_string();
+                    author_date = author_line[name_end + 1..].to_string();
                 }
-            } else if let Some(committer_line) = line.strip_prefix("committer ") {
-                if let Some(date_start) = committer_line.rfind(' ') {
-                    if let Some(name_end) = committer_line[..date_start].rfind(' ') {
-                        committer = committer_line[..name_end].to_string();
-                        committer_date = committer_line[name_end + 1..].to_string();
-                    }
-                }
+            } else if let Some(committer_line) = line.strip_prefix("committer ")
+                && let Some(date_start) = committer_line.rfind(' ')
+                && let Some(name_end) = committer_line[..date_start].rfind(' ')
+            {
+                committer = committer_line[..name_end].to_string();
+                committer_date = committer_line[name_end + 1..].to_string();
             }
         }
 
@@ -369,13 +368,12 @@ impl LooseObject {
                 object_type = stripped.to_string();
             } else if let Some(stripped) = line.strip_prefix("tag ") {
                 tag = stripped.to_string();
-            } else if let Some(tagger_line) = line.strip_prefix("tagger ") {
-                if let Some(date_start) = tagger_line.rfind(' ') {
-                    if let Some(name_end) = tagger_line[..date_start].rfind(' ') {
-                        tagger = Some(tagger_line[..name_end].to_string());
-                        tagger_date = Some(tagger_line[name_end + 1..].to_string());
-                    }
-                }
+            } else if let Some(tagger_line) = line.strip_prefix("tagger ")
+                && let Some(date_start) = tagger_line.rfind(' ')
+                && let Some(name_end) = tagger_line[..date_start].rfind(' ')
+            {
+                tagger = Some(tagger_line[..name_end].to_string());
+                tagger_date = Some(tagger_line[name_end + 1..].to_string());
             }
         }
 

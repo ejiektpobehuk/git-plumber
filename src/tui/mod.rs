@@ -183,11 +183,9 @@ fn run_app<B: ratatui::backend::Backend>(
                 // Non-blocking keyboard handling
                 if event::poll(Duration::from_millis(0))
                     .map_err(|e| format!("Failed to poll events: {e}"))?
-                {
-                    if let Event::Key(key) =
+                    && let Event::Key(key) =
                         event::read().map_err(|e| format!("Failed to read event: {e}"))?
-                    {
-                        if let Some(msg) = match app.view {
+                        && let Some(msg) = match app.view {
                             model::AppView::Main { .. } => {
                                 crate::tui::main_view::handle_key_event(key, app)
                             }
@@ -201,8 +199,6 @@ fn run_app<B: ratatui::backend::Backend>(
                             if !app.update(msg, plumber) { return Ok(()); }
                             run_commands(app);
                         }
-                    }
-                }
             }
         }
         // Clear executed effects

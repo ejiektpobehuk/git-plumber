@@ -153,7 +153,7 @@ impl AppState {
 
                                 let is_pack = git_objects
                                     .flat_view
-                                    .get(0)
+                                    .first()
                                     .map(|(_, obj, _)| {
                                         matches!(obj.obj_type, GitObjectType::Pack { .. })
                                     })
@@ -228,31 +228,29 @@ impl AppState {
                 }
 
                 MainNavigation::JumpToParentCategory => {
-                    if let AppView::Main { state } = &mut self.view {
-                        if !state.git_objects.flat_view.is_empty()
-                            && state.git_objects.selected_index < state.git_objects.flat_view.len()
-                        {
-                            let (current_depth, _, _) =
-                                &state.git_objects.flat_view[state.git_objects.selected_index];
+                    if let AppView::Main { state } = &mut self.view
+                        && !state.git_objects.flat_view.is_empty()
+                        && state.git_objects.selected_index < state.git_objects.flat_view.len()
+                    {
+                        let (current_depth, _, _) =
+                            &state.git_objects.flat_view[state.git_objects.selected_index];
 
-                            if *current_depth > 0 {
-                                // Find parent category by looking backwards for an object at depth - 1
-                                for i in (0..state.git_objects.selected_index).rev() {
-                                    let (parent_depth, parent_obj, _) =
-                                        &state.git_objects.flat_view[i];
-                                    if *parent_depth == current_depth - 1 {
-                                        if let GitObjectType::Category(_) = &parent_obj.obj_type {
-                                            // Jump to this parent category
-                                            state.git_objects.selected_index = i;
+                        if *current_depth > 0 {
+                            // Find parent category by looking backwards for an object at depth - 1
+                            for i in (0..state.git_objects.selected_index).rev() {
+                                let (parent_depth, parent_obj, _) = &state.git_objects.flat_view[i];
+                                if *parent_depth == current_depth - 1
+                                    && let GitObjectType::Category(_) = &parent_obj.obj_type
+                                {
+                                    // Jump to this parent category
+                                    state.git_objects.selected_index = i;
 
-                                            // Update scroll position to keep selected item visible
-                                            self.update_git_objects_scroll_for_selection(i);
+                                    // Update scroll position to keep selected item visible
+                                    self.update_git_objects_scroll_for_selection(i);
 
-                                            // Load details for the newly selected object
-                                            self.handle_git_object_selection(i, false, plumber);
-                                            break;
-                                        }
-                                    }
+                                    // Load details for the newly selected object
+                                    self.handle_git_object_selection(i, false, plumber);
+                                    break;
                                 }
                             }
                         }
@@ -293,10 +291,10 @@ impl AppState {
                 }
 
                 MainNavigation::FocusPackObjectDetails => {
-                    if let AppView::Main { state } = &mut self.view {
-                        if let PreviewState::Pack(pack_preview_state) = &mut state.preview_state {
-                            pack_preview_state.focus = PackFocus::PackObjectDetails;
-                        }
+                    if let AppView::Main { state } = &mut self.view
+                        && let PreviewState::Pack(pack_preview_state) = &mut state.preview_state
+                    {
+                        pack_preview_state.focus = PackFocus::PackObjectDetails;
                     }
                 }
 
@@ -353,28 +351,26 @@ impl AppState {
                             },
                         ..
                     } = &mut self.view
+                        && !pack_object_list.is_empty()
                     {
-                        if !pack_object_list.is_empty() {
-                            if *selected_pack_object < pack_object_list.len() - 1 {
-                                *selected_pack_object += 1;
-                                *pack_widget_state = PackObjectWidget::new(
-                                    pack_object_list[*selected_pack_object].clone(),
-                                );
+                        if *selected_pack_object < pack_object_list.len() - 1 {
+                            *selected_pack_object += 1;
+                            *pack_widget_state = PackObjectWidget::new(
+                                pack_object_list[*selected_pack_object].clone(),
+                            );
 
-                                // Update scroll position to keep selected item visible
-                                let visible_height = self.layout_dimensions.pack_objects_height;
-                                if *selected_pack_object
-                                    >= *pack_object_list_scroll_position + visible_height
-                                {
-                                    *pack_object_list_scroll_position =
-                                        *selected_pack_object - visible_height + 1;
-                                }
-                            } else {
-                                *selected_pack_object = 0;
-                                *pack_object_list_scroll_position = 0;
-                                *pack_widget_state =
-                                    PackObjectWidget::new(pack_object_list[0].clone());
+                            // Update scroll position to keep selected item visible
+                            let visible_height = self.layout_dimensions.pack_objects_height;
+                            if *selected_pack_object
+                                >= *pack_object_list_scroll_position + visible_height
+                            {
+                                *pack_object_list_scroll_position =
+                                    *selected_pack_object - visible_height + 1;
                             }
+                        } else {
+                            *selected_pack_object = 0;
+                            *pack_object_list_scroll_position = 0;
+                            *pack_widget_state = PackObjectWidget::new(pack_object_list[0].clone());
                         }
                     }
                 }
@@ -396,23 +392,22 @@ impl AppState {
                             },
                         ..
                     } = &mut self.view
+                        && !pack_object_list.is_empty()
                     {
-                        if !pack_object_list.is_empty() {
-                            if *selected_pack_object > 0 {
-                                *selected_pack_object -= 1;
-                                *pack_widget_state = PackObjectWidget::new(
-                                    pack_object_list[*selected_pack_object].clone(),
-                                );
+                        if *selected_pack_object > 0 {
+                            *selected_pack_object -= 1;
+                            *pack_widget_state = PackObjectWidget::new(
+                                pack_object_list[*selected_pack_object].clone(),
+                            );
 
-                                // Update scroll position to keep selected item visible
-                                if *selected_pack_object < *pack_object_list_scroll_position {
-                                    *pack_object_list_scroll_position = *selected_pack_object;
-                                }
-                            } else {
-                                // At the top of pack objects, switch focus to educational content
-                                *focus = PackFocus::Educational;
-                                *previous_focus = Some(PackColumnPreviousFocus::Educational);
+                            // Update scroll position to keep selected item visible
+                            if *selected_pack_object < *pack_object_list_scroll_position {
+                                *pack_object_list_scroll_position = *selected_pack_object;
                             }
+                        } else {
+                            // At the top of pack objects, switch focus to educational content
+                            *focus = PackFocus::Educational;
+                            *previous_focus = Some(PackColumnPreviousFocus::Educational);
                         }
                     }
                 }
@@ -431,11 +426,10 @@ impl AppState {
                             },
                         ..
                     } = &mut self.view
+                        && !pack_object_list.is_empty()
                     {
-                        if !pack_object_list.is_empty() {
-                            *selected_pack_object = 0;
-                            *pack_object_list_scroll_position = 0;
-                        }
+                        *selected_pack_object = 0;
+                        *pack_object_list_scroll_position = 0;
                     }
                 }
                 MainNavigation::SelectLastPackObject => {
@@ -453,17 +447,16 @@ impl AppState {
                             },
                         ..
                     } = &mut self.view
+                        && !pack_object_list.is_empty()
                     {
-                        if !pack_object_list.is_empty() {
-                            *selected_pack_object = pack_object_list.len() - 1;
-                            // Update scroll position to show the last item
-                            let visible_height = self.layout_dimensions.pack_objects_height;
-                            if *selected_pack_object >= visible_height {
-                                *pack_object_list_scroll_position =
-                                    *selected_pack_object - visible_height + 1;
-                            } else {
-                                *pack_object_list_scroll_position = 0;
-                            }
+                        *selected_pack_object = pack_object_list.len() - 1;
+                        // Update scroll position to show the last item
+                        let visible_height = self.layout_dimensions.pack_objects_height;
+                        if *selected_pack_object >= visible_height {
+                            *pack_object_list_scroll_position =
+                                *selected_pack_object - visible_height + 1;
+                        } else {
+                            *pack_object_list_scroll_position = 0;
                         }
                     }
                 }
@@ -717,22 +710,20 @@ impl AppState {
                     // Get the currently selected loose object
                     if let Some((_, git_object, _)) =
                         git_objects.flat_view.get(git_objects.selected_index)
-                    {
-                        if let GitObjectType::LooseObject {
+                        && let GitObjectType::LooseObject {
                             parsed_object: Some(loose_obj),
                             ..
                         } = &git_object.obj_type
-                        {
-                            // Create the new loose object view
-                            let loose_view = AppView::LooseObjectDetail {
-                                state: LooseObjectViewState {
-                                    loose_widget: LooseObjectWidget::new(loose_obj.clone()),
-                                },
-                            };
+                    {
+                        // Create the new loose object view
+                        let loose_view = AppView::LooseObjectDetail {
+                            state: LooseObjectViewState {
+                                loose_widget: LooseObjectWidget::new(loose_obj.clone()),
+                            },
+                        };
 
-                            // Push current view onto stack and transition to loose object view
-                            self.push_view(loose_view);
-                        }
+                        // Push current view onto stack and transition to loose object view
+                        self.push_view(loose_view);
                     }
                 }
             }
@@ -763,28 +754,26 @@ impl AppState {
         if let AppView::Main { state } = &mut self.view {
             if is_pack {
                 // Ensure we have a Pack preview state
-                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index) {
-                    if let GitObjectType::Pack { path, .. } = &git_object.obj_type {
-                        match &state.preview_state {
-                            PreviewState::Pack(pack_state)
-                                if pack_state.pack_file_path == *path =>
-                            {
-                                // Same pack file, keep existing state
-                            }
-                            _ => {
-                                // Different pack file or not a pack state - create new pack state
-                                let new_pack_state = PackPreViewState {
-                                    pack_file_path: path.clone(),
-                                    pack_object_list: Vec::new(),
-                                    selected_pack_object: 0,
-                                    pack_object_list_scroll_position: 0,
-                                    focus: PackFocus::GitObjects,
-                                    previous_focus: None,
-                                    educational_scroll_position: 0,
-                                    pack_object_widget_state: PackObjectWidget::Uninitiolized,
-                                };
-                                state.preview_state = PreviewState::Pack(new_pack_state);
-                            }
+                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index)
+                    && let GitObjectType::Pack { path, .. } = &git_object.obj_type
+                {
+                    match &state.preview_state {
+                        PreviewState::Pack(pack_state) if pack_state.pack_file_path == *path => {
+                            // Same pack file, keep existing state
+                        }
+                        _ => {
+                            // Different pack file or not a pack state - create new pack state
+                            let new_pack_state = PackPreViewState {
+                                pack_file_path: path.clone(),
+                                pack_object_list: Vec::new(),
+                                selected_pack_object: 0,
+                                pack_object_list_scroll_position: 0,
+                                focus: PackFocus::GitObjects,
+                                previous_focus: None,
+                                educational_scroll_position: 0,
+                                pack_object_widget_state: PackObjectWidget::Uninitiolized,
+                            };
+                            state.preview_state = PreviewState::Pack(new_pack_state);
                         }
                     }
                 }
