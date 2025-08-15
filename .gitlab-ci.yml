@@ -306,7 +306,7 @@ docker:publish:
     - echo "$GITHUB_TOKEN"   | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
   script:
     - |
-      bash -lc '
+      bash -c '
       TAG_ARGS=( )
       if [[ -n "${CI_COMMIT_TAG}" ]]; then
         TAG_ARGS+=(
