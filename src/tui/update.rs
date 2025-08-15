@@ -34,13 +34,22 @@ impl AppState {
                         )
                     };
 
+                    // Clone old tree before clearing for state restoration
+                    let old_tree = state.git_objects.list.clone();
+
+                    // Set the new tree
                     state.git_objects.list = data.git_objects_list;
 
                     // Ensure natural sorting for categories except "objects"
                     MainViewState::sort_tree_for_display(&mut state.git_objects.list);
 
-                    // Detect changes (added/deleted/modified) to drive highlighting/ghosts
+                    // Restore expansion and loading state from old tree if this isn't the first load
                     if state.has_loaded_once {
+                        for new_obj in &mut state.git_objects.list {
+                            new_obj.restore_state_from(&old_tree);
+                        }
+
+                        // NOW detect changes after full restoration
                         let _ = state.detect_tree_changes(&old_positions, &old_nodes);
                     }
 

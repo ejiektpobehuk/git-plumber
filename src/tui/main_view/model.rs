@@ -238,6 +238,8 @@ impl MainViewState {
     pub fn selection_key(obj: &GitObject) -> String {
         match &obj.obj_type {
             GitObjectType::Category(name) => format!("category:{name}"),
+            GitObjectType::FileSystemFolder { path, .. } => format!("folder:{}", path.display()),
+            GitObjectType::FileSystemFile { path, .. } => format!("file:{}", path.display()),
             GitObjectType::Pack { path, .. } => format!("pack:{}", path.display()),
             GitObjectType::Ref { path, .. } => format!("ref:{}", path.display()),
             GitObjectType::LooseObject { object_id, .. } => {
@@ -276,8 +278,11 @@ impl MainViewState {
                     },
                 );
                 out_nodes.insert(key.clone(), child.clone());
-                if let GitObjectType::Category(_) = child.obj_type {
-                    walk(out_pos, out_nodes, &child.children, Some(key));
+                match child.obj_type {
+                    GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
+                        walk(out_pos, out_nodes, &child.children, Some(key));
+                    }
+                    _ => {}
                 }
             }
         }
@@ -293,8 +298,11 @@ impl MainViewState {
             for child in children {
                 let key = MainViewState::selection_key(child);
                 acc.insert(key);
-                if let GitObjectType::Category(_) = child.obj_type {
-                    walk_keys(&child.children, acc);
+                match child.obj_type {
+                    GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
+                        walk_keys(&child.children, acc);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -380,16 +388,50 @@ impl MainViewState {
         (added_keys, deleted_keys, modified_keys)
     }
 
-    // ===== Sorting (natural sort for categories, except "objects") =====
+    // ===== Sorting (natural sort, with "objects" pinned to top) =====
 
     pub fn sort_tree_for_display(nodes: &mut [GitObject]) {
-        for node in nodes.iter_mut() {
-            if let GitObjectType::Category(ref name) = node.obj_type {
-                if name != "objects" {
-                    node.children
-                        .sort_by(|a, b| natural_key(&a.name).cmp(&natural_key(&b.name)));
+        // Sort the current level
+        nodes.sort_by(|a, b| {
+            // Special case: "objects" always comes first
+            let a_name = match &a.obj_type {
+                GitObjectType::Category(name) => name.as_str(),
+                GitObjectType::FileSystemFolder { path, .. } => {
+                    path.file_name().unwrap_or_default().to_str().unwrap_or("")
                 }
-                MainViewState::sort_tree_for_display(&mut node.children);
+                _ => &a.name,
+            };
+
+            let b_name = match &b.obj_type {
+                GitObjectType::Category(name) => name.as_str(),
+                GitObjectType::FileSystemFolder { path, .. } => {
+                    path.file_name().unwrap_or_default().to_str().unwrap_or("")
+                }
+                _ => &b.name,
+            };
+
+            // Objects folder always comes first
+            match (a_name, b_name) {
+                ("objects", "objects") => std::cmp::Ordering::Equal,
+                ("objects", _) => std::cmp::Ordering::Less,
+                (_, "objects") => std::cmp::Ordering::Greater,
+                _ => natural_key(a_name).cmp(&natural_key(b_name)),
+            }
+        });
+
+        // Recursively sort children
+        for node in nodes.iter_mut() {
+            match &node.obj_type {
+                GitObjectType::Category(name) => {
+                    // Don't sort children of "objects" category (loose objects should keep their natural order)
+                    if name != "objects" && name != "Loose Objects" {
+                        MainViewState::sort_tree_for_display(&mut node.children);
+                    }
+                }
+                GitObjectType::FileSystemFolder { .. } => {
+                    MainViewState::sort_tree_for_display(&mut node.children);
+                }
+                _ => {}
             }
         }
     }
@@ -495,12 +537,12 @@ impl MainViewState {
                         .position(|(_, o, _)| Self::selection_key(o) == parent_key)
                 {
                     let parent_depth = output[parent_row].0;
-                    let parent_expanded =
-                        if let GitObjectType::Category(_) = output[parent_row].1.obj_type {
+                    let parent_expanded = match output[parent_row].1.obj_type {
+                        GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
                             output[parent_row].1.expanded
-                        } else {
-                            false
-                        };
+                        }
+                        _ => false,
+                    };
 
                     let mut child_rows: Vec<usize> = Vec::new();
                     if parent_expanded {
@@ -587,54 +629,122 @@ impl MainViewState {
         }
     }
 
-    // Toggle expansion for categories
+    // Toggle expansion for categories and filesystem folders
     pub fn toggle_expand(&mut self) -> Message {
         if self.git_objects.selected_index < self.git_objects.flat_view.len() {
             let (_, selected_obj, _) =
                 &self.git_objects.flat_view[self.git_objects.selected_index].clone();
 
-            if let GitObjectType::Category(category_name) = &selected_obj.obj_type {
-                let name_to_find = category_name.clone();
+            match &selected_obj.obj_type {
+                GitObjectType::Category(category_name) => {
+                    let name_to_find = category_name.clone();
 
-                fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
-                    if let GitObjectType::Category(name) = &obj.obj_type
-                        && name == target_name
-                    {
-                        obj.expanded = !obj.expanded;
-                        return true;
-                    }
-                    for child in &mut obj.children {
-                        if find_and_toggle_category(child, target_name) {
+                    fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
+                        if let GitObjectType::Category(name) = &obj.obj_type
+                            && name == target_name
+                        {
+                            obj.expanded = !obj.expanded;
                             return true;
                         }
+                        for child in &mut obj.children {
+                            if find_and_toggle_category(child, target_name) {
+                                return true;
+                            }
+                        }
+                        false
                     }
-                    false
-                }
 
-                for obj in &mut self.git_objects.list {
-                    if find_and_toggle_category(obj, &name_to_find) {
-                        break;
+                    for obj in &mut self.git_objects.list {
+                        if find_and_toggle_category(obj, &name_to_find) {
+                            break;
+                        }
+                    }
+
+                    self.flatten_tree();
+
+                    // Keep the selected category visible
+                    let mut new_index = 0;
+                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::Category(name) = &obj.obj_type
+                            && name == &name_to_find
+                        {
+                            new_index = i;
+                            break;
+                        }
+                    }
+                    if !self.git_objects.flat_view.is_empty() {
+                        self.git_objects.selected_index =
+                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    } else {
+                        self.git_objects.selected_index = 0;
                     }
                 }
+                GitObjectType::FileSystemFolder { path, .. } => {
+                    let path_to_find = path.clone();
 
-                self.flatten_tree();
+                    fn find_and_toggle_folder(
+                        obj: &mut GitObject,
+                        target_path: &std::path::Path,
+                    ) -> Result<bool, String> {
+                        if let GitObjectType::FileSystemFolder {
+                            path, is_loaded, ..
+                        } = &mut obj.obj_type
+                            && path == target_path
+                        {
+                            if !obj.expanded && !*is_loaded {
+                                // Load folder contents before expanding
+                                obj.load_folder_contents()?
+                            }
+                            obj.expanded = !obj.expanded;
+                            return Ok(true);
+                        }
+                        for child in &mut obj.children {
+                            if find_and_toggle_folder(child, target_path)? {
+                                return Ok(true);
+                            }
+                        }
+                        Ok(false)
+                    }
 
-                // Keep the selected category visible
-                let mut new_index = 0;
-                for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
-                    if let GitObjectType::Category(name) = &obj.obj_type
-                        && name == &name_to_find
-                    {
-                        new_index = i;
-                        break;
+                    let mut error_msg = None;
+                    for obj in &mut self.git_objects.list {
+                        match find_and_toggle_folder(obj, &path_to_find) {
+                            Ok(true) => break,
+                            Ok(false) => continue,
+                            Err(e) => {
+                                error_msg = Some(e);
+                                break;
+                            }
+                        }
+                    }
+
+                    if let Some(error) = error_msg {
+                        return Message::LoadGitObjects(Err(format!(
+                            "Failed to expand folder: {}",
+                            error
+                        )));
+                    }
+
+                    self.flatten_tree();
+
+                    // Keep the selected folder visible
+                    let mut new_index = 0;
+                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::FileSystemFolder { path, .. } = &obj.obj_type
+                            && path == &path_to_find
+                        {
+                            new_index = i;
+                            break;
+                        }
+                    }
+                    if !self.git_objects.flat_view.is_empty() {
+                        self.git_objects.selected_index =
+                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    } else {
+                        self.git_objects.selected_index = 0;
                     }
                 }
-                if !self.git_objects.flat_view.is_empty() {
-                    self.git_objects.selected_index =
-                        new_index.min(self.git_objects.flat_view.len() - 1);
-                } else {
-                    self.git_objects.selected_index = 0;
-                }
+                _ => {} // Other object types are not expandable
             }
         }
         Message::LoadGitObjects(Ok(()))
@@ -678,6 +788,10 @@ impl MainViewState {
             (
                 GitObjectType::Ref { path: old_path, .. },
                 GitObjectType::Ref { path: new_path, .. },
+            ) => self.compare_file_mtime(old_path, new_path),
+            (
+                GitObjectType::FileSystemFile { path: old_path, .. },
+                GitObjectType::FileSystemFile { path: new_path, .. },
             ) => self.compare_file_mtime(old_path, new_path),
             _ => false,
         }

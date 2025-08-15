@@ -186,8 +186,16 @@ fn render_regular_preview_layout(
         {
             let selected_object =
                 &main_view.git_objects.flat_view[main_view.git_objects.selected_index].1;
-            match selected_object.obj_type {
+            match &selected_object.obj_type {
                 GitObjectType::Category(_) => "Educational Content",
+                GitObjectType::FileSystemFolder { is_educational, .. } => {
+                    if *is_educational {
+                        "Educational Content"
+                    } else {
+                        "Directory Info"
+                    }
+                }
+                GitObjectType::FileSystemFile { .. } => "File Info",
                 _ => "Object Preview",
             }
         } else {
@@ -501,7 +509,7 @@ fn render_git_tree(
                 String::new()
             };
 
-            // Add expansion indicator for categories
+            // Add expansion indicator for categories and folders
             let prefix = match &obj.obj_type {
                 GitObjectType::Category(_) if !obj.children.is_empty() => {
                     if obj.expanded {
@@ -546,11 +554,52 @@ fn render_git_tree(
                         if is_last { "└▶ " } else { "├▶ " }
                     }
                 }
+                GitObjectType::FileSystemFolder { .. } => {
+                    // FileSystemFolder should always show expansion indicators (directories are expandable)
+                    if obj.expanded {
+                        if *depth == 0 {
+                            "▼ "
+                        } else {
+                            // Find if this is the last folder at this depth
+                            let is_last = {
+                                let mut is_last = true;
+                                for j in (i + 1)..state.git_objects.flat_view.len() {
+                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                    if *next_depth == *depth {
+                                        is_last = false;
+                                        break;
+                                    } else if *next_depth < *depth {
+                                        break;
+                                    }
+                                }
+                                is_last
+                            };
+                            if is_last { "└▼ " } else { "├▼ " }
+                        }
+                    } else if *depth == 0 {
+                        "▶ "
+                    } else {
+                        // Find if this is the last folder at this depth
+                        let is_last = {
+                            let mut is_last = true;
+                            for j in (i + 1)..state.git_objects.flat_view.len() {
+                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                if *next_depth == *depth {
+                                    is_last = false;
+                                    break;
+                                } else if *next_depth < *depth {
+                                    break;
+                                }
+                            }
+                            is_last
+                        };
+                        if is_last { "└▶ " } else { "├▶ " }
+                    }
+                }
                 GitObjectType::Category(_) => {
                     if *depth == 0 {
-                        // PATCH: adjusted tuple pattern matching for flat_view entries to include RenderStatus
-
-                        "  "
+                        // No prefix for root-level folders
+                        ""
                     } else {
                         // Find if this is the last category at this depth
                         let is_last = {

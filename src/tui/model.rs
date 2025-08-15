@@ -31,6 +31,16 @@ pub struct PackObject {
 #[derive(Debug, Clone)]
 pub enum GitObjectType {
     Category(String),
+    FileSystemFolder {
+        path: PathBuf,
+        is_educational: bool, // True if this folder should show educational content
+        is_loaded: bool,      // True if folder contents have been loaded
+    },
+    FileSystemFile {
+        path: PathBuf,
+        size: Option<u64>,
+        modified_time: Option<SystemTime>,
+    },
     Pack {
         path: PathBuf,
         size: Option<u64>,
@@ -62,6 +72,54 @@ impl GitObject {
             obj_type: GitObjectType::Category(name.to_string()),
             children: Vec::new(),
             expanded: true,
+        }
+    }
+
+    pub fn new_filesystem_folder(path: PathBuf, is_educational: bool) -> Self {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        Self {
+            name,
+            obj_type: GitObjectType::FileSystemFolder {
+                path,
+                is_educational,
+                is_loaded: false,
+            },
+            children: Vec::new(),
+            expanded: false, // Start collapsed for on-demand loading
+        }
+    }
+
+    pub fn new_filesystem_file(path: PathBuf) -> Self {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        // Load file metadata
+        let (size, modified_time) = match std::fs::metadata(&path) {
+            Ok(metadata) => {
+                let file_size = metadata.len();
+                let mod_time = metadata.modified().ok();
+                (Some(file_size), mod_time)
+            }
+            Err(_) => (None, None),
+        };
+
+        Self {
+            name,
+            obj_type: GitObjectType::FileSystemFile {
+                path,
+                size,
+                modified_time,
+            },
+            children: Vec::new(),
+            expanded: false,
         }
     }
 
@@ -140,6 +198,130 @@ impl GitObject {
 
     pub fn add_child(&mut self, child: Self) {
         self.children.push(child);
+    }
+
+    /// Restore expansion and loading state from another GitObject tree
+    pub fn restore_state_from(&mut self, old_tree: &[GitObject]) {
+        fn find_matching_object<'a>(
+            children: &'a [GitObject],
+            target_key: &str,
+        ) -> Option<&'a GitObject> {
+            for child in children {
+                let key = crate::tui::main_view::MainViewState::selection_key(child);
+                if key == target_key {
+                    return Some(child);
+                }
+                if let Some(found) = find_matching_object(&child.children, target_key) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+
+        let my_key = crate::tui::main_view::MainViewState::selection_key(self);
+        if let Some(old_obj) = find_matching_object(old_tree, &my_key) {
+            // Always restore expansion state for all object types
+            self.expanded = old_obj.expanded;
+
+            match (&mut self.obj_type, &old_obj.obj_type) {
+                // FileSystemFolder: restore loading state and children if loaded
+                (
+                    GitObjectType::FileSystemFolder {
+                        is_loaded,
+                        is_educational,
+                        ..
+                    },
+                    GitObjectType::FileSystemFolder {
+                        is_loaded: old_is_loaded,
+                        ..
+                    },
+                ) => {
+                    // For educational folders, keep is_loaded state (they're pre-populated)
+                    // For regular folders, always reload to detect file changes
+                    if *is_educational {
+                        *is_loaded = *old_is_loaded;
+                    } else {
+                        // Regular folders: if they were expanded, reload their contents now
+                        if old_obj.expanded {
+                            *is_loaded = false; // Mark as not loaded to trigger reload
+                            let _ = self.load_folder_contents(); // Load fresh contents immediately
+                        } else {
+                            *is_loaded = false; // Will load on-demand when expanded
+                        }
+                    }
+
+                    // Never restore children - always use fresh children from tree rebuild or reload
+                    // This ensures new/modified/deleted files are detected properly
+                }
+
+                // Category: only restore expansion state, NOT children
+                // Categories like "Loose Objects" should always use fresh children from tree rebuild
+                (GitObjectType::Category(_), GitObjectType::Category(_)) => {
+                    // expansion state already restored above, don't restore children
+                }
+
+                // Pack, Ref, LooseObject: these are leaf nodes, just restore expansion state
+                // (expansion state already restored above)
+                _ => {}
+            }
+        }
+
+        // Recursively restore state for children
+        for child in &mut self.children {
+            child.restore_state_from(old_tree);
+        }
+    }
+
+    /// Load the contents of a filesystem folder on demand
+    pub fn load_folder_contents(&mut self) -> Result<(), String> {
+        match &mut self.obj_type {
+            GitObjectType::FileSystemFolder {
+                path, is_loaded, ..
+            } => {
+                if *is_loaded {
+                    return Ok(()); // Already loaded
+                }
+
+                // Read directory contents
+                match std::fs::read_dir(path) {
+                    Ok(entries) => {
+                        let mut items: Vec<(String, PathBuf, bool)> = Vec::new();
+
+                        for entry in entries.flatten() {
+                            let entry_path = entry.path();
+                            let name = entry.file_name().to_string_lossy().to_string();
+                            let is_dir = entry_path.is_dir();
+                            items.push((name, entry_path, is_dir));
+                        }
+
+                        // Sort: directories first, then files, both alphabetically
+                        items.sort_by(|a, b| {
+                            match (a.2, b.2) {
+                                (true, false) => std::cmp::Ordering::Less, // dirs before files
+                                (false, true) => std::cmp::Ordering::Greater, // files after dirs
+                                _ => a.0.cmp(&b.0), // alphabetical within same type
+                            }
+                        });
+
+                        // Create child objects
+                        for (_, entry_path, is_dir) in items {
+                            if is_dir {
+                                self.children
+                                    .push(GitObject::new_filesystem_folder(entry_path, false));
+                            } else {
+                                self.children
+                                    .push(GitObject::new_filesystem_file(entry_path));
+                            }
+                        }
+
+                        *is_loaded = true;
+                        Ok(())
+                    }
+                    Err(e) => Err(format!("Failed to read directory: {}", e)),
+                }
+            }
+            _ => Err("Cannot load contents of non-folder object".to_string()),
+        }
     }
 
     // Utility method to format SystemTime as "time ago" string

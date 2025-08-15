@@ -1,92 +1,214 @@
-use crate::tui::model::GitObject;
+use crate::tui::model::{GitObject, GitObjectType};
 
-/// Build "Packs" category using GitPlumber discovery
-pub fn build_packs_category(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
-    let mut packs_category = GitObject::new_category("Packs");
-    match plumber.list_pack_files() {
-        Ok(pack_files) => {
-            for pack_path in pack_files {
-                packs_category.add_child(GitObject::new_pack(pack_path));
-            }
-            Ok(packs_category)
-        }
-        Err(e) => Err(format!("Error loading pack files: {e}")),
+/// Build the complete .git directory file tree structure
+pub fn build_git_file_tree(plumber: &crate::GitPlumber) -> Result<Vec<GitObject>, String> {
+    let git_path = plumber.get_repo_path().join(".git");
+    let mut git_contents = Vec::new();
+
+    // Build objects directory with pack and loose objects
+    if let Ok(objects_folder) = build_objects_folder(plumber) {
+        git_contents.push(objects_folder);
     }
+
+    // Build refs directory
+    if let Ok(refs_folder) = build_refs_folder(plumber) {
+        git_contents.push(refs_folder);
+    }
+
+    // Scan for all other .git directories/files (not just the common ones)
+    match std::fs::read_dir(&git_path) {
+        Ok(entries) => {
+            let mut items: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
+
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                let is_dir = entry_path.is_dir();
+
+                // Skip objects and refs as we handle them specially
+                if name != "objects" && name != "refs" {
+                    items.push((name, entry_path, is_dir));
+                }
+            }
+
+            // Sort: directories first, then files, both alphabetically
+            items.sort_by(|a, b| {
+                match (a.2, b.2) {
+                    (true, false) => std::cmp::Ordering::Less, // dirs before files
+                    (false, true) => std::cmp::Ordering::Greater, // files after dirs
+                    _ => a.0.cmp(&b.0),                        // alphabetical within same type
+                }
+            });
+
+            // Add all found items
+            for (_, entry_path, is_dir) in items {
+                if is_dir {
+                    git_contents.push(GitObject::new_filesystem_folder(entry_path, false));
+                } else {
+                    git_contents.push(GitObject::new_filesystem_file(entry_path));
+                }
+            }
+        }
+        Err(e) => return Err(format!("Error reading .git directory: {}", e)),
+    }
+
+    Ok(git_contents)
 }
 
-/// Build "Refs" category with Heads, Remotes, Tags (and stash if present)
-pub fn build_refs_category(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
-    let mut refs_category = GitObject::new_category("Refs");
+/// Build the objects directory with pack and loose object folders
+fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
+    let objects_path = plumber.get_repo_path().join(".git/objects");
+    let mut objects_folder = GitObject::new_filesystem_folder(objects_path.clone(), true);
 
-    let mut heads_category = GitObject::new_category("Heads");
-    let mut remotes_category = GitObject::new_category("Remotes");
-    let mut tags_category = GitObject::new_category("Tags");
+    // Make educational folders start expanded
+    objects_folder.expanded = true;
 
-    // Heads
-    match plumber.list_head_refs() {
-        Ok(head_refs) => {
-            for path in head_refs {
-                heads_category.add_child(GitObject::new_ref(path));
-            }
-        }
-        Err(e) => return Err(format!("Error loading head refs: {e}")),
-    }
+    // Add pack folder with educational content
+    let pack_path = objects_path.join("pack");
+    if pack_path.exists() {
+        let mut pack_folder = GitObject::new_filesystem_folder(pack_path, true);
+        pack_folder.expanded = true; // Educational folders start expanded
 
-    // Remotes
-    match plumber.list_remote_refs() {
-        Ok(remote_refs) => {
-            for (remote_name, refs) in remote_refs {
-                let mut remote_category = GitObject::new_category(&remote_name);
-                for path in refs {
-                    remote_category.add_child(GitObject::new_ref(path));
+        // Load pack files using the existing logic
+        match plumber.list_pack_files() {
+            Ok(pack_files) => {
+                for pack_path in pack_files {
+                    pack_folder.add_child(GitObject::new_pack(pack_path));
                 }
-                remotes_category.add_child(remote_category);
             }
+            Err(e) => return Err(format!("Error loading pack files: {e}")),
         }
-        Err(e) => return Err(format!("Error loading remote refs: {e}")),
+        // Mark pack folder as loaded since we populated it with pack files
+        if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut pack_folder.obj_type {
+            *is_loaded = true;
+        }
+        objects_folder.add_child(pack_folder);
     }
 
-    // Tags
-    match plumber.list_tag_refs() {
-        Ok(tag_refs) => {
-            for path in tag_refs {
-                tags_category.add_child(GitObject::new_ref(path));
-            }
-        }
-        Err(e) => return Err(format!("Error loading tag refs: {e}")),
+    // Add info folder if it exists (make it expandable)
+    let info_path = objects_path.join("info");
+    if info_path.exists() {
+        objects_folder.add_child(GitObject::new_filesystem_folder(info_path, false));
     }
 
-    // Stash
+    // Create a special folder for loose objects with educational content
+    // Don't show the hex directories individually - they're covered by "Loose Objects"
+    match plumber.get_loose_object_stats() {
+        Ok(stats) => match plumber.list_parsed_loose_objects(stats.total_count) {
+            Ok(loose_objects) => {
+                if !loose_objects.is_empty() {
+                    let mut loose_objects_folder = GitObject::new_category("Loose Objects");
+
+                    for parsed_obj in loose_objects {
+                        loose_objects_folder
+                            .add_child(GitObject::new_parsed_loose_object(parsed_obj));
+                    }
+
+                    objects_folder.add_child(loose_objects_folder);
+                }
+            }
+            Err(e) => return Err(format!("Error loading loose objects: {e}")),
+        },
+        Err(e) => return Err(format!("Error getting loose object stats: {e}")),
+    }
+
+    // Mark objects folder as loaded since we populated it
+    if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut objects_folder.obj_type {
+        *is_loaded = true;
+    }
+
+    Ok(objects_folder)
+}
+
+/// Build the refs directory with all reference subcategories
+fn build_refs_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
+    let refs_path = plumber.get_repo_path().join(".git/refs");
+    let mut refs_folder = GitObject::new_filesystem_folder(refs_path, true);
+
+    // Make educational folders start expanded
+    refs_folder.expanded = true;
+
+    // Add heads folder with educational content
+    let heads_path = plumber.get_repo_path().join(".git/refs/heads");
+    if heads_path.exists() {
+        let mut heads_folder = GitObject::new_filesystem_folder(heads_path, true);
+        heads_folder.expanded = true; // Educational folders start expanded
+
+        match plumber.list_head_refs() {
+            Ok(head_refs) => {
+                for path in head_refs {
+                    heads_folder.add_child(GitObject::new_ref(path));
+                }
+            }
+            Err(e) => return Err(format!("Error loading head refs: {e}")),
+        }
+        // Mark as loaded since we populated it
+        if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut heads_folder.obj_type {
+            *is_loaded = true;
+        }
+        refs_folder.add_child(heads_folder);
+    }
+
+    // Add remotes folder with educational content
+    let remotes_path = plumber.get_repo_path().join(".git/refs/remotes");
+    if remotes_path.exists() {
+        let mut remotes_folder = GitObject::new_filesystem_folder(remotes_path, true);
+        remotes_folder.expanded = true; // Educational folders start expanded
+
+        match plumber.list_remote_refs() {
+            Ok(remote_refs) => {
+                for (remote_name, refs) in remote_refs {
+                    let mut remote_category = GitObject::new_category(&remote_name);
+                    for path in refs {
+                        remote_category.add_child(GitObject::new_ref(path));
+                    }
+                    remotes_folder.add_child(remote_category);
+                }
+            }
+            Err(e) => return Err(format!("Error loading remote refs: {e}")),
+        }
+        // Mark as loaded since we populated it
+        if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut remotes_folder.obj_type {
+            *is_loaded = true;
+        }
+        refs_folder.add_child(remotes_folder);
+    }
+
+    // Add tags folder with educational content
+    let tags_path = plumber.get_repo_path().join(".git/refs/tags");
+    if tags_path.exists() {
+        let mut tags_folder = GitObject::new_filesystem_folder(tags_path, true);
+        tags_folder.expanded = true; // Educational folders start expanded
+
+        match plumber.list_tag_refs() {
+            Ok(tag_refs) => {
+                for path in tag_refs {
+                    tags_folder.add_child(GitObject::new_ref(path));
+                }
+            }
+            Err(e) => return Err(format!("Error loading tag refs: {e}")),
+        }
+        // Mark as loaded since we populated it
+        if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut tags_folder.obj_type {
+            *is_loaded = true;
+        }
+        refs_folder.add_child(tags_folder);
+    }
+
+    // Add stash file if it exists
     match plumber.has_stash_ref() {
-        Ok(true) => refs_category.add_child(GitObject::new_ref(
-            plumber.get_repo_path().join(".git/refs/stash"),
-        )),
+        Ok(true) => {
+            let stash_path = plumber.get_repo_path().join(".git/refs/stash");
+            refs_folder.add_child(GitObject::new_ref(stash_path));
+        }
         Ok(false) => {}
         Err(e) => return Err(format!("Error checking stash ref: {e}")),
     }
 
-    refs_category.add_child(heads_category);
-    refs_category.add_child(remotes_category);
-    refs_category.add_child(tags_category);
-
-    Ok(refs_category)
-}
-
-/// Build "objects" category with parsed loose objects
-pub fn build_loose_category(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
-    let mut loose_objects_category = GitObject::new_category("objects");
-
-    match plumber.get_loose_object_stats() {
-        Ok(stats) => match plumber.list_parsed_loose_objects(stats.total_count) {
-            Ok(loose_objects) => {
-                for parsed_obj in loose_objects {
-                    loose_objects_category
-                        .add_child(GitObject::new_parsed_loose_object(parsed_obj));
-                }
-                Ok(loose_objects_category)
-            }
-            Err(e) => Err(format!("Error loading loose objects: {e}")),
-        },
-        Err(e) => Err(format!("Error getting loose object stats: {e}")),
+    // Mark refs folder as loaded since we populated it
+    if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut refs_folder.obj_type {
+        *is_loaded = true;
     }
+
+    Ok(refs_folder)
 }

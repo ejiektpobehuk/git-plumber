@@ -63,21 +63,10 @@ pub fn load_pack_objects_pure(pack_path: &Path) -> Result<Vec<PackObject>, Strin
     Ok(objects)
 }
 
-use crate::tui::model::GitObject;
-
 /// Build the initial Git objects list without touching AppState/UI.
 pub fn load_git_objects_pure(plumber: &crate::GitPlumber) -> Result<InitialGitData, String> {
-    let mut root_list: Vec<GitObject> = Vec::new();
+    // Use the new file tree structure - it returns the contents directly
+    let git_objects_list = crate::tui::git_tree::build_git_file_tree(plumber)?;
 
-    let packs_category = crate::tui::git_tree::build_packs_category(plumber)?;
-    let refs_category = crate::tui::git_tree::build_refs_category(plumber)?;
-    let loose_category = crate::tui::git_tree::build_loose_category(plumber)?;
-
-    root_list.push(packs_category);
-    root_list.push(refs_category);
-    root_list.push(loose_category);
-
-    Ok(InitialGitData {
-        git_objects_list: root_list,
-    })
+    Ok(InitialGitData { git_objects_list })
 }
