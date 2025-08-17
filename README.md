@@ -62,7 +62,7 @@ More packaging details are available in [issue #1](https://github.com/ejiektpobe
 
 Prerequisites:
 - [Rust and Cargo](https://rustup.rs/) installed
-
+- Minimum Supported Rust Version `1.88`
 
 ```bash
 git clone https://github.com/ejiektpobehuk/git-plumber.git
