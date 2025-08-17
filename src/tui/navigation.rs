@@ -15,22 +15,38 @@ impl AppState {
                             selected_index,
                             ..
                         },
-                    preview_state:
-                        PreviewState::Pack(PackPreViewState {
-                            pack_file_path,
-                            pack_object_list,
-                            ..
-                        }),
+                    preview_state,
                     ..
                 },
         } = &mut self.view
-            && *selected_index < flat_view.len()
-            && match &flat_view[*selected_index].1.obj_type {
-                GitObjectType::PackFolder { .. } => true,
-                GitObjectType::PackFile { file_type, .. } => file_type == "packfile",
-                _ => false,
-            }
         {
+            if *selected_index >= flat_view.len() {
+                return;
+            }
+
+            // Check if we're in Pack preview state
+            let (pack_object_list, pack_file_path) = match preview_state {
+                PreviewState::Pack(PackPreViewState {
+                    pack_object_list,
+                    pack_file_path,
+                    ..
+                }) => (pack_object_list, pack_file_path),
+                _ => return, // Not in pack preview state
+            };
+
+            // Check if current object is a pack object
+            let is_pack_object = match &flat_view[*selected_index].1.obj_type {
+                GitObjectType::PackFolder { .. } => true,
+                GitObjectType::PackFile { file_type, .. } => {
+                    file_type == "packfile" || file_type == "pack"
+                }
+                _ => false,
+            };
+
+            if !is_pack_object {
+                return;
+            }
+
             // Extract the pack file path from the object type
             let path = match &flat_view[*selected_index].1.obj_type {
                 GitObjectType::PackFolder { pack_group, .. } => {

@@ -7,9 +7,11 @@ use nom::{
 };
 
 pub mod delta;
+pub mod index;
 pub mod object;
 
 pub use delta::{DeltaInstruction, parse_delta_instructions};
+pub use index::PackIndex;
 pub use object::{Object, ObjectHeader, ObjectType};
 
 use thiserror::Error;
@@ -73,6 +75,28 @@ pub enum PackError {
 
     #[error("Decompression error: {0}")]
     DecompressionError(#[from] std::io::Error),
+
+    // Index-specific errors
+    #[error("Invalid index file signature")]
+    InvalidIndexSignature,
+
+    #[error("Unsupported index version: {0}")]
+    UnsupportedIndexVersion(u32),
+
+    #[error("Corrupt fan-out table")]
+    CorruptFanOutTable,
+
+    #[error("Index checksum mismatch")]
+    IndexChecksumMismatch,
+
+    #[error("Pack checksum mismatch")]
+    PackChecksumMismatch,
+
+    #[error("Object not found in index: {0}")]
+    ObjectNotFound(String),
+
+    #[error("Invalid object index: {0}")]
+    InvalidObjectIndex(usize),
 }
 
 // Helper function to create a simple pack file header with the specified number of objects

@@ -1,7 +1,7 @@
 use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
-use crate::tui::widget::PackObjectWidget;
+use crate::tui::widget::{PackIndexWidget, PackObjectWidget};
 use ratatui::text::Text;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -137,13 +137,29 @@ pub struct PackPreViewState {
 pub struct RegularPreViewState {
     pub focus: RegularFocus,
     pub preview_scroll_position: usize,
+    pub pack_index_widget: Option<PackIndexWidget>,
+}
+
+impl Default for RegularPreViewState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RegularPreViewState {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             focus: RegularFocus::GitObjects,
             preview_scroll_position: 0,
+            pack_index_widget: None,
+        }
+    }
+
+    pub fn new_with_pack_index(pack_index: crate::git::pack::PackIndex) -> Self {
+        Self {
+            focus: RegularFocus::GitObjects,
+            preview_scroll_position: 0,
+            pack_index_widget: Some(PackIndexWidget::new(pack_index)),
         }
     }
 }

@@ -224,7 +224,7 @@ impl CliLooseFormatter {
         writeln!(&mut output).unwrap();
 
         // Use the TUI formatter to generate rich content
-        let mut widget = LooseObjectWidget::new(loose_obj.clone());
+        let widget = LooseObjectWidget::new(loose_obj.clone());
         let formatted_text = widget.text();
 
         // Convert ratatui Text to ANSI colored string

@@ -1,5 +1,5 @@
 use crate::git::loose_object::LooseObject;
-use crate::tui::helpers::render_styled_paragraph_with_scrollbar;
+use crate::tui::widget::ScrollableTextWidget;
 use ratatui::text::Text;
 
 pub mod formatters;
@@ -9,48 +9,45 @@ use formatters::{BlobFormatter, CommitFormatter, TagFormatter, TreeFormatter};
 #[derive(Debug, Clone)]
 pub struct LooseObjectWidget {
     loose_obj: LooseObject,
-    scroll_position: usize,
-    max_scroll: usize,
-    text_cache: Option<ratatui::text::Text<'static>>,
+    scrollable_widget: ScrollableTextWidget,
 }
 
 impl LooseObjectWidget {
-    pub const fn new(loose_obj: LooseObject) -> Self {
+    pub fn new(loose_obj: LooseObject) -> Self {
+        let mut scrollable_widget = ScrollableTextWidget::new();
+        // Pre-generate and cache the content
+        let content = LooseObjectFormatter::new(&loose_obj).generate_content();
+        scrollable_widget.set_text(content);
+
         Self {
             loose_obj,
-            scroll_position: 0,
-            max_scroll: 0,
-            text_cache: None,
+            scrollable_widget,
         }
     }
 
-    pub fn text(&mut self) -> ratatui::text::Text<'static> {
-        if let Some(cached_content) = &self.text_cache {
-            return cached_content.clone();
-        }
-        let content = LooseObjectFormatter::new(&self.loose_obj).generate_content();
-        self.text_cache = Some(content.clone());
-        content
+    pub fn text(&self) -> ratatui::text::Text<'static> {
+        self.scrollable_widget.text()
     }
 
-    pub const fn scroll_up(&mut self) {
-        self.scroll_position = self.scroll_position.saturating_sub(1);
+    /// Get the underlying loose object
+    pub fn loose_object(&self) -> &LooseObject {
+        &self.loose_obj
+    }
+
+    pub fn scroll_up(&mut self) {
+        self.scrollable_widget.scroll_up();
     }
 
     pub fn scroll_down(&mut self) {
-        self.scroll_position = (self.scroll_position + 1).min(self.max_scroll);
+        self.scrollable_widget.scroll_down();
     }
 
-    pub const fn scroll_to_top(&mut self) {
-        self.scroll_position = 0;
+    pub fn scroll_to_top(&mut self) {
+        self.scrollable_widget.scroll_to_top();
     }
 
-    pub const fn scroll_to_bottom(&mut self) {
-        self.scroll_position = self.max_scroll;
-    }
-
-    const fn scroll_position(&self) -> usize {
-        self.scroll_position
+    pub fn scroll_to_bottom(&mut self) {
+        self.scrollable_widget.scroll_to_bottom();
     }
 
     pub fn render(
@@ -59,21 +56,8 @@ impl LooseObjectWidget {
         area: ratatui::layout::Rect,
         is_focused: bool,
     ) {
-        let content = self.text();
-
-        let total_lines = content.lines.len();
-        let visible_height = area.height.saturating_sub(2) as usize; // Account for borders
-        self.max_scroll = total_lines.saturating_sub(visible_height);
-
-        let title = "Loose Object Details";
-        render_styled_paragraph_with_scrollbar(
-            f,
-            area,
-            content,
-            self.scroll_position(),
-            title,
-            is_focused,
-        );
+        self.scrollable_widget
+            .render(f, area, "Loose Object Details", is_focused);
     }
 }
 

@@ -96,7 +96,7 @@ impl AppState {
                                     .map(|(_, obj, _)| match &obj.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile"
+                                            file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
                                     })
@@ -133,7 +133,7 @@ impl AppState {
                                     .map(|(_, obj, _)| match &obj.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile"
+                                            file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
                                     })
@@ -165,7 +165,7 @@ impl AppState {
                                     .map(|(_, obj, _)| match &obj.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile"
+                                            file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
                                     })
@@ -198,7 +198,7 @@ impl AppState {
                                     .map(|(_, obj, _)| match &obj.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile"
+                                            file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
                                     })
@@ -326,6 +326,7 @@ impl AppState {
                                     preview_state.focus = RegularFocus::GitObjects
                                 }
                             },
+
                             PreviewState::Pack(preview_state) => match preview_state.focus {
                                 PackFocus::GitObjects => {
                                     preview_state.focus = PackFocus::Educational;
@@ -484,6 +485,7 @@ impl AppState {
                     {
                         match preview_state {
                             PreviewState::Regular(_) => {}
+
                             PreviewState::Pack(PackPreViewState {
                                 educational_scroll_position,
                                 ..
@@ -508,6 +510,7 @@ impl AppState {
                     {
                         match preview_state {
                             PreviewState::Regular(_) => {}
+
                             PreviewState::Pack(PackPreViewState {
                                 educational_scroll_position,
                                 focus,
@@ -539,6 +542,7 @@ impl AppState {
                     {
                         match preview_state {
                             PreviewState::Regular(_) => {}
+
                             PreviewState::Pack(PackPreViewState {
                                 educational_scroll_position,
                                 ..
@@ -561,6 +565,7 @@ impl AppState {
                     {
                         match preview_state {
                             PreviewState::Regular(_) => {}
+
                             PreviewState::Pack(PackPreViewState {
                                 educational_scroll_position,
                                 ..
@@ -583,9 +588,12 @@ impl AppState {
                         match preview_state {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
+                                pack_index_widget,
                                 ..
                             }) => {
-                                if *preview_scroll_position > 0 {
+                                if let Some(widget) = pack_index_widget {
+                                    widget.scroll_up();
+                                } else if *preview_scroll_position > 0 {
                                     *preview_scroll_position -= 1;
                                 }
                             }
@@ -612,15 +620,20 @@ impl AppState {
                         match preview_state {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
+                                pack_index_widget,
                                 ..
                             }) => {
-                                let content_lines = educational_content.lines.len();
-                                let visible_height =
-                                    self.layout_dimensions.educational_content_height;
-                                let max_scroll = content_lines.saturating_sub(visible_height);
+                                if let Some(widget) = pack_index_widget {
+                                    widget.scroll_down();
+                                } else {
+                                    let content_lines = educational_content.lines.len();
+                                    let visible_height =
+                                        self.layout_dimensions.educational_content_height;
+                                    let max_scroll = content_lines.saturating_sub(visible_height);
 
-                                if *preview_scroll_position < max_scroll {
-                                    *preview_scroll_position += 1;
+                                    if *preview_scroll_position < max_scroll {
+                                        *preview_scroll_position += 1;
+                                    }
                                 }
                             }
                             PreviewState::Pack(PackPreViewState {
@@ -648,9 +661,14 @@ impl AppState {
                         match preview_state {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
+                                pack_index_widget,
                                 ..
                             }) => {
-                                *preview_scroll_position = 0;
+                                if let Some(widget) = pack_index_widget {
+                                    widget.scroll_to_top();
+                                } else {
+                                    *preview_scroll_position = 0;
+                                }
                             }
                             PreviewState::Pack(PackPreViewState {
                                 pack_object_widget_state,
@@ -675,13 +693,18 @@ impl AppState {
                         match preview_state {
                             PreviewState::Regular(RegularPreViewState {
                                 preview_scroll_position,
+                                pack_index_widget,
                                 ..
                             }) => {
-                                let content_lines = educational_content.lines.len();
-                                let visible_height =
-                                    self.layout_dimensions.educational_content_height;
-                                let max_scroll = content_lines.saturating_sub(visible_height);
-                                *preview_scroll_position = max_scroll;
+                                if let Some(widget) = pack_index_widget {
+                                    widget.scroll_to_bottom();
+                                } else {
+                                    let content_lines = educational_content.lines.len();
+                                    let visible_height =
+                                        self.layout_dimensions.educational_content_height;
+                                    let max_scroll = content_lines.saturating_sub(visible_height);
+                                    *preview_scroll_position = max_scroll;
+                                }
                             }
                             PreviewState::Pack(PackPreViewState {
                                 pack_object_widget_state,
@@ -808,6 +831,7 @@ impl AppState {
                     let new_regular_state = RegularPreViewState {
                         focus: RegularFocus::GitObjects,
                         preview_scroll_position: 0,
+                        pack_index_widget: None,
                     };
                     state.preview_state = PreviewState::Regular(new_regular_state);
                 }

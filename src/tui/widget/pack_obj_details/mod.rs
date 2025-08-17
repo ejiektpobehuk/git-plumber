@@ -28,6 +28,10 @@ impl PackObjectWidget {
         }
     }
 
+    pub fn uninitiolized() -> Self {
+        Self::Uninitiolized
+    }
+
     pub fn text(&mut self) -> ratatui::text::Text<'static> {
         match self {
             &mut Self::Initiolized {
@@ -109,7 +113,7 @@ impl PackObjectWidget {
             *max_scroll = total_lines.saturating_sub(visible_height);
         }
 
-        let title = "Pack object Details";
+        let title = "Pack Object Details";
         render_styled_paragraph_with_scrollbar(
             f,
             area,

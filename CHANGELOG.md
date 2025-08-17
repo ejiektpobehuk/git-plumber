@@ -5,7 +5,8 @@
 ### Added
 
 - Highlights for modified files
-- packfile extensions are acknowledged
+- Packfile extensions are shown in the tree
+- Pack Index (.idx) file support
 
 ### Changed
 

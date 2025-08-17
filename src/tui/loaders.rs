@@ -302,7 +302,7 @@ impl AppState {
                             file_type, path, ..
                         } => {
                             match file_type.as_str() {
-                                "packfile" => {
+                                "packfile" | "pack" => {
                                     // Try to parse pack file header for preview
                                     match std::fs::read(path) {
                                         Ok(pack_data) => {
@@ -324,10 +324,22 @@ impl AppState {
                                     }
                                 }
                                 "index" => {
-                                    let content = self
-                                        .educational_content_provider
-                                        .get_category_content("Pack Index");
-                                    Message::LoadEducationalContent(Ok(content))
+                                    // Try to parse index file for detailed preview
+                                    match std::fs::read(path) {
+                                        Ok(index_data) => {
+                                            match crate::git::pack::PackIndex::parse(&index_data) {
+                                                Ok((_, index)) => {
+                                                    Message::LoadPackIndexDetails(Ok(index))
+                                                }
+                                                Err(e) => Message::LoadPackIndexDetails(Err(
+                                                    format!("Error parsing pack index: {e:?}"),
+                                                )),
+                                            }
+                                        }
+                                        Err(e) => Message::LoadPackIndexDetails(Err(format!(
+                                            "Error reading index file: {e}"
+                                        ))),
+                                    }
                                 }
                                 "xedni" => {
                                     let content = self

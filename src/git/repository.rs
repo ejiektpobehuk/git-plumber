@@ -1,4 +1,5 @@
 use crate::git::loose_object::{LooseObject, LooseObjectError};
+use crate::git::pack::{PackError, PackIndex};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -31,6 +32,11 @@ impl PackGroup {
         self.pack_file.is_some()
     }
 
+    /// Returns true if this group has both .pack and .idx files
+    pub fn has_index(&self) -> bool {
+        self.pack_file.is_some() && self.idx_file.is_some()
+    }
+
     /// Returns all available file paths in this group
     pub fn get_all_files(&self) -> Vec<(&str, &PathBuf)> {
         let mut files = Vec::new();
@@ -50,6 +56,107 @@ impl PackGroup {
 
         files
     }
+
+    /// Load and parse the index file if available
+    pub fn load_index(&self) -> Result<Option<PackIndex>, PackError> {
+        if let Some(ref idx_path) = self.idx_file {
+            match std::fs::read(idx_path) {
+                Ok(data) => match PackIndex::parse(&data) {
+                    Ok((_, index)) => Ok(Some(index)),
+                    Err(e) => Err(PackError::ParseError(format!(
+                        "Failed to parse index: {:?}",
+                        e
+                    ))),
+                },
+                Err(e) => Err(PackError::DecompressionError(e)),
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Look up an object by SHA-1 hash using the index file
+    /// Returns the byte offset in the pack file if found
+    pub fn lookup_object_offset(&self, sha1: &[u8; 20]) -> Result<Option<u64>, PackError> {
+        match self.load_index()? {
+            Some(index) => Ok(index.lookup_object(sha1)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get basic statistics about the pack group
+    pub fn get_stats(&self) -> Result<PackGroupStats, PackError> {
+        let mut stats = PackGroupStats {
+            base_name: self.base_name.clone(),
+            has_pack: self.pack_file.is_some(),
+            has_index: self.idx_file.is_some(),
+            has_rev: self.rev_file.is_some(),
+            has_mtimes: self.mtimes_file.is_some(),
+            object_count: None,
+            pack_size: None,
+            index_size: None,
+        };
+
+        // Get pack file size
+        if let Some(ref pack_path) = self.pack_file
+            && let Ok(metadata) = std::fs::metadata(pack_path)
+        {
+            stats.pack_size = Some(metadata.len());
+        }
+
+        // Get index file size and object count
+        if let Some(ref idx_path) = self.idx_file {
+            if let Ok(metadata) = std::fs::metadata(idx_path) {
+                stats.index_size = Some(metadata.len());
+            }
+
+            // Load index to get object count
+            if let Ok(Some(index)) = self.load_index() {
+                stats.object_count = Some(index.object_count());
+            }
+        }
+
+        Ok(stats)
+    }
+}
+
+/// Statistics about a pack group
+#[derive(Debug, Clone)]
+pub struct PackGroupStats {
+    pub base_name: String,
+    pub has_pack: bool,
+    pub has_index: bool,
+    pub has_rev: bool,
+    pub has_mtimes: bool,
+    pub object_count: Option<usize>,
+    pub pack_size: Option<u64>,
+    pub index_size: Option<u64>,
+}
+
+impl std::fmt::Display for PackGroupStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Pack Group: {}", self.base_name)?;
+
+        if let Some(count) = self.object_count {
+            writeln!(f, "Objects: {}", count)?;
+        }
+
+        if let Some(size) = self.pack_size {
+            writeln!(f, "Pack size: {} bytes", size)?;
+        }
+
+        if let Some(size) = self.index_size {
+            writeln!(f, "Index size: {} bytes", size)?;
+        }
+
+        writeln!(f, "Files present:")?;
+        writeln!(f, "  Pack: {}", if self.has_pack { "✓" } else { "✗" })?;
+        writeln!(f, "  Index: {}", if self.has_index { "✓" } else { "✗" })?;
+        writeln!(f, "  Rev: {}", if self.has_rev { "✓" } else { "✗" })?;
+        writeln!(f, "  Mtimes: {}", if self.has_mtimes { "✓" } else { "✗" })?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug, Error)]
@@ -62,6 +169,9 @@ pub enum RepositoryError {
 
     #[error("Loose object error: {0}")]
     LooseObjectError(#[from] LooseObjectError),
+
+    #[error("Pack error: {0}")]
+    PackError(#[from] PackError),
 }
 
 /// Statistics about loose objects in the repository

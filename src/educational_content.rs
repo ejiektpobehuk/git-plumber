@@ -41,6 +41,45 @@ impl EducationalContent {
             ),
         );
 
+        // Pack Index files educational content
+        content_map.insert(
+            "Pack Index".to_string(),
+            Text::from(
+                "PACK INDEX FILES (.idx)\n\nPack index files provide efficient lookup into pack files.\n\
+             Instead of scanning the entire pack file to find an object,\n\
+             the index maps object SHA-1 hashes to their byte offsets.\n\
+             This enables instant object access and verification.\n\
+             \n\
+             Index file structure (version 2):\n\
+             \n\
+             ┌─────────────────┐\n\
+             │ Magic + Version │ 8 bytes (\\377tOc + version 2)\n\
+             ├─────────────────┤\n\
+             │   Fan-out Table │ 256 × 4 bytes (object counts by first byte)\n\
+             ├─────────────────┤\n\
+             │ Object Names    │ N × 20 bytes (sorted SHA-1 hashes)\n\
+             ├─────────────────┤\n\
+             │ CRC32 Table     │ N × 4 bytes (data integrity checksums)\n\
+             ├─────────────────┤\n\
+             │ Offset Table    │ N × 4 bytes (pack file byte offsets)\n\
+             ├─────────────────┤\n\
+             │ Large Offsets   │ Optional: M × 8 bytes (for big pack files)\n\
+             ├─────────────────┤\n\
+             │ Pack Checksum   │ 20 bytes (SHA-1 of corresponding pack)\n\
+             ├─────────────────┤\n\
+             │ Index Checksum  │ 20 bytes (SHA-1 of all index data)\n\
+             └─────────────────┘\n\
+             \n\
+             The fan-out table enables binary search optimization:\n\
+             - Entry N contains count of objects with first byte ≤ N\n\
+             - Allows quick range determination for binary search\n\
+             - Reduces average lookup from O(N) to O(log N)\n\
+             \n\
+             CRC32 checksums enable data integrity verification\n\
+             without unpacking the entire object data.",
+            ),
+        );
+
         // References educational content
         content_map.insert(
             "Refs".to_string(),

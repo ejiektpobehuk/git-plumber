@@ -143,11 +143,11 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
 
 fn render_regular_preview_layout(
     f: &mut ratatui::Frame,
-    main_view: &MainViewState,
+    main_view: &mut MainViewState,
     app_error: &Option<String>,
     area: ratatui::layout::Rect,
 ) {
-    if let PreviewState::Regular(preview_state) = &main_view.preview_state {
+    if let PreviewState::Regular(preview_state) = &mut main_view.preview_state {
         // Split area into two vertical sections for consistent layout
         let content_chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -180,37 +180,47 @@ fn render_regular_preview_layout(
         );
         f.render_widget(details_widget, content_chunks[0]);
 
-        // Bottom block - Educational/Preview content
-        let bottom_title = if !main_view.git_objects.flat_view.is_empty()
-            && main_view.git_objects.selected_index < main_view.git_objects.flat_view.len()
-        {
-            let selected_object =
-                &main_view.git_objects.flat_view[main_view.git_objects.selected_index].1;
-            match &selected_object.obj_type {
-                GitObjectType::Category(_) => "Educational Content",
-                GitObjectType::FileSystemFolder { is_educational, .. } => {
-                    if *is_educational {
-                        "Educational Content"
-                    } else {
-                        "Directory Info"
-                    }
-                }
-                GitObjectType::FileSystemFile { .. } => "File Info",
-                GitObjectType::PackFolder { .. } => "Pack Preview",
-                _ => "Object Preview",
-            }
+        // Bottom block - Educational/Preview content or Pack Index widget
+        if let Some(pack_index_widget) = &mut preview_state.pack_index_widget {
+            // Render pack index widget
+            pack_index_widget.render(
+                f,
+                content_chunks[1],
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
         } else {
-            "Content"
-        };
+            // Render regular educational content
+            let bottom_title = if !main_view.git_objects.flat_view.is_empty()
+                && main_view.git_objects.selected_index < main_view.git_objects.flat_view.len()
+            {
+                let selected_object =
+                    &main_view.git_objects.flat_view[main_view.git_objects.selected_index].1;
+                match &selected_object.obj_type {
+                    GitObjectType::Category(_) => "Educational Content",
+                    GitObjectType::FileSystemFolder { is_educational, .. } => {
+                        if *is_educational {
+                            "Educational Content"
+                        } else {
+                            "Directory Info"
+                        }
+                    }
+                    GitObjectType::FileSystemFile { .. } => "File Info",
+                    GitObjectType::PackFolder { .. } => "Pack Preview",
+                    _ => "Object Preview",
+                }
+            } else {
+                "Content"
+            };
 
-        render_styled_paragraph_with_scrollbar(
-            f,
-            content_chunks[1],
-            main_view.educational_content.clone(),
-            preview_state.preview_scroll_position,
-            bottom_title,
-            matches!(preview_state.focus, RegularFocus::Preview),
-        );
+            render_styled_paragraph_with_scrollbar(
+                f,
+                content_chunks[1],
+                main_view.educational_content.clone(),
+                preview_state.preview_scroll_position,
+                bottom_title,
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
+        }
     }
 }
 

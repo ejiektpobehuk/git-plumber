@@ -140,12 +140,17 @@ impl GitObject {
             expanded: false,
         };
 
-        // Add children for each available file type, but exclude "packfile"
-        // since the folder itself acts as the packfile
+        // Add children for each available file type
+        // Add "pack" first (renamed from "packfile" to distinguish from the folder)
         for (file_type, path) in pack_group.get_all_files() {
-            if file_type != "packfile" {
-                pack_folder.add_child(Self::new_pack_file(file_type.to_string(), path.clone()));
-            }
+            let child_file_type = match file_type {
+                "packfile" => "pack", // Rename packfile to pack for the child
+                other => other,
+            };
+            pack_folder.add_child(Self::new_pack_file(
+                child_file_type.to_string(),
+                path.clone(),
+            ));
         }
 
         pack_folder
@@ -154,6 +159,7 @@ impl GitObject {
     pub fn new_pack_file(file_type: String, path: PathBuf) -> Self {
         let name = match file_type.as_str() {
             "packfile" => "packfile",
+            "pack" => "pack",
             "index" => "index",
             "xedni" => "xedni",
             "mtime" => "mtime",

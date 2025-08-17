@@ -1,3 +1,4 @@
+use crate::git::pack::PackIndex;
 use crate::tui::model::PackObject;
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -25,6 +26,7 @@ pub enum Message {
         path: std::path::PathBuf,
         result: Result<Vec<PackObject>, String>,
     },
+    LoadPackIndexDetails(Result<PackIndex, String>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
     LooseObjectNavigation(LooseObjectNavigation),
