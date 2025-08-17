@@ -1,3 +1,6 @@
+include:
+  - local: '.gitlab/maintenance-ci.yml'
+
 stages:
   - check
   - test
@@ -5,6 +8,7 @@ stages:
   - cache
   - release
   - container
+  - maintenance
 
 default:
   image: rust:1-bookworm
@@ -21,6 +25,7 @@ variables:
   CARGO_TERM_COLOR: always
   GITHUB_REPO: "ejiektpobehuk/git-plumber"
   CARGO_INCREMENTAL: "0"
+  NIX_IMAGE: "nixos/nix:2.30.2"
 
 workflow:
   rules:
@@ -209,7 +214,7 @@ windows:build:x86_64:
 # Optional: Nix build and push to Cachix on default branch
 nix_build_cache:
   stage: cache
-  image: nixos/nix:2.30.2
+  image: $NIX_IMAGE
   needs: ["clippy", "test"]
   rules:
     - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"

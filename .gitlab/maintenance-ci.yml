@@ -1,0 +1,197 @@
+# Maintenance CI jobs for git-plumber
+# These jobs run on a schedule to proactively maintain the project
+
+stages:
+  - maintenance
+
+variables:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+# Monthly MSRV check to ensure our documented minimum version is accurate
+msrv_check:
+  stage: maintenance
+  image: rust:1-bookworm
+  rules:
+    # Run on the first day of each month at 6 AM UTC
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MAINTENANCE_JOB == "msrv"
+  before_script:
+    - cargo install cargo-msrv
+  script:
+    - echo "Checking current MSRV in Cargo.toml..."
+    - CURRENT_MSRV=$(grep -E '^rust-version\s*=' Cargo.toml | sed -E 's/.*"([^"]+)".*/\1/')
+    - echo "Current MSRV: $CURRENT_MSRV"
+    - echo "Running cargo msrv find to determine actual MSRV..."
+    - ACTUAL_MSRV=$(cargo msrv find --output-format json | jq -r '.msrv')
+    - echo "Actual MSRV: $ACTUAL_MSRV"
+    - |
+      if [ "$CURRENT_MSRV" != "$ACTUAL_MSRV" ]; then
+        echo "❌ MSRV mismatch detected!"
+        echo "Current MSRV in Cargo.toml: $CURRENT_MSRV"
+        echo "Actual MSRV required: $ACTUAL_MSRV"
+        echo ""
+        echo "Please update the rust-version in Cargo.toml to: $ACTUAL_MSRV"
+        echo "You may also need to update flake.lock to ensure Nix uses a compatible Rust version."
+        exit 1
+      else
+        echo "✅ MSRV is up to date: $CURRENT_MSRV"
+      fi
+  cache:
+    key: msrv-check
+    paths:
+      - .cargo/registry
+      - .cargo/git
+      - target
+    policy: pull-push
+  allow_failure: false
+  artifacts:
+    when: on_failure
+    expire_in: 7 days
+    reports:
+      junit: msrv-report.xml
+  after_script:
+    - |
+      if [ $CI_JOB_STATUS == "failed" ]; then
+        # Create a simple JUnit report for better visibility
+        cat > msrv-report.xml << EOF
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuite name="MSRV Check" tests="1" failures="1" errors="0" time="0">
+        <testcase classname="maintenance" name="msrv_check">
+          <failure message="MSRV mismatch detected">
+            Current MSRV in Cargo.toml does not match actual required MSRV.
+            Please update rust-version in Cargo.toml and potentially flake.lock.
+          </failure>
+        </testcase>
+      </testsuite>
+      EOF
+      fi
+
+# Monthly flake.lock update check and PR creation
+flake_update:
+  stage: maintenance
+  image: $NIX_IMAGE
+  rules:
+    # Run on the 15th of each month at 6 AM UTC
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MAINTENANCE_JOB == "flake"
+  variables:
+    NIX_CONFIG: "experimental-features = nix-command flakes"
+    GIT_STRATEGY: clone
+  before_script:
+    # Install necessary tools
+    - nix-env -iA nixpkgs.git
+    - nix-env -iA nixpkgs.gh
+    - nix-env -iA nixpkgs.jq
+    # Configure git
+    - git config --global user.name "GitLab CI"
+    - git config --global user.email "ci@gitlab.com"
+    # Set up authentication for GitHub
+    - echo "$GITHUB_TOKEN" | gh auth login --with-token
+  script:
+    - echo "Checking for flake.lock updates..."
+    # Create a backup of current flake.lock
+    - cp flake.lock flake.lock.backup
+    # Update flake inputs
+    - nix flake update
+    # Check if there are any changes
+    - |
+      if ! diff -q flake.lock.backup flake.lock > /dev/null; then
+        echo "📦 Flake updates detected!"
+        
+        # Test that the project still builds with updated dependencies
+        echo "Testing build with updated flake.lock..."
+        if nix build .#git-plumber --no-link; then
+          echo "✅ Build successful with updated dependencies"
+          
+          # Create a branch for the update
+          BRANCH_NAME="maintenance/flake-update-$(date +%Y-%m-%d)"
+          git checkout -b "$BRANCH_NAME"
+          
+          # Commit the changes
+          git add flake.lock
+          git commit -m "chore: update flake.lock dependencies
+
+          Automated monthly update of Nix flake dependencies.
+          
+          Changes:
+          $(git diff --name-only HEAD~1)"
+          
+          # Push the branch
+          git push origin "$BRANCH_NAME"
+          
+          # Create a pull request
+          gh pr create \
+            --title "chore: update flake.lock dependencies ($(date +%Y-%m-%d))" \
+            --body "## 📦 Monthly Flake Dependencies Update
+
+          This is an automated pull request to update the Nix flake dependencies.
+
+          ### Changes
+          - Updated \`flake.lock\` with latest available versions
+          - Verified that the project builds successfully with updated dependencies
+
+          ### Testing
+          - [x] \`nix build .#git-plumber\` passes
+          - [x] All dependencies are compatible
+
+          This PR was created automatically by the monthly maintenance job." \
+            --head "$BRANCH_NAME" \
+            --base main \
+            --repo "$GITHUB_REPO"
+          
+          echo "✅ Pull request created successfully"
+        else
+          echo "❌ Build failed with updated dependencies"
+          echo "Flake update would break the build - not creating PR"
+          # Restore the original flake.lock
+          mv flake.lock.backup flake.lock
+          exit 1
+        fi
+      else
+        echo "📋 No flake updates available"
+      fi
+  allow_failure: true
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - flake.lock.backup
+    reports:
+      junit: flake-update-report.xml
+  after_script:
+    - |
+      # Create a JUnit report
+      if [ $CI_JOB_STATUS == "success" ]; then
+        STATUS="passed"
+        MESSAGE="Flake update check completed successfully"
+      else
+        STATUS="failed"
+        MESSAGE="Flake update check failed - see job logs for details"
+      fi
+      
+      cat > flake-update-report.xml << EOF
+      <?xml version="1.0" encoding="UTF-8"?>
+      <testsuite name="Flake Update Check" tests="1" failures="0" errors="0" time="0">
+        <testcase classname="maintenance" name="flake_update">
+          $([ "$STATUS" = "failed" ] && echo "<failure message=\"$MESSAGE\">Flake update process failed</failure>")
+        </testcase>
+      </testsuite>
+      EOF
+
+# Monthly Nix image version check
+nix_image_update:
+  stage: maintenance
+  image: rust:1-bookworm
+  rules:
+    # Run on the 25th of each month at 6 AM UTC
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $MAINTENANCE_JOB == "nix_image"
+  before_script:
+    - apt-get update && apt-get install -y git
+    # Configure git
+    - git config --global user.name "GitLab CI"
+    - git config --global user.email "ci@gitlab.com"
+    # Install nightly for cargo script support
+    - rustup install nightly
+    - rustup default nightly
+  script:
+    - .gitlab/nix-image-update.rs
+  allow_failure: true
