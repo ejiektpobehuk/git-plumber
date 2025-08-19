@@ -94,25 +94,24 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
     }
 
     // Create a special folder for loose objects with educational content
-    // Don't show the hex directories individually - they're covered by "Loose Objects"
+    // Always show "Loose Objects" folder for educational purposes, even when empty
+    let mut loose_objects_folder = GitObject::new_category("Loose Objects");
+
     match plumber.get_loose_object_stats() {
         Ok(stats) => match plumber.list_parsed_loose_objects(stats.total_count) {
             Ok(loose_objects) => {
-                if !loose_objects.is_empty() {
-                    let mut loose_objects_folder = GitObject::new_category("Loose Objects");
-
-                    for parsed_obj in loose_objects {
-                        loose_objects_folder
-                            .add_child(GitObject::new_parsed_loose_object(parsed_obj));
-                    }
-
-                    objects_folder.add_child(loose_objects_folder);
+                // Add loose objects if they exist
+                for parsed_obj in loose_objects {
+                    loose_objects_folder.add_child(GitObject::new_parsed_loose_object(parsed_obj));
                 }
             }
             Err(e) => return Err(format!("Error loading loose objects: {e}")),
         },
         Err(e) => return Err(format!("Error getting loose object stats: {e}")),
     }
+
+    // Always add the loose objects folder to maintain static presence
+    objects_folder.add_child(loose_objects_folder);
 
     // Mark objects folder as loaded since we populated it
     if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut objects_folder.obj_type {
