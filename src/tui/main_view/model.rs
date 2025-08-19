@@ -408,7 +408,7 @@ impl MainViewState {
         (added_keys, deleted_keys, modified_keys)
     }
 
-    // ===== Sorting (natural sort, with "objects" pinned to top) =====
+    // ===== Sorting (natural sort, with "objects" pinned to top, "refs" pinned second) =====
 
     pub fn sort_tree_for_display(nodes: &mut [GitObject]) {
         // Sort the current level
@@ -430,11 +430,14 @@ impl MainViewState {
                 _ => &b.name,
             };
 
-            // Objects folder always comes first
+            // Objects folder always comes first, refs folder comes second
             match (a_name, b_name) {
                 ("objects", "objects") => std::cmp::Ordering::Equal,
                 ("objects", _) => std::cmp::Ordering::Less,
                 (_, "objects") => std::cmp::Ordering::Greater,
+                ("refs", "refs") => std::cmp::Ordering::Equal,
+                ("refs", _) if b_name != "objects" => std::cmp::Ordering::Less,
+                (_, "refs") if a_name != "objects" => std::cmp::Ordering::Greater,
                 _ => natural_key(a_name).cmp(&natural_key(b_name)),
             }
         });
