@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2025-08-20
+
 ### Added
 
 - Highlights for modified files
@@ -11,6 +13,9 @@
 ### Changed
 
 - git tree now uses actual file structure from `.git`
+- idle rendering doesn't cause CPU spikes
+- Loose Objects category is permanently available
+- refs folder is pinned as second
 
 ## [0.1.2] - 2025-08-11
 
