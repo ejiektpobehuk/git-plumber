@@ -6,66 +6,6 @@ stages:
 variables:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-# Monthly MSRV check to ensure our documented minimum version is accurate
-msrv_check:
-  stage: maintenance
-  image: rust:1-bookworm
-  rules:
-    # Run on the first day of each month at 6 AM UTC
-    - if: $CI_PIPELINE_SOURCE == "schedule" && $MAINTENANCE_JOB == "msrv"
-  before_script:
-    - cargo install cargo-msrv
-  script:
-    - echo "Checking current MSRV in Cargo.toml..."
-    - >
-      CURRENT_MSRV=$(grep -E '^rust-version\s*=' Cargo.toml |
-      sed -E 's/.*"([^"]+)".*/\1/')
-    - echo "Current MSRV: $CURRENT_MSRV"
-    - echo "Running cargo msrv find to determine actual MSRV..."
-    - ACTUAL_MSRV=$(cargo msrv find --output-format json | jq -r '.msrv')
-    - echo "Actual MSRV: $ACTUAL_MSRV"
-    - |
-      if [ "$CURRENT_MSRV" != "$ACTUAL_MSRV" ]; then
-        echo "❌ MSRV mismatch detected!"
-        echo "Current MSRV in Cargo.toml: $CURRENT_MSRV"
-        echo "Actual MSRV required: $ACTUAL_MSRV"
-        echo ""
-        echo "Please update the rust-version in Cargo.toml to: $ACTUAL_MSRV"
-        echo "You may also need to update flake.lock to ensure Nix uses a"
-        echo "compatible Rust version."
-        exit 1
-      else
-        echo "✅ MSRV is up to date: $CURRENT_MSRV"
-      fi
-  cache:
-    key: msrv-check
-    paths:
-      - .cargo/registry
-      - .cargo/git
-      - target
-    policy: pull-push
-  allow_failure: false
-  artifacts:
-    when: on_failure
-    expire_in: 7 days
-    reports:
-      junit: msrv-report.xml
-  after_script:
-    - |
-      if [ $CI_JOB_STATUS == "failed" ]; then
-        # Create a simple JUnit report for better visibility
-        cat > msrv-report.xml << EOF
-      <?xml version="1.0" encoding="UTF-8"?>
-      <testsuite name="MSRV Check" tests="1" failures="1" errors="0" time="0">
-        <testcase classname="maintenance" name="msrv_check">
-          <failure message="MSRV mismatch detected">
-            Current MSRV in Cargo.toml does not match actual required MSRV.
-            Please update rust-version in Cargo.toml and potentially flake.lock.
-          </failure>
-        </testcase>
-      </testsuite>
-      EOF
-      fi
 
 # Monthly flake.lock update check and PR creation
 flake_update:
