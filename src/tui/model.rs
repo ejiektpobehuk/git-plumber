@@ -433,6 +433,8 @@ pub struct AppState {
     pub fs_watcher: Option<notify::RecommendedWatcher>,
     // Preferences
     pub reduced_motion: bool,
+    // Rendering optimization
+    pub last_terminal_size: Option<ratatui::layout::Size>,
 }
 
 impl AppState {
@@ -473,6 +475,8 @@ impl AppState {
             effects: Vec::new(),
             // Default; overwritten by run_tui_with_options
             reduced_motion: false,
+            // Rendering optimization
+            last_terminal_size: None,
         }
     }
 
@@ -519,5 +523,27 @@ impl AppState {
 
     pub fn is_wide_screen(&self) -> bool {
         self.layout_dimensions.terminal_width > 158
+    }
+
+    // Rendering optimization methods
+    pub fn check_terminal_resize(&mut self, current_size: ratatui::layout::Size) -> bool {
+        if self.last_terminal_size != Some(current_size) {
+            self.update_layout_dimensions(current_size);
+            self.last_terminal_size = Some(current_size);
+            true
+        } else {
+            false
+        }
+    }
+
+    // Check if animations are currently active
+    pub fn has_active_animations(&self) -> bool {
+        if let AppView::Main { state } = &self.view {
+            !state.changed_keys.is_empty()
+                || !state.ghosts.is_empty()
+                || !state.modified_keys.is_empty()
+        } else {
+            false
+        }
     }
 }

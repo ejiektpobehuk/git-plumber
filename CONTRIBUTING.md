@@ -90,6 +90,16 @@ Avoid `unsafe`.
 If absolutely necessary, isolate and document reasoning and invariants.
 Clearly communicate in PR that it contains unsafe.
 
+TUI architecture.
+It is inspired by an ELM architecture.
+One on the goals is to minimise redraws.
+So there is no FPS target.
+Redraws should happen only when there is a change.
+We use signals to indicate a need for a redraw.
+There is one exception where FPS approach should be acknowledged - animations.
+Change highlights are highly dynamic and spread throughput a period of time.
+During animations a frequent tick signal is used, but it should be stopped when animations are finished.
+
 Do not panic in the TUI.
 Prefer errors with context and user-friendly messages.
 Handle partial/corrupt repositories and unsupported objects gracefully; clearly surface what is unsupported.

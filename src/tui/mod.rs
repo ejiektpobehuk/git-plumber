@@ -59,7 +59,6 @@ pub struct RunOptions {
 }
 
 use crossterm::ExecutableCommand;
-use crossterm::event::{self, Event};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -103,7 +102,8 @@ fn run_app<B: ratatui::backend::Backend>(
     rx: Receiver<crate::tui::message::Message>,
     tx: crossbeam_channel::Sender<crate::tui::message::Message>,
 ) -> Result<(), String> {
-    let ticker = tick(Duration::from_millis(100));
+    // Dynamic timer thread - only active when animations are running
+    let mut timer_handle: Option<std::thread::JoinHandle<()>> = None;
 
     // Helper to execute commands emitted by update
     let run_commands = |app: &AppState| {
@@ -140,19 +140,66 @@ fn run_app<B: ratatui::backend::Backend>(
     run_commands(app);
     app.effects.clear();
 
+    // Start event listener thread for all terminal events (resize, keyboard)
+    let tx_events = tx.clone();
+    let _event_thread = std::thread::spawn(move || {
+        loop {
+            match crossterm::event::read() {
+                Ok(crossterm::event::Event::Resize(width, height)) => {
+                    if tx_events
+                        .send(crate::tui::message::Message::TerminalResize(width, height))
+                        .is_err()
+                    {
+                        break; // Main thread closed
+                    }
+                }
+                Ok(crossterm::event::Event::Key(key)) => {
+                    if tx_events
+                        .send(crate::tui::message::Message::KeyEvent(key))
+                        .is_err()
+                    {
+                        break; // Main thread closed
+                    }
+                }
+                Ok(_) => {
+                    // Ignore other events (mouse, focus, etc.)
+                    continue;
+                }
+                Err(_) => {
+                    // Error reading events, exit thread
+                    break;
+                }
+            }
+        }
+    });
+
     loop {
-        // Update layout dimensions based on current terminal size
-        let terminal_size = terminal
-            .size()
-            .map_err(|e| format!("Failed to get terminal size: {e}"))?;
-        app.update_layout_dimensions(terminal_size);
+        // Manage timer thread lifecycle based on animation state
+        let needs_animations = app.has_active_animations();
+        if needs_animations && timer_handle.is_none() {
+            // Start timer thread when animations begin
+            let tx_timer = tx.clone();
+            timer_handle = Some(std::thread::spawn(move || {
+                let timer = tick(Duration::from_millis(100));
+                loop {
+                    if timer.recv().is_ok() {
+                        if tx_timer
+                            .send(crate::tui::message::Message::TimerTick)
+                            .is_err()
+                        {
+                            break; // Main thread has closed
+                        }
+                    } else {
+                        break; // Timer channel closed
+                    }
+                }
+            }));
+        } else if !needs_animations && timer_handle.is_some() {
+            // Stop timer thread when animations end (it will exit naturally)
+            timer_handle = None;
+        }
 
-        // Render the UI
-        terminal
-            .draw(|f| draw_ui(f, app))
-            .map_err(|e| format!("Failed to draw: {e}"))?;
-
-        // Multiplex background messages, timer, and input
+        // Single unified select! loop - all events come through message channel
         select! {
             recv(rx) -> msg => {
                 if let Ok(msg) = msg {
@@ -160,48 +207,14 @@ fn run_app<B: ratatui::backend::Backend>(
                     run_commands(app);
                 }
             }
-            recv(ticker) -> _ => {
-                // Periodic maintenance: expire ephemeral highlights (new + deleted)
-                let mut needs_redraw = false;
-                if let crate::tui::model::AppView::Main { state } = &mut app.view {
-                    // Redraw while animations are active
-                    if !state.changed_keys.is_empty() || !state.ghosts.is_empty() {
-                        needs_redraw = true;
-                    }
-                    if state.prune_timeouts() {
-                        state.flatten_tree();
-                        needs_redraw = true;
-                    }
-                }
-                if needs_redraw {
-                    terminal
-                        .draw(|f| draw_ui(f, app))
-                        .map_err(|e| format!("Failed to draw: {e}"))?;
-                }
-            }
-            default => {
-                // Non-blocking keyboard handling
-                if event::poll(Duration::from_millis(0))
-                    .map_err(|e| format!("Failed to poll events: {e}"))?
-                    && let Event::Key(key) =
-                        event::read().map_err(|e| format!("Failed to read event: {e}"))?
-                        && let Some(msg) = match app.view {
-                            model::AppView::Main { .. } => {
-                                crate::tui::main_view::handle_key_event(key, app)
-                            }
-                            model::AppView::PackObjectDetail { .. } => {
-                                crate::tui::pack_details::handle_key_event(key, app)
-                            }
-                            model::AppView::LooseObjectDetail { .. } => {
-                                crate::tui::loose_details::handle_key_event(key, app)
-                            }
-                        } {
-                            if !app.update(msg, plumber) { return Ok(()); }
-                            run_commands(app);
-                        }
-            }
         }
+
         // Clear executed effects
         app.effects.clear();
+
+        // Redraw after any event
+        terminal
+            .draw(|f| draw_ui(f, app))
+            .map_err(|e| format!("Failed to draw: {e}"))?;
     }
 }

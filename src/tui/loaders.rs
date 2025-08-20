@@ -328,16 +328,16 @@ impl AppState {
                                     match std::fs::read(path) {
                                         Ok(index_data) => {
                                             match crate::git::pack::PackIndex::parse(&index_data) {
-                                                Ok((_, index)) => {
-                                                    Message::LoadPackIndexDetails(Ok(index))
-                                                }
-                                                Err(e) => Message::LoadPackIndexDetails(Err(
-                                                    format!("Error parsing pack index: {e:?}"),
+                                                Ok((_, index)) => Message::LoadPackIndexDetails(
+                                                    Box::new(Ok(index)),
+                                                ),
+                                                Err(e) => Message::LoadPackIndexDetails(Box::new(
+                                                    Err(format!("Error parsing pack index: {e:?}")),
                                                 )),
                                             }
                                         }
-                                        Err(e) => Message::LoadPackIndexDetails(Err(format!(
-                                            "Error reading index file: {e}"
+                                        Err(e) => Message::LoadPackIndexDetails(Box::new(Err(
+                                            format!("Error reading index file: {e}"),
                                         ))),
                                     }
                                 }

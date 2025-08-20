@@ -26,13 +26,19 @@ pub enum Message {
         path: std::path::PathBuf,
         result: Result<Vec<PackObject>, String>,
     },
-    LoadPackIndexDetails(Result<PackIndex, String>),
+    LoadPackIndexDetails(Box<Result<PackIndex, String>>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
     LooseObjectNavigation(LooseObjectNavigation),
     OpenMainView,
     OpenPackView,
     OpenLooseObjectView,
+    // Timer message for animations
+    TimerTick,
+    // Terminal resize event
+    TerminalResize(u16, u16), // width, height
+    // Keyboard event
+    KeyEvent(crossterm::event::KeyEvent),
 }
 
 #[derive(Debug)]

@@ -145,7 +145,7 @@ impl AppState {
                 }
             },
 
-            Message::LoadPackIndexDetails(result) => match result {
+            Message::LoadPackIndexDetails(result) => match *result {
                 Ok(pack_index) => {
                     if let AppView::Main { state } = &mut self.view {
                         // Switch to Regular preview state with pack index widget
@@ -259,6 +259,36 @@ impl AppState {
             | Message::LoadPackObjects { .. }
             | Message::GitObjectsLoaded(_) => {
                 return self.handle_load_result_message(msg, plumber);
+            }
+
+            Message::TimerTick => {
+                // Handle animation timer tick
+                if let AppView::Main { state } = &mut self.view
+                    && state.prune_timeouts()
+                {
+                    state.flatten_tree();
+                }
+            }
+
+            Message::TerminalResize(width, height) => {
+                // Handle terminal resize event
+                let new_size = ratatui::layout::Size { width, height };
+                self.check_terminal_resize(new_size);
+            }
+
+            Message::KeyEvent(key) => {
+                // Handle keyboard event
+                if let Some(msg) = match self.view {
+                    AppView::Main { .. } => crate::tui::main_view::handle_key_event(key, self),
+                    AppView::PackObjectDetail { .. } => {
+                        crate::tui::pack_details::handle_key_event(key, self)
+                    }
+                    AppView::LooseObjectDetail { .. } => {
+                        crate::tui::loose_details::handle_key_event(key, self)
+                    }
+                } {
+                    return self.update(msg, plumber);
+                }
             }
         }
 
