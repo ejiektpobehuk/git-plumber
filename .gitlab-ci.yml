@@ -257,7 +257,7 @@ release:github:
       if gh release view "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
         echo "Release exists, will upload assets (clobber)"
       else
-        gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" --title "Release $CI_COMMIT_TAG" --notes "Automated release from GitLab CI"
+        gh release create --prerelease "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" --title "Release $CI_COMMIT_TAG" --notes-file .gitlab/release-notes.md
       fi
     - gh release upload "$CI_COMMIT_TAG" dist/git-plumber-* --repo "$GITHUB_REPO" --clobber
 
