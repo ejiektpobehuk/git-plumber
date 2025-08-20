@@ -1,13 +1,10 @@
 # Maintenance CI jobs for git-plumber
 # These jobs run on a schedule to proactively maintain the project
-
 stages:
   - maintenance
-
 variables:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
-
 # Monthly MSRV check to ensure our documented minimum version is accurate
 msrv_check:
   stage: maintenance
@@ -65,7 +62,6 @@ msrv_check:
       </testsuite>
       EOF
       fi
-
 # Monthly flake.lock update check and PR creation
 flake_update:
   stage: maintenance
@@ -93,62 +89,7 @@ flake_update:
     # Update flake inputs
     - nix flake update
     # Check if there are any changes
-    - |
-      if ! diff -q flake.lock.backup flake.lock > /dev/null; then
-        echo "📦 Flake updates detected!"
-        
-        # Test that the project still builds with updated dependencies
-        echo "Testing build with updated flake.lock..."
-        if nix build .#git-plumber --no-link; then
-          echo "✅ Build successful with updated dependencies"
-          
-          # Create a branch for the update
-          BRANCH_NAME="maintenance/flake-update-$(date +%Y-%m-%d)"
-          git checkout -b "$BRANCH_NAME"
-          
-          # Commit the changes
-          git add flake.lock
-          git commit -m "chore: update flake.lock dependencies
-
-          Automated monthly update of Nix flake dependencies.
-          
-          Changes:
-          $(git diff --name-only HEAD~1)"
-          
-          # Push the branch
-          git push origin "$BRANCH_NAME"
-          
-          # Create a pull request
-          gh pr create \
-            --title "chore: update flake.lock dependencies ($(date +%Y-%m-%d))" \
-            --body "## 📦 Monthly Flake Dependencies Update
-
-          This is an automated pull request to update the Nix flake dependencies.
-
-          ### Changes
-          - Updated \`flake.lock\` with latest available versions
-          - Verified that the project builds successfully with updated dependencies
-
-          ### Testing
-          - [x] \`nix build .#git-plumber\` passes
-          - [x] All dependencies are compatible
-
-          This PR was created automatically by the monthly maintenance job." \
-            --head "$BRANCH_NAME" \
-            --base main \
-            --repo "$GITHUB_REPO"
-          
-          echo "✅ Pull request created successfully"
-        else
-          echo "❌ Build failed with updated dependencies"
-          echo "Flake update would break the build - not creating PR"
-          # Restore the original flake.lock
-          mv flake.lock.backup flake.lock
-          exit 1
-        fi
-      else
-        echo "📋 No flake updates available"
-      fi
+    - "if ! diff -q flake.lock.backup flake.lock > /dev/null; then\n  echo \"📦 Flake updates detected!\"\n  \n  # Test that the project still builds with updated dependencies\n  echo \"Testing build with updated flake.lock...\"\n  if nix build .#git-plumber --no-link; then\n    echo \"✅ Build successful with updated dependencies\"\n    \n    # Create a branch for the update\n    BRANCH_NAME=\"maintenance/flake-update-$(date +%Y-%m-%d)\"\n    git checkout -b \"$BRANCH_NAME\"\n    \n    # Commit the changes\n    git add flake.lock\n    git commit -m \"chore: update flake.lock dependencies\n\n    Automated monthly update of Nix flake dependencies.\n    \n    Changes:\n    $(git diff --name-only HEAD~1)\"\n    \n    # Push the branch\n    git push origin \"$BRANCH_NAME\"\n    \n    # Create a pull request\n    gh pr create \\\n      --title \"chore: update flake.lock dependencies ($(date +%Y-%m-%d))\" \\\n      --body \"## 📦 Monthly Flake Dependencies Update\n\n    This is an automated pull request to update the Nix flake dependencies.\n\n    ### Changes\n    - Updated \\`flake.lock\\` with latest available versions\n    - Verified that the project builds successfully with updated dependencies\n\n    ### Testing\n    - [x] \\`nix build .#git-plumber\\` passes\n    - [x] All dependencies are compatible\n\n    This PR was created automatically by the monthly maintenance job.\" \\\n      --head \"$BRANCH_NAME\" \\\n      --base main \\\n      --repo \"$GITHUB_REPO\"\n    \n    echo \"✅ Pull request created successfully\"\n  else\n    echo \"❌ Build failed with updated dependencies\"\n    echo \"Flake update would break the build - not creating PR\"\n    # Restore the original flake.lock\n    mv flake.lock.backup flake.lock\n    exit 1\n  fi\nelse\n  echo \"📋 No flake updates available\"\nfi\n"
   allow_failure: true
   artifacts:
     when: always
@@ -167,7 +108,7 @@ flake_update:
         STATUS="failed"
         MESSAGE="Flake update check failed - see job logs for details"
       fi
-      
+
       cat > flake-update-report.xml << EOF
       <?xml version="1.0" encoding="UTF-8"?>
       <testsuite name="Flake Update Check" tests="1" failures="0" errors="0" time="0">
@@ -176,7 +117,6 @@ flake_update:
         </testcase>
       </testsuite>
       EOF
-
 # Monthly Nix image version check
 nix_image_update:
   stage: maintenance
