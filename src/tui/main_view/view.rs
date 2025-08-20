@@ -607,9 +607,39 @@ fn render_git_tree(
                         if is_last { "└▶ " } else { "├▶ " }
                     }
                 }
-                GitObjectType::Category(_) => {
-                    if *depth == 0 {
-                        // No prefix for root-level folders
+                GitObjectType::Category(name) => {
+                    // Special handling for "Loose Objects" to always show folder indicators
+                    if name == "Loose Objects" {
+                        // Always show triangle that changes based on expansion state
+                        // Use ▽ when expanded, ▷ when collapsed (regardless of content)
+                        if *depth == 0 {
+                            if obj.expanded { "▽ " } else { "▷ " }
+                        } else {
+                            // Find if this is the last category at this depth
+                            let is_last = {
+                                let mut is_last = true;
+                                for j in (i + 1)..state.git_objects.flat_view.len() {
+                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
+                                    if *next_depth == *depth {
+                                        is_last = false;
+                                        break;
+                                    } else if *next_depth < *depth {
+                                        break;
+                                    }
+                                }
+                                is_last
+                            };
+
+                            if obj.expanded {
+                                if is_last { "└▽ " } else { "├▽ " }
+                            } else if is_last {
+                                "└▷ "
+                            } else {
+                                "├▷ "
+                            }
+                        }
+                    } else if *depth == 0 {
+                        // No prefix for other root-level categories
                         ""
                     } else {
                         // Find if this is the last category at this depth

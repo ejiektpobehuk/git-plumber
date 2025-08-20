@@ -560,12 +560,17 @@ impl MainViewState {
                         .position(|(_, o, _)| Self::selection_key(o) == parent_key)
                 {
                     let parent_depth = output[parent_row].0;
-                    let parent_expanded = match output[parent_row].1.obj_type {
-                        GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
-                            output[parent_row].1.expanded
-                        }
-                        _ => false,
-                    };
+                    // Get the current expansion state from the actual tree, not the old flat_view
+                    let parent_expanded =
+                        if let Some(parent_node) = self.find_node_by_key(&parent_key) {
+                            match parent_node.obj_type {
+                                GitObjectType::Category(_)
+                                | GitObjectType::FileSystemFolder { .. } => parent_node.expanded,
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        };
 
                     let mut child_rows: Vec<usize> = Vec::new();
                     if parent_expanded {
@@ -584,28 +589,29 @@ impl MainViewState {
 
                     for (sibling_index, ghost_key) in list.into_iter().rev() {
                         if let Some(g) = self.ghosts.get(&ghost_key) {
-                            let insert_at = if parent_expanded {
-                                if sibling_index < child_rows.len() {
+                            // Only show ghosts if the parent is expanded
+                            // If parent is collapsed, its children (including ghosts) shouldn't be visible
+                            if parent_expanded {
+                                let insert_at = if sibling_index < child_rows.len() {
                                     child_rows[sibling_index]
                                 } else {
                                     child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
-                                }
-                            } else {
-                                parent_row + 1
-                            };
-                            output.insert(
-                                insert_at,
-                                (
-                                    parent_depth + 1,
-                                    g.display.clone(),
-                                    RenderStatus::PendingRemoval,
-                                ),
-                            );
-                            for r in &mut child_rows {
-                                if *r >= insert_at {
-                                    *r += 1;
+                                };
+                                output.insert(
+                                    insert_at,
+                                    (
+                                        parent_depth + 1,
+                                        g.display.clone(),
+                                        RenderStatus::PendingRemoval,
+                                    ),
+                                );
+                                for r in &mut child_rows {
+                                    if *r >= insert_at {
+                                        *r += 1;
+                                    }
                                 }
                             }
+                            // If parent is collapsed, skip this ghost entirely
                         }
                     }
                 }
