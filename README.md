@@ -29,7 +29,9 @@ Perfect for learning, live experimentation, or just satisfying your curiosity.
 - **Not** a “porcelain” UI like [gitui](https://github.com/extrawurst/gitui) or [lazygit](https://github.com/jesseduffield/lazygit)
 - **Not** an interface for running plumbing commands, but a worthy alternative to `git cat-file` or `git verify-pack`
 
----## Installation
+---
+
+## Installation
 
 ### Development version
 
