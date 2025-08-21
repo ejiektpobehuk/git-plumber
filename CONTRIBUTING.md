@@ -8,7 +8,7 @@ There are many ways to help the project!
 I'm happy to hear from you, the user.
 You can reach out publicly via [GitHub issues](https://github.com/ejiektpobehuk/git-plumber/issues) or privately via `git-plumber@ejiek.id` email.
 
-I probably won't see your public feedback on social networks but others might.
+I probably won't see your public feedback on social networks, but others might.
 Spreading the word helps tremendously.
 
 ## Internationalisation and localisation (i18n)
@@ -16,7 +16,7 @@ Spreading the word helps tremendously.
 I'd like to make the app available in multiple languages.
 Unfortunately, `git-plubmer` is still early in the development cycle and I haven't implemented any support for i18n.
 Currently, it's not a priority because the app is still in the experimental stage.
-Architecture and data representation change a lot.
+Architecture and data representation may change a lot.
 Stay tuned though ^.~
 
 ## Packaging
@@ -92,13 +92,13 @@ Clearly communicate in PR that it contains unsafe.
 
 TUI architecture.
 It is inspired by an ELM architecture.
-One on the goals is to minimise redraws.
+One of the goals is to minimise redraws.
 So there is no FPS target.
 Redraws should happen only when there is a change.
 We use signals to indicate a need for a redraw.
-There is one exception where FPS approach should be acknowledged - animations.
-Change highlights are highly dynamic and spread throughput a period of time.
-During animations a frequent tick signal is used, but it should be stopped when animations are finished.
+There is one exception where the FPS approach should be acknowledged - animations.
+Change highlights are highly dynamic and spread over a period of time.
+During animations, a frequent tick signal is used; however, it should be stopped when the animations are finished.
 
 Do not panic in the TUI.
 Prefer errors with context and user-friendly messages.

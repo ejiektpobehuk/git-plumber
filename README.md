@@ -12,7 +12,7 @@
 ## What is _git-plumber_?
 
 [git-plumber](https://github.com/ejiektpobehuk/git-plumber) is a CLI and TUI application for **exploring the internals of git repositories** in a safe, read-only way.
-Browse and understand the contents of the `.git/` directory: refs, trees, blobs and more.
+Browse and understand the contents of the `.git/` directory: refs, trees, blobs, and more.
 Demystify compressed and binary “plumbing” beneath git’s familiar porcelain appearance.
 
 Perfect for learning, live experimentation, or just satisfying your curiosity.
@@ -29,9 +29,7 @@ Perfect for learning, live experimentation, or just satisfying your curiosity.
 - **Not** a “porcelain” UI like [gitui](https://github.com/extrawurst/gitui) or [lazygit](https://github.com/jesseduffield/lazygit)
 - **Not** an interface for running plumbing commands, but a worthy alternative to `git cat-file` or `git verify-pack`
 
----
-
-## Installation
+---## Installation
 
 ### Development version
 
@@ -46,7 +44,7 @@ They are available:
 - [From source](#building-from-source)
 
 ### Versioned releases
-They are built from tags, are more rare and still not stable.
+They are built from tags, are less frequent, and still not stable.
 However, they have better availability:
 
 - [crates.io/git-plumber](https://crates.io/crates/git-plumber)
@@ -77,7 +75,7 @@ cargo install --path .
 This app is my git learning project.
 It's going to be more complete as my knowledge grows.
 
-For planned features checkout [issues at GitHub](https://github.com/ejiektpobehuk/git-plumber/issues).
+For planned features, checkout [issues at GitHub](https://github.com/ejiektpobehuk/git-plumber/issues).
 
 **Major goals**:
 
@@ -88,7 +86,7 @@ For planned features checkout [issues at GitHub](https://github.com/ejiektpobehu
 
 **PRs/issues welcome — no need to be a git guru!**
 Beginners and documentation helpers are especially appreciated.
-If something is unclear, that’s a sign the app can get better: lease [open an issue](https://github.com/ejiektpobehuk/git-plumber/issues/new) or start a discussion!
+If something is unclear, that’s a sign the app can get better: [open an issue](https://github.com/ejiektpobehuk/git-plumber/issues/new) or start a discussion!
 
 Read the project’s Guiding Principles and contribution tips in [CONTRIBUTING.md](https://github.com/ejiektpobehuk/git-plumber/blob/main/CONTRIBUTING.md).
 
