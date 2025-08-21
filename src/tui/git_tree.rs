@@ -96,12 +96,16 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
     // Create a special folder for loose objects with educational content
     // Always show "Loose Objects" folder for educational purposes, even when empty
     let mut loose_objects_folder = GitObject::new_category("Loose Objects");
-    // Start collapsed to allow users to expand/collapse it
-    loose_objects_folder.expanded = false;
 
     match plumber.get_loose_object_stats() {
         Ok(stats) => match plumber.list_parsed_loose_objects(stats.total_count) {
             Ok(loose_objects) => {
+                // Set expansion state based on number of objects:
+                // - Expand if 10 or fewer objects (easier to see small collections)
+                // - Collapse if more than 10 objects (avoid overwhelming UI)
+                let object_count = loose_objects.len();
+                loose_objects_folder.expanded = object_count <= 10;
+
                 // Add loose objects if they exist
                 for parsed_obj in loose_objects {
                     loose_objects_folder.add_child(GitObject::new_parsed_loose_object(parsed_obj));
