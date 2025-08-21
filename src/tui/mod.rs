@@ -104,6 +104,7 @@ fn run_app<B: ratatui::backend::Backend>(
 ) -> Result<(), String> {
     // Dynamic timer thread - only active when animations are running
     let mut timer_handle: Option<std::thread::JoinHandle<()>> = None;
+    let mut timer_stop_tx: Option<crossbeam_channel::Sender<()>> = None;
 
     // Helper to execute commands emitted by update
     let run_commands = |app: &AppState| {
@@ -179,9 +180,17 @@ fn run_app<B: ratatui::backend::Backend>(
         if needs_animations && timer_handle.is_none() {
             // Start timer thread when animations begin
             let tx_timer = tx.clone();
+            let (stop_tx, stop_rx) = crossbeam_channel::unbounded();
+            timer_stop_tx = Some(stop_tx);
             timer_handle = Some(std::thread::spawn(move || {
                 let timer = tick(Duration::from_millis(100));
                 loop {
+                    // Check for stop signal first (non-blocking)
+                    if stop_rx.try_recv().is_ok() {
+                        break; // Stop signal received
+                    }
+
+                    // Then check for timer tick
                     if timer.recv().is_ok() {
                         if tx_timer
                             .send(crate::tui::message::Message::TimerTick)
@@ -195,15 +204,29 @@ fn run_app<B: ratatui::backend::Backend>(
                 }
             }));
         } else if !needs_animations && timer_handle.is_some() {
-            // Stop timer thread when animations end (it will exit naturally)
-            timer_handle = None;
+            // Stop timer thread when animations end
+            if let Some(stop_tx) = timer_stop_tx.take() {
+                let _ = stop_tx.send(()); // Signal timer thread to stop
+            }
+            if let Some(handle) = timer_handle.take() {
+                let _ = handle.join(); // Wait for thread to finish
+            }
         }
 
         // Single unified select! loop - all events come through message channel
         select! {
             recv(rx) -> msg => {
                 if let Ok(msg) = msg {
-                    if !app.update(msg, plumber) { return Ok(()); }
+                    if !app.update(msg, plumber) {
+                        // Clean up timer thread on exit
+                        if let Some(stop_tx) = timer_stop_tx.take() {
+                            let _ = stop_tx.send(());
+                        }
+                        if let Some(handle) = timer_handle.take() {
+                            let _ = handle.join();
+                        }
+                        return Ok(());
+                    }
                     run_commands(app);
                 }
             }
