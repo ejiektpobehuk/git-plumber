@@ -93,7 +93,7 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                    .map(|row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
@@ -130,7 +130,7 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                    .map(|row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
@@ -162,7 +162,7 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .first()
-                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                    .map(|row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
@@ -195,7 +195,7 @@ impl AppState {
                                 let is_pack = git_objects
                                     .flat_view
                                     .get(new_index)
-                                    .map(|(_, obj, _)| match &obj.obj_type {
+                                    .map(|row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
@@ -223,10 +223,10 @@ impl AppState {
                             // Extract the information we need before calling update to avoid borrow conflicts
                             let has_items = !state.git_objects.flat_view.is_empty();
                             let selected_index = state.git_objects.selected_index;
-                            let is_pack = if let Some((_, git_object, _)) =
+                            let is_pack = if let Some(row) =
                                 state.git_objects.flat_view.get(selected_index)
                             {
-                                matches!(git_object.obj_type, GitObjectType::PackFolder { .. })
+                                matches!(row.object.obj_type, GitObjectType::PackFolder { .. })
                             } else {
                                 false
                             };
@@ -248,15 +248,15 @@ impl AppState {
                         && !state.git_objects.flat_view.is_empty()
                         && state.git_objects.selected_index < state.git_objects.flat_view.len()
                     {
-                        let (current_depth, _, _) =
-                            &state.git_objects.flat_view[state.git_objects.selected_index];
+                        let current_depth =
+                            state.git_objects.flat_view[state.git_objects.selected_index].depth;
 
-                        if *current_depth > 0 {
+                        if current_depth > 0 {
                             // Find parent category by looking backwards for an object at depth - 1
                             for i in (0..state.git_objects.selected_index).rev() {
-                                let (parent_depth, parent_obj, _) = &state.git_objects.flat_view[i];
-                                if *parent_depth == current_depth - 1
-                                    && let GitObjectType::Category(_) = &parent_obj.obj_type
+                                let parent_row = &state.git_objects.flat_view[i];
+                                if parent_row.depth == current_depth - 1
+                                    && let GitObjectType::Category(_) = &parent_row.object.obj_type
                                 {
                                     // Jump to this parent category
                                     state.git_objects.selected_index = i;
@@ -747,12 +747,11 @@ impl AppState {
                 } = &self.view
                 {
                     // Get the currently selected loose object
-                    if let Some((_, git_object, _)) =
-                        git_objects.flat_view.get(git_objects.selected_index)
+                    if let Some(row) = git_objects.flat_view.get(git_objects.selected_index)
                         && let GitObjectType::LooseObject {
                             parsed_object: Some(loose_obj),
                             ..
-                        } = &git_object.obj_type
+                        } = &row.object.obj_type
                     {
                         // Create the new loose object view
                         let loose_view = AppView::LooseObjectDetail {
@@ -793,8 +792,8 @@ impl AppState {
         if let AppView::Main { state } = &mut self.view {
             if is_pack {
                 // Ensure we have a Pack preview state
-                if let Some((_, git_object, _)) = state.git_objects.flat_view.get(selected_index) {
-                    let path = match &git_object.obj_type {
+                if let Some(row) = state.git_objects.flat_view.get(selected_index) {
+                    let path = match &row.object.obj_type {
                         GitObjectType::PackFolder { pack_group, .. } => {
                             if let Some(pack_path) = &pack_group.pack_file {
                                 pack_path

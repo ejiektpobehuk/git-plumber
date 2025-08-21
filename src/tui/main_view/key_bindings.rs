@@ -25,8 +25,10 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         if !state.git_objects.flat_view.is_empty()
                             && state.git_objects.selected_index < state.git_objects.flat_view.len()
                         {
-                            let (current_depth, selected_obj, _) =
+                            let row =
                                 &state.git_objects.flat_view[state.git_objects.selected_index];
+                            let current_depth = row.depth;
+                            let selected_obj = &row.object;
                             match &selected_obj.obj_type {
                                 GitObjectType::Category(_)
                                 | GitObjectType::FileSystemFolder { .. }
@@ -34,7 +36,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                                     Some(Message::MainNavigation(MainNavigation::ToggleExpand))
                                 }
                                 _ => {
-                                    if *current_depth > 0 {
+                                    if current_depth > 0 {
                                         // Jump to parent category
                                         Some(Message::MainNavigation(
                                             MainNavigation::JumpToParentCategory,
@@ -68,12 +70,12 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                 PreviewState::Regular(preview_state) => match preview_state.focus {
                     RegularFocus::GitObjects => {
                         // Check if the selected object is a loose object
-                        if let Some((_, git_object, _)) = state
+                        if let Some(row) = state
                             .git_objects
                             .flat_view
                             .get(state.git_objects.selected_index)
                         {
-                            if matches!(git_object.obj_type, GitObjectType::LooseObject { .. }) {
+                            if matches!(row.object.obj_type, GitObjectType::LooseObject { .. }) {
                                 Some(Message::OpenLooseObjectView)
                             } else {
                                 Some(Message::MainNavigation(

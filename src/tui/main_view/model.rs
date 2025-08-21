@@ -95,6 +95,20 @@ pub enum RenderStatus {
     PendingRemoval,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct HighlightInfo {
+    pub color: Option<ratatui::style::Color>,
+    pub expires_at: Option<std::time::Instant>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FlatTreeRow {
+    pub depth: usize,
+    pub object: GitObject,
+    pub render_status: RenderStatus,
+    pub highlight: HighlightInfo,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PackFocus {
     GitObjects,
@@ -167,7 +181,7 @@ impl RegularPreViewState {
 #[derive(Debug, Clone)]
 pub struct GitObjectsState {
     pub list: Vec<GitObject>,
-    pub flat_view: Vec<(usize, GitObject, RenderStatus)>,
+    pub flat_view: Vec<FlatTreeRow>,
     pub scroll_position: usize,
     pub selected_index: usize,
 }
@@ -270,8 +284,8 @@ impl MainViewState {
 
     pub fn current_selection_key(&self) -> Option<String> {
         if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let (_, obj, _) = &self.git_objects.flat_view[self.git_objects.selected_index];
-            Some(Self::selection_key(obj))
+            let row = &self.git_objects.flat_view[self.git_objects.selected_index];
+            Some(Self::selection_key(&row.object))
         } else {
             None
         }
@@ -487,8 +501,7 @@ impl MainViewState {
                 v.sort_by_key(|(idx, _)| *idx);
             }
 
-            let mut output: Vec<(usize, GitObject, RenderStatus)> =
-                self.git_objects.flat_view.clone();
+            let mut output: Vec<FlatTreeRow> = self.git_objects.flat_view.clone();
 
             // Top-level ghosts: precise mapping by sibling_index against top-level order
             if let Some(top_list) = by_parent.get(&None) {
@@ -499,24 +512,24 @@ impl MainViewState {
                     .map(MainViewState::selection_key)
                     .collect();
 
-                let find_top_flat_index =
-                    |key: &str, flat: &[(usize, GitObject, RenderStatus)]| -> Option<usize> {
-                        flat.iter()
-                            .position(|(d, o, _)| *d == 0 && MainViewState::selection_key(o) == key)
-                    };
+                let find_top_flat_index = |key: &str, flat: &[FlatTreeRow]| -> Option<usize> {
+                    flat.iter().position(|row| {
+                        row.depth == 0 && MainViewState::selection_key(&row.object) == key
+                    })
+                };
 
                 let end_of_top_level = {
                     let last_top_idx = output
                         .iter()
                         .enumerate()
-                        .filter(|(_, (d, _, _))| *d == 0)
+                        .filter(|(_, row)| row.depth == 0)
                         .map(|(i, _)| i)
                         .next_back();
                     match last_top_idx {
                         Some(i) => {
                             let mut j = i + 1;
                             while j < output.len() {
-                                if output[j].0 == 0 {
+                                if output[j].depth == 0 {
                                     break;
                                 }
                                 j += 1;
@@ -540,9 +553,18 @@ impl MainViewState {
                         } else {
                             end_of_top_level
                         };
+                        let ghost_highlight = HighlightInfo {
+                            color: Some(ratatui::style::Color::Red),
+                            expires_at: Some(g.until),
+                        };
                         output.insert(
                             insert_at,
-                            (0, g.display.clone(), RenderStatus::PendingRemoval),
+                            FlatTreeRow {
+                                depth: 0,
+                                object: g.display.clone(),
+                                render_status: RenderStatus::PendingRemoval,
+                                highlight: ghost_highlight,
+                            },
                         );
                     }
                 }
@@ -557,9 +579,9 @@ impl MainViewState {
                 if let Some(parent_key) = parent
                     && let Some(parent_row) = output
                         .iter()
-                        .position(|(_, o, _)| Self::selection_key(o) == parent_key)
+                        .position(|row| Self::selection_key(&row.object) == parent_key)
                 {
-                    let parent_depth = output[parent_row].0;
+                    let parent_depth = output[parent_row].depth;
                     // Get the current expansion state from the actual tree, not the old flat_view
                     let parent_expanded =
                         if let Some(parent_node) = self.find_node_by_key(&parent_key) {
@@ -576,11 +598,11 @@ impl MainViewState {
                     if parent_expanded {
                         let mut i = parent_row + 1;
                         while i < output.len() {
-                            let (d, _, _) = &output[i];
-                            if *d <= parent_depth {
+                            let row = &output[i];
+                            if row.depth <= parent_depth {
                                 break;
                             }
-                            if *d == parent_depth + 1 {
+                            if row.depth == parent_depth + 1 {
                                 child_rows.push(i);
                             }
                             i += 1;
@@ -597,13 +619,18 @@ impl MainViewState {
                                 } else {
                                     child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
                                 };
+                                let ghost_highlight = HighlightInfo {
+                                    color: Some(ratatui::style::Color::Red),
+                                    expires_at: Some(g.until),
+                                };
                                 output.insert(
                                     insert_at,
-                                    (
-                                        parent_depth + 1,
-                                        g.display.clone(),
-                                        RenderStatus::PendingRemoval,
-                                    ),
+                                    FlatTreeRow {
+                                        depth: parent_depth + 1,
+                                        object: g.display.clone(),
+                                        render_status: RenderStatus::PendingRemoval,
+                                        highlight: ghost_highlight,
+                                    },
                                 );
                                 for r in &mut child_rows {
                                     if *r >= insert_at {
@@ -626,11 +653,56 @@ impl MainViewState {
         self.modified_keys.retain(|_, until| *until > now);
     }
 
+    // ===== Highlight computation =====
+
+    fn compute_highlight_info(&self, key: &str) -> HighlightInfo {
+        let now = std::time::Instant::now();
+
+        // Check for additions (green) - highest priority
+        if let Some(until) = self.changed_keys.get(key).copied()
+            && until > now
+        {
+            return HighlightInfo {
+                color: Some(ratatui::style::Color::Green),
+                expires_at: Some(until),
+            };
+        }
+
+        // Check for modifications (orange) - medium priority
+        if let Some(until) = self.modified_keys.get(key).copied()
+            && until > now
+        {
+            return HighlightInfo {
+                color: Some(ratatui::style::Color::Rgb(255, 165, 0)), // Orange
+                expires_at: Some(until),
+            };
+        }
+
+        // Check for deletions/ghosts (red) - handled separately in ghost overlay
+        if let Some(ghost) = self.ghosts.get(key)
+            && ghost.until > now
+        {
+            return HighlightInfo {
+                color: Some(ratatui::style::Color::Red),
+                expires_at: Some(ghost.until),
+            };
+        }
+
+        // No highlight
+        HighlightInfo::default()
+    }
+
     // Recursive flattener
     fn flatten_node_recursive(&mut self, node: &GitObject, depth: usize) {
-        self.git_objects
-            .flat_view
-            .push((depth, node.clone(), RenderStatus::Normal));
+        let key = Self::selection_key(node);
+        let highlight = self.compute_highlight_info(&key);
+
+        self.git_objects.flat_view.push(FlatTreeRow {
+            depth,
+            object: node.clone(),
+            render_status: RenderStatus::Normal,
+            highlight,
+        });
 
         if node.expanded {
             for child in &node.children {
@@ -661,8 +733,9 @@ impl MainViewState {
     // Toggle expansion for categories and filesystem folders
     pub fn toggle_expand(&mut self) -> Message {
         if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let (_, selected_obj, _) =
-                &self.git_objects.flat_view[self.git_objects.selected_index].clone();
+            let selected_obj = &self.git_objects.flat_view[self.git_objects.selected_index]
+                .object
+                .clone();
 
             match &selected_obj.obj_type {
                 GitObjectType::Category(category_name) => {
@@ -693,8 +766,8 @@ impl MainViewState {
 
                     // Keep the selected category visible
                     let mut new_index = 0;
-                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
-                        if let GitObjectType::Category(name) = &obj.obj_type
+                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::Category(name) = &row.object.obj_type
                             && name == &name_to_find
                         {
                             new_index = i;
@@ -758,8 +831,8 @@ impl MainViewState {
 
                     // Keep the selected folder visible
                     let mut new_index = 0;
-                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
-                        if let GitObjectType::FileSystemFolder { path, .. } = &obj.obj_type
+                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::FileSystemFolder { path, .. } = &row.object.obj_type
                             && path == &path_to_find
                         {
                             new_index = i;
@@ -804,8 +877,8 @@ impl MainViewState {
 
                     // Keep the selected pack folder visible
                     let mut new_index = 0;
-                    for (i, (_, obj, _)) in self.git_objects.flat_view.iter().enumerate() {
-                        if let GitObjectType::PackFolder { base_name, .. } = &obj.obj_type
+                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                        if let GitObjectType::PackFolder { base_name, .. } = &row.object.obj_type
                             && base_name == &base_name_to_find
                         {
                             new_index = i;
@@ -874,6 +947,12 @@ impl MainViewState {
                 GitObjectType::FileSystemFile { path: old_path, .. },
                 GitObjectType::FileSystemFile { path: new_path, .. },
             ) => self.compare_file_mtime(old_path, new_path),
+            (GitObjectType::FileSystemFolder { .. }, GitObjectType::FileSystemFolder { .. }) => {
+                // For folders, we don't consider them "modified" in the traditional sense
+                // Content changes (files added/removed) are handled by the change detection system
+                // which compares the children, not the folder object itself
+                false
+            }
             _ => false,
         }
     }

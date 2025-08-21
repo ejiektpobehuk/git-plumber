@@ -26,33 +26,21 @@ fn apply_git_tree_highlight_fx(
         if idx >= state.git_objects.flat_view.len() {
             continue;
         }
-        let (_depth, obj, status) = &state.git_objects.flat_view[idx];
-        let key = crate::tui::main_view::MainViewState::selection_key(obj);
+        let row = &state.git_objects.flat_view[idx];
+        let _key = crate::tui::main_view::MainViewState::selection_key(&row.object);
 
-        let mut color: Option<ratatui::style::Color> = None;
-        let mut start: Option<std::time::Instant> = None;
-
-        if let Some(until) = state.changed_keys.get(&key).copied()
-            && until > now
-        {
-            color = Some(ratatui::style::Color::Green);
-            start = Some(until - std::time::Duration::from_millis(total));
-        }
-        // Check for modifications (orange) - lower priority than new files
-        if color.is_none()
-            && let Some(until) = state.modified_keys.get(&key).copied()
-            && until > now
-        {
-            color = Some(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
-            start = Some(until - std::time::Duration::from_millis(total));
-        }
-        if matches!(status, crate::tui::main_view::RenderStatus::PendingRemoval)
-            && let Some(g) = state.ghosts.get(&key)
-            && g.until > now
-        {
-            color = Some(ratatui::style::Color::Red);
-            start = Some(g.until - std::time::Duration::from_millis(total));
-        }
+        // Use highlight information from the flattened tree row
+        let (color, start) = if let Some(highlight_color) = row.highlight.color {
+            let expires_at = row.highlight.expires_at.unwrap_or(now);
+            if expires_at > now {
+                let start_time = expires_at - std::time::Duration::from_millis(total);
+                (Some(highlight_color), Some(start_time))
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
 
         let (bg, start_at) = match (color, start) {
             (Some(c), Some(s)) => (c, s),
@@ -194,7 +182,7 @@ fn render_regular_preview_layout(
                 && main_view.git_objects.selected_index < main_view.git_objects.flat_view.len()
             {
                 let selected_object =
-                    &main_view.git_objects.flat_view[main_view.git_objects.selected_index].1;
+                    &main_view.git_objects.flat_view[main_view.git_objects.selected_index].object;
                 match &selected_object.obj_type {
                     GitObjectType::Category(_) => "Educational Content",
                     GitObjectType::FileSystemFolder { is_educational, .. } => {
@@ -422,7 +410,10 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
                     if !git_objects.flat_view.is_empty()
                         && git_objects.selected_index < git_objects.flat_view.len()
                     {
-                        match git_objects.flat_view[git_objects.selected_index].1.obj_type {
+                        match git_objects.flat_view[git_objects.selected_index]
+                            .object
+                            .obj_type
+                        {
                             GitObjectType::Category(_) => {
                                 hints.append(&mut vec![
                                     Span::styled("←", Style::default().fg(Color::Green)),
@@ -471,7 +462,9 @@ fn render_git_tree(
         state.git_objects.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
-        |i, (depth, obj, _status), is_selected| {
+        |i, row, is_selected| {
+            let depth = &row.depth;
+            let obj = &row.object;
             let _ = reduced;
             // Create indentation based on depth
             let indent = if *depth > 0 {
@@ -485,11 +478,11 @@ fn render_git_tree(
                         // Find the ancestor of the current item at depth d+1
                         let mut ancestor_index = None;
                         for k in (0..i).rev() {
-                            let (ancestor_depth, _, _) = &state.git_objects.flat_view[k];
-                            if *ancestor_depth == d + 1 {
+                            let ancestor_row = &state.git_objects.flat_view[k];
+                            if ancestor_row.depth == d + 1 {
                                 ancestor_index = Some(k);
                                 break;
-                            } else if *ancestor_depth <= d {
+                            } else if ancestor_row.depth <= d {
                                 break;
                             }
                         }
@@ -498,11 +491,11 @@ fn render_git_tree(
                         if let Some(ancestor_idx) = ancestor_index {
                             let mut has_sibling = false;
                             for j in (ancestor_idx + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                if *next_depth == d + 1 {
+                                let next_row = &state.git_objects.flat_view[j];
+                                if next_row.depth == d + 1 {
                                     has_sibling = true;
                                     break;
-                                } else if *next_depth <= d {
+                                } else if next_row.depth <= d {
                                     break;
                                 }
                             }
@@ -522,183 +515,66 @@ fn render_git_tree(
 
             // Add expansion indicator for categories and folders
             let prefix = match &obj.obj_type {
-                GitObjectType::Category(_) if !obj.children.is_empty() => {
+                // Handle all folder types with unified empty-state detection
+                GitObjectType::Category(_)
+                | GitObjectType::FileSystemFolder { .. }
+                | GitObjectType::PackFolder { .. } => {
+                    // Helper function to determine if this is the last item at this depth
+                    let is_last_at_depth = || {
+                        let mut is_last = true;
+                        for j in (i + 1)..state.git_objects.flat_view.len() {
+                            let next_row = &state.git_objects.flat_view[j];
+                            if next_row.depth == *depth {
+                                is_last = false;
+                                break;
+                            } else if next_row.depth < *depth {
+                                break;
+                            }
+                        }
+                        is_last
+                    };
+
+                    // Determine symbols based on empty state
+                    let (expanded_symbol, collapsed_symbol) = if obj.is_empty() {
+                        // Empty folder symbols
+                        ("▽", "▷")
+                    } else {
+                        // Non-empty folder symbols
+                        ("▼", "▶")
+                    };
+
                     if obj.expanded {
                         if *depth == 0 {
-                            "▼ "
-                        } else {
-                            // Find if this is the last category at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-                            if is_last { "└▼ " } else { "├▼ " }
-                        }
-                    } else if *depth == 0 {
-                        "▶ "
-                    } else {
-                        // Find if this is the last category at this depth
-                        let is_last = {
-                            let mut is_last = true;
-                            for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                // next_depth check considers tuple (usize, GitObject, RenderStatus)
-
-                                if *next_depth == *depth {
-                                    is_last = false;
-                                    break;
-                                } else if *next_depth < *depth {
-                                    break;
-                                }
+                            if expanded_symbol == "▽" {
+                                "▽ "
+                            } else {
+                                "▼ "
                             }
-                            is_last
-                        };
-                        if is_last { "└▶ " } else { "├▶ " }
-                    }
-                }
-                GitObjectType::FileSystemFolder { .. } => {
-                    // FileSystemFolder should always show expansion indicators (directories are expandable)
-                    if obj.expanded {
-                        if *depth == 0 {
-                            "▼ "
                         } else {
-                            // Find if this is the last folder at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-                            if is_last { "└▼ " } else { "├▼ " }
-                        }
-                    } else if *depth == 0 {
-                        "▶ "
-                    } else {
-                        // Find if this is the last folder at this depth
-                        let is_last = {
-                            let mut is_last = true;
-                            for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                if *next_depth == *depth {
-                                    is_last = false;
-                                    break;
-                                } else if *next_depth < *depth {
-                                    break;
-                                }
-                            }
-                            is_last
-                        };
-                        if is_last { "└▶ " } else { "├▶ " }
-                    }
-                }
-                GitObjectType::Category(name) => {
-                    // Special handling for "Loose Objects" to always show folder indicators
-                    if name == "Loose Objects" {
-                        // Always show triangle that changes based on expansion state
-                        // Use ▽ when expanded, ▷ when collapsed (regardless of content)
-                        if *depth == 0 {
-                            if obj.expanded { "▽ " } else { "▷ " }
-                        } else {
-                            // Find if this is the last category at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-
-                            if obj.expanded {
+                            let is_last = is_last_at_depth();
+                            if expanded_symbol == "▽" {
                                 if is_last { "└▽ " } else { "├▽ " }
                             } else if is_last {
-                                "└▷ "
+                                "└▼ "
                             } else {
-                                "├▷ "
+                                "├▼ "
                             }
                         }
                     } else if *depth == 0 {
-                        // No prefix for other root-level categories
-                        ""
-                    } else {
-                        // Find if this is the last category at this depth
-                        let is_last = {
-                            let mut is_last = true;
-                            for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                if *next_depth == *depth {
-                                    is_last = false;
-                                    break;
-                                } else if *next_depth < *depth {
-                                    break;
-                                }
-                            }
-                            is_last
-                        };
-                        if is_last { "└─ " } else { "├─ " }
-                    }
-                }
-                GitObjectType::PackFolder { .. } => {
-                    // PackFolder should show expansion indicators like a directory
-                    if obj.expanded {
-                        if *depth == 0 {
-                            "▼ "
+                        if collapsed_symbol == "▷" {
+                            "▷ "
                         } else {
-                            // Find if this is the last folder at this depth
-                            let is_last = {
-                                let mut is_last = true;
-                                for j in (i + 1)..state.git_objects.flat_view.len() {
-                                    let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                    if *next_depth == *depth {
-                                        is_last = false;
-                                        break;
-                                    } else if *next_depth < *depth {
-                                        break;
-                                    }
-                                }
-                                is_last
-                            };
-                            if is_last { "└▼ " } else { "├▼ " }
+                            "▶ "
                         }
-                    } else if *depth == 0 {
-                        "▶ "
                     } else {
-                        // Find if this is the last folder at this depth
-                        let is_last = {
-                            let mut is_last = true;
-                            for j in (i + 1)..state.git_objects.flat_view.len() {
-                                let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                                if *next_depth == *depth {
-                                    is_last = false;
-                                    break;
-                                } else if *next_depth < *depth {
-                                    break;
-                                }
-                            }
-                            is_last
-                        };
-                        if is_last { "└▶ " } else { "├▶ " }
+                        let is_last = is_last_at_depth();
+                        if collapsed_symbol == "▷" {
+                            if is_last { "└▷ " } else { "├▷ " }
+                        } else if is_last {
+                            "└▶ "
+                        } else {
+                            "├▶ "
+                        }
                     }
                 }
                 _ => {
@@ -707,11 +583,11 @@ fn render_git_tree(
                         // Look ahead to find the next item at the same depth
                         let mut is_last = true;
                         for j in (i + 1)..state.git_objects.flat_view.len() {
-                            let (next_depth, _, _) = &state.git_objects.flat_view[j];
-                            if *next_depth == *depth {
+                            let next_row = &state.git_objects.flat_view[j];
+                            if next_row.depth == *depth {
                                 is_last = false;
                                 break;
-                            } else if *next_depth < *depth {
+                            } else if next_row.depth < *depth {
                                 break;
                             }
                         }

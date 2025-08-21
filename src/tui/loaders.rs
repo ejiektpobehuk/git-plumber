@@ -38,13 +38,20 @@ impl AppState {
                             }
                         }
 
+                        // Populate empty state caches to ensure consistent comparison
+                        for obj in &mut git_objects {
+                            obj.populate_empty_caches_recursive();
+                            // Refresh caches for collapsed folders to detect content changes
+                            obj.refresh_empty_caches_for_collapsed();
+                        }
+
                         // Sort the new tree before comparison
                         MainViewState::sort_tree_for_display(&mut git_objects);
 
                         // Set the new tree
                         state.git_objects.list = git_objects;
 
-                        // NOW detect changes after full restoration and before flattening
+                        // NOW detect changes after full restoration and cache population
                         if state.has_loaded_once {
                             let _ = state.detect_tree_changes(&old_positions, &old_nodes);
                         }
@@ -75,8 +82,8 @@ impl AppState {
         match &self.view {
             AppView::Main { state } => {
                 if !state.git_objects.flat_view.is_empty() {
-                    let (_, obj, _) =
-                        &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let row = &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let obj = &row.object;
                     match &obj.obj_type {
 
                         GitObjectType::Ref { content, .. } => {
@@ -146,9 +153,9 @@ impl AppState {
                             // For filesystem files, show file details
                             let size_str = match size {
                                 Some(size) => {
-                                    if *size < 1024 {
+                                    if size < &1024 {
                                         format!("{size} bytes")
-                                    } else if *size < 1024 * 1024 {
+                                    } else if size < &(1024 * 1024) {
                                         format!("{:.2} KB", *size as f64 / 1024.0)
                                     } else {
                                         format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
@@ -182,9 +189,9 @@ impl AppState {
                         GitObjectType::PackFile { file_type, path, size, modified_time } => {
                             let size_str = match size {
                                 Some(size) => {
-                                    if *size < 1024 {
+                                    if size < &1024 {
                                         format!("{size} bytes")
-                                    } else if *size < 1024 * 1024 {
+                                    } else if size < &(1024 * 1024) {
                                         format!("{:.2} KB", *size as f64 / 1024.0)
                                     } else {
                                         format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
@@ -218,8 +225,8 @@ impl AppState {
         match &self.view {
             AppView::Main { state } => {
                 if !state.git_objects.flat_view.is_empty() {
-                    let (_, obj, _) =
-                        &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let row = &state.git_objects.flat_view[state.git_objects.selected_index];
+                    let obj = &row.object;
                     match &obj.obj_type {
                         GitObjectType::Category(name) => {
                             let content =

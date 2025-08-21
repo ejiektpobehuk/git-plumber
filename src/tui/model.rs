@@ -35,6 +35,7 @@ pub enum GitObjectType {
         path: PathBuf,
         is_educational: bool, // True if this folder should show educational content
         is_loaded: bool,      // True if folder contents have been loaded
+        is_empty_cached: Option<bool>, // Cached empty state to avoid filesystem I/O during rendering
     },
     FileSystemFile {
         path: PathBuf,
@@ -72,6 +73,91 @@ pub struct GitObject {
 }
 
 impl GitObject {
+    /// Check if this folder is empty (has no children)
+    /// Note: This method should avoid filesystem I/O as it's called during rendering
+    pub fn is_empty(&self) -> bool {
+        match &self.obj_type {
+            GitObjectType::Category(_) => self.children.is_empty(),
+            GitObjectType::FileSystemFolder {
+                is_loaded,
+                is_empty_cached,
+                ..
+            } => {
+                if *is_loaded {
+                    // If loaded, check children (most accurate)
+                    self.children.is_empty()
+                } else if let Some(cached) = is_empty_cached {
+                    // Use cached value to avoid filesystem I/O during rendering
+                    *cached
+                } else {
+                    // No cache available, assume not empty to avoid filesystem I/O during rendering
+                    // This means new folders will show as "has content" until expanded or cache is populated
+                    false
+                }
+            }
+            GitObjectType::PackFolder { pack_group, .. } => {
+                // Pack folder is empty if it has no valid files
+                pack_group.get_all_files().is_empty()
+            }
+            _ => false, // Non-folder types are never "empty" in this context
+        }
+    }
+
+    /// Populate the empty state cache for a filesystem folder if not already cached
+    pub fn ensure_empty_cache_populated(&mut self) {
+        if let GitObjectType::FileSystemFolder {
+            path,
+            is_loaded,
+            is_empty_cached,
+            ..
+        } = &mut self.obj_type
+        {
+            // Only compute cache if not loaded and not already cached
+            if !*is_loaded && is_empty_cached.is_none() {
+                *is_empty_cached = match std::fs::read_dir(path) {
+                    Ok(mut entries) => Some(entries.next().is_none()),
+                    Err(_) => Some(false), // If we can't read it, assume not empty
+                };
+            }
+        }
+    }
+
+    /// Force refresh the empty state cache for a filesystem folder, even if already cached
+    /// This is used to detect content changes in collapsed folders
+    pub fn refresh_empty_cache(&mut self) {
+        if let GitObjectType::FileSystemFolder {
+            path,
+            is_loaded,
+            is_empty_cached,
+            ..
+        } = &mut self.obj_type
+        {
+            // For collapsed folders (not loaded), always refresh the cache
+            if !*is_loaded {
+                *is_empty_cached = match std::fs::read_dir(path) {
+                    Ok(mut entries) => Some(entries.next().is_none()),
+                    Err(_) => Some(false), // If we can't read it, assume not empty
+                };
+            }
+        }
+    }
+
+    /// Recursively refresh empty state caches for all collapsed filesystem folders in the tree
+    pub fn refresh_empty_caches_for_collapsed(&mut self) {
+        self.refresh_empty_cache();
+        for child in &mut self.children {
+            child.refresh_empty_caches_for_collapsed();
+        }
+    }
+
+    /// Recursively populate empty state caches for all filesystem folders in the tree
+    pub fn populate_empty_caches_recursive(&mut self) {
+        self.ensure_empty_cache_populated();
+        for child in &mut self.children {
+            child.populate_empty_caches_recursive();
+        }
+    }
+
     pub fn new_category(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -94,6 +180,7 @@ impl GitObject {
                 path,
                 is_educational,
                 is_loaded: false,
+                is_empty_cached: None, // Will be computed lazily when needed
             },
             children: Vec::new(),
             expanded: false, // Start collapsed for on-demand loading
@@ -267,10 +354,12 @@ impl GitObject {
                     GitObjectType::FileSystemFolder {
                         is_loaded,
                         is_educational,
+                        is_empty_cached,
                         ..
                     },
                     GitObjectType::FileSystemFolder {
                         is_loaded: old_is_loaded,
+                        is_empty_cached: old_is_empty_cached,
                         ..
                     },
                 ) => {
@@ -278,13 +367,18 @@ impl GitObject {
                     // For regular folders, always reload to detect file changes
                     if *is_educational {
                         *is_loaded = *old_is_loaded;
+                        *is_empty_cached = *old_is_empty_cached; // Keep cache for educational folders
                     } else {
                         // Regular folders: if they were expanded, reload their contents now
                         if old_obj.expanded {
                             *is_loaded = false; // Mark as not loaded to trigger reload
+                            // Keep the old cache until we reload - it's better than nothing
+                            *is_empty_cached = *old_is_empty_cached;
                             let _ = self.load_folder_contents(); // Load fresh contents immediately
                         } else {
                             *is_loaded = false; // Will load on-demand when expanded
+                            // Keep the old cache for collapsed folders - this prevents false "modifications"
+                            *is_empty_cached = *old_is_empty_cached;
                         }
                     }
 
@@ -314,7 +408,10 @@ impl GitObject {
     pub fn load_folder_contents(&mut self) -> Result<(), String> {
         match &mut self.obj_type {
             GitObjectType::FileSystemFolder {
-                path, is_loaded, ..
+                path,
+                is_loaded,
+                is_empty_cached,
+                ..
             } => {
                 if *is_loaded {
                     return Ok(()); // Already loaded
@@ -352,6 +449,8 @@ impl GitObject {
                             }
                         }
 
+                        // Update the empty state cache now that we have loaded the contents
+                        *is_empty_cached = Some(self.children.is_empty());
                         *is_loaded = true;
                         Ok(())
                     }

@@ -35,7 +35,7 @@ impl AppState {
             };
 
             // Check if current object is a pack object
-            let is_pack_object = match &flat_view[*selected_index].1.obj_type {
+            let is_pack_object = match &flat_view[*selected_index].object.obj_type {
                 GitObjectType::PackFolder { .. } => true,
                 GitObjectType::PackFile { file_type, .. } => {
                     file_type == "packfile" || file_type == "pack"
@@ -48,7 +48,7 @@ impl AppState {
             }
 
             // Extract the pack file path from the object type
-            let path = match &flat_view[*selected_index].1.obj_type {
+            let path = match &flat_view[*selected_index].object.obj_type {
                 GitObjectType::PackFolder { pack_group, .. } => {
                     // Get the pack file path from the pack group
                     if let Some(pack_path) = &pack_group.pack_file {

@@ -48,8 +48,17 @@ impl AppState {
                         for new_obj in &mut state.git_objects.list {
                             new_obj.restore_state_from(&old_tree);
                         }
+                    }
 
-                        // NOW detect changes after full restoration
+                    // Populate empty state caches to ensure consistent comparison
+                    for obj in &mut state.git_objects.list {
+                        obj.populate_empty_caches_recursive();
+                        // Refresh caches for collapsed folders to detect content changes
+                        obj.refresh_empty_caches_for_collapsed();
+                    }
+
+                    // NOW detect changes after full restoration and cache population
+                    if state.has_loaded_once {
                         let _ = state.detect_tree_changes(&old_positions, &old_nodes);
                     }
 
@@ -57,11 +66,10 @@ impl AppState {
 
                     // Try to restore previous selection
                     if let Some(sel) = state.last_selection.take() {
-                        if let Some(idx) = state
-                            .git_objects
-                            .flat_view
-                            .iter()
-                            .position(|(_, o, _)| MainViewState::selection_key(o) == sel.key)
+                        if let Some(idx) =
+                            state.git_objects.flat_view.iter().position(|row| {
+                                MainViewState::selection_key(&row.object) == sel.key
+                            })
                         {
                             state.git_objects.selected_index = idx;
                         } else if state.git_objects.selected_index
