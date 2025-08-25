@@ -22,18 +22,20 @@ fn apply_git_tree_highlight_fx(
     let width = area.width.saturating_sub(2);
 
     for (row_idx, y) in (start_row..end_row).enumerate() {
-        let idx = state.git_objects.scroll_position + row_idx;
-        if idx >= state.git_objects.flat_view.len() {
+        let idx = state.tree.scroll_position + row_idx;
+        if idx >= state.tree.flat_view.len() {
             continue;
         }
-        let row = &state.git_objects.flat_view[idx];
+        let row = &state.tree.flat_view[idx];
         let _key = crate::tui::main_view::MainViewState::selection_key(&row.object);
 
         // Use highlight information from the flattened tree row
         let (color, start) = if let Some(highlight_color) = row.highlight.color {
             let expires_at = row.highlight.expires_at.unwrap_or(now);
             if expires_at > now {
-                let start_time = expires_at - std::time::Duration::from_millis(total);
+                let start_time = expires_at
+                    .checked_sub(std::time::Duration::from_millis(total))
+                    .unwrap();
                 (Some(highlight_color), Some(start_time))
             } else {
                 (None, None)
@@ -63,7 +65,7 @@ fn apply_git_tree_highlight_fx(
                     0
                 } else {
                     let p = after.as_secs_f32() / (shrink_ms as f32 / 1000.0);
-                    ((width as f32) * (1.0 - p)).ceil() as u16
+                    (f32::from(width) * (1.0 - p)).ceil() as u16
                 }
             }
         };
@@ -120,12 +122,12 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
         );
         match &state.preview_state {
             PreviewState::Regular(_) => {
-                render_regular_preview_layout(f, state, &app.error, content_chunks[1])
+                render_regular_preview_layout(f, state, &app.error, content_chunks[1]);
             }
             PreviewState::Pack(_) => {
-                render_pack_preview_layout(f, state, &app.error, content_chunks[1])
+                render_pack_preview_layout(f, state, &app.error, content_chunks[1]);
             }
-        };
+        }
     }
 }
 
@@ -151,14 +153,14 @@ fn render_regular_preview_layout(
         // Top block - Object details
         let object_info = if app_error.is_some() {
             app_error.as_ref().unwrap()
-        } else if main_view.git_object_info.is_empty()
-            && !main_view.git_objects.flat_view.is_empty()
+        } else if main_view.content.git_object_info.is_empty()
+            && !main_view.tree.flat_view.is_empty()
         {
             "Select an object to view details"
-        } else if main_view.git_objects.flat_view.is_empty() {
+        } else if main_view.tree.flat_view.is_empty() {
             "Loading repository…"
         } else {
-            &main_view.git_object_info
+            &main_view.content.git_object_info
         };
 
         let details_widget = Paragraph::new(object_info).block(
@@ -178,11 +180,11 @@ fn render_regular_preview_layout(
             );
         } else {
             // Render regular educational content
-            let bottom_title = if !main_view.git_objects.flat_view.is_empty()
-                && main_view.git_objects.selected_index < main_view.git_objects.flat_view.len()
+            let bottom_title = if !main_view.tree.flat_view.is_empty()
+                && main_view.tree.selected_index < main_view.tree.flat_view.len()
             {
                 let selected_object =
-                    &main_view.git_objects.flat_view[main_view.git_objects.selected_index].object;
+                    &main_view.tree.flat_view[main_view.tree.selected_index].object;
                 match &selected_object.obj_type {
                     GitObjectType::Category(_) => "Educational Content",
                     GitObjectType::FileSystemFolder { is_educational, .. } => {
@@ -203,7 +205,7 @@ fn render_regular_preview_layout(
             render_styled_paragraph_with_scrollbar(
                 f,
                 content_chunks[1],
-                main_view.educational_content.clone(),
+                main_view.content.educational_content.clone(),
                 preview_state.preview_scroll_position,
                 bottom_title,
                 matches!(preview_state.focus, RegularFocus::Preview),
@@ -261,7 +263,7 @@ pub fn render_pack_preview_layout(
 
 fn render_pack_file_preview(
     f: &mut ratatui::Frame,
-    main_view: &mut MainViewState,
+    main_view: &MainViewState,
     app_error: &Option<String>,
     area: ratatui::layout::Rect,
     is_widescreen: bool,
@@ -283,14 +285,14 @@ fn render_pack_file_preview(
         // Top block - Object details (same as PackPreview)
         let object_info = if app_error.is_some() {
             app_error.as_ref().unwrap()
-        } else if main_view.git_object_info.is_empty()
-            && !main_view.git_objects.flat_view.is_empty()
+        } else if main_view.content.git_object_info.is_empty()
+            && !main_view.tree.flat_view.is_empty()
         {
             "Select an object to view details"
-        } else if main_view.git_objects.flat_view.is_empty() {
+        } else if main_view.tree.flat_view.is_empty() {
             "Loading repository…"
         } else {
-            &main_view.git_object_info
+            &main_view.content.git_object_info
         };
 
         let details_widget = Paragraph::new(object_info).block(
@@ -305,7 +307,7 @@ fn render_pack_file_preview(
         render_styled_paragraph_with_scrollbar(
             f,
             content_chunks[1],
-            main_view.educational_content.clone(),
+            main_view.content.educational_content.clone(),
             preview_state.educational_scroll_position,
             "Pack File Header",
             matches!(preview_state.focus, PackFocus::Educational),
@@ -345,8 +347,9 @@ fn render_pack_file_preview(
                     );
 
                     ListItem::new(display_text).style(
-                        if is_selected && matches!(preview_state.focus, PackFocus::PackObjectsList)
-                            || is_selected && is_widescreen
+                        if (is_widescreen
+                            || matches!(preview_state.focus, PackFocus::PackObjectsList))
+                            && is_selected
                         {
                             Style::default().fg(Color::Yellow)
                         } else {
@@ -363,54 +366,48 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
     let is_wide_screen = app.is_wide_screen();
     let mut hints = Vec::new();
     if let AppView::Main { state } = &app.view {
-        let MainViewState {
-            preview_state,
-            git_objects,
-            ..
-        } = &state;
+        let MainViewState { preview_state, .. } = &state;
         match &preview_state {
-            PreviewState::Pack(PackPreViewState { focus, .. }) => {
-                match focus {
-                    PackFocus::GitObjects => {
-                        hints.append(&mut vec![
-                            Span::styled("←", Style::default().fg(Color::Green)),
-                            Span::styled("↕→", Style::default().fg(Color::Blue)),
-                        ]);
-                    }
-                    PackFocus::Educational => {
-                        if is_wide_screen {
-                            hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
-                        } else {
-                            hints.append(&mut vec![
-                                Span::styled("←↕", Style::default().fg(Color::Blue)),
-                                Span::styled("→", Style::default().fg(Color::Gray)),
-                            ]);
-                        }
-                    }
-                    PackFocus::PackObjectsList => {
-                        if is_wide_screen {
-                            hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
-                        } else {
-                            hints.append(&mut vec![
-                                Span::styled("←↕", Style::default().fg(Color::Blue)),
-                                Span::styled("→", Style::default().fg(Color::Green)),
-                            ]);
-                        }
-                    }
-                    PackFocus::PackObjectDetails => {
+            PreviewState::Pack(PackPreViewState { focus, .. }) => match focus {
+                PackFocus::GitObjects => {
+                    hints.append(&mut vec![
+                        Span::styled("←", Style::default().fg(Color::Green)),
+                        Span::styled("↕→", Style::default().fg(Color::Blue)),
+                    ]);
+                }
+                PackFocus::Educational => {
+                    if is_wide_screen {
+                        hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
+                    } else {
                         hints.append(&mut vec![
                             Span::styled("←↕", Style::default().fg(Color::Blue)),
                             Span::styled("→", Style::default().fg(Color::Gray)),
                         ]);
                     }
-                };
-            }
+                }
+                PackFocus::PackObjectsList => {
+                    if is_wide_screen {
+                        hints.push(Span::styled("←↕→", Style::default().fg(Color::Blue)));
+                    } else {
+                        hints.append(&mut vec![
+                            Span::styled("←↕", Style::default().fg(Color::Blue)),
+                            Span::styled("→", Style::default().fg(Color::Green)),
+                        ]);
+                    }
+                }
+                PackFocus::PackObjectDetails => {
+                    hints.append(&mut vec![
+                        Span::styled("←↕", Style::default().fg(Color::Blue)),
+                        Span::styled("→", Style::default().fg(Color::Gray)),
+                    ]);
+                }
+            },
             PreviewState::Regular(RegularPreViewState { focus, .. }) => match focus {
                 RegularFocus::GitObjects => {
-                    if !git_objects.flat_view.is_empty()
-                        && git_objects.selected_index < git_objects.flat_view.len()
+                    if !state.tree.flat_view.is_empty()
+                        && state.tree.selected_index < state.tree.flat_view.len()
                     {
-                        match git_objects.flat_view[git_objects.selected_index]
+                        match state.tree.flat_view[state.tree.selected_index]
                             .object
                             .obj_type
                         {
@@ -426,7 +423,7 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
                                     Span::styled("↕→", Style::default().fg(Color::Blue)),
                                 ]);
                             }
-                        };
+                        }
                     }
                 }
                 RegularFocus::Preview => {
@@ -436,8 +433,8 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
                     ]);
                 }
             },
-        };
-    };
+        }
+    }
     hints.append(&mut vec![
         Span::raw(" to navigate | "),
         Span::raw("("),
@@ -449,7 +446,7 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
 
 fn render_git_tree(
     f: &mut ratatui::Frame,
-    state: &mut MainViewState,
+    state: &MainViewState,
     project_name: String,
     area: ratatui::layout::Rect,
     reduced: bool,
@@ -457,9 +454,9 @@ fn render_git_tree(
     render_list_with_scrollbar(
         f,
         area,
-        &state.git_objects.flat_view,
-        Some(state.git_objects.selected_index),
-        state.git_objects.scroll_position,
+        &state.tree.flat_view,
+        Some(state.tree.selected_index),
+        state.tree.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
         |i, row, is_selected| {
@@ -478,7 +475,7 @@ fn render_git_tree(
                         // Find the ancestor of the current item at depth d+1
                         let mut ancestor_index = None;
                         for k in (0..i).rev() {
-                            let ancestor_row = &state.git_objects.flat_view[k];
+                            let ancestor_row = &state.tree.flat_view[k];
                             if ancestor_row.depth == d + 1 {
                                 ancestor_index = Some(k);
                                 break;
@@ -490,8 +487,8 @@ fn render_git_tree(
                         // If we found an ancestor, check if it has siblings after it
                         if let Some(ancestor_idx) = ancestor_index {
                             let mut has_sibling = false;
-                            for j in (ancestor_idx + 1)..state.git_objects.flat_view.len() {
-                                let next_row = &state.git_objects.flat_view[j];
+                            for j in (ancestor_idx + 1)..state.tree.flat_view.len() {
+                                let next_row = &state.tree.flat_view[j];
                                 if next_row.depth == d + 1 {
                                     has_sibling = true;
                                     break;
@@ -522,8 +519,8 @@ fn render_git_tree(
                     // Helper function to determine if this is the last item at this depth
                     let is_last_at_depth = || {
                         let mut is_last = true;
-                        for j in (i + 1)..state.git_objects.flat_view.len() {
-                            let next_row = &state.git_objects.flat_view[j];
+                        for j in (i + 1)..state.tree.flat_view.len() {
+                            let next_row = &state.tree.flat_view[j];
                             if next_row.depth == *depth {
                                 is_last = false;
                                 break;
@@ -582,8 +579,8 @@ fn render_git_tree(
                     let is_last = if *depth > 0 {
                         // Look ahead to find the next item at the same depth
                         let mut is_last = true;
-                        for j in (i + 1)..state.git_objects.flat_view.len() {
-                            let next_row = &state.git_objects.flat_view[j];
+                        for j in (i + 1)..state.tree.flat_view.len() {
+                            let next_row = &state.tree.flat_view[j];
                             if next_row.depth == *depth {
                                 is_last = false;
                                 break;
@@ -624,7 +621,7 @@ fn render_git_tree(
     );
 
     // If there are no items yet, render a placeholder "Loading…"
-    if state.git_objects.flat_view.is_empty() {
+    if state.tree.flat_view.is_empty() {
         use ratatui::widgets::Paragraph;
         let placeholder = Paragraph::new("Loading…").block(
             Block::default()

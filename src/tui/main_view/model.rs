@@ -2,74 +2,13 @@ use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
 use crate::tui::widget::{PackIndexWidget, PackObjectWidget};
-use ratatui::text::Text;
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-// ===== Natural sort helpers (module scope) =====
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum NatPart {
-    Str(String),
-    Num(u128),
-}
-
-impl Ord for NatPart {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        use NatPart::*;
-        match (self, other) {
-            (Str(a), Str(b)) => a.cmp(b),
-            (Num(a), Num(b)) => a.cmp(b),
-            (Str(_), Num(_)) => std::cmp::Ordering::Less,
-            (Num(_), Str(_)) => std::cmp::Ordering::Greater,
-        }
-    }
-}
-
-impl PartialOrd for NatPart {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-fn natural_key(s: &str) -> Vec<NatPart> {
-    let mut parts = Vec::new();
-    let mut buf = String::new();
-    let mut is_digit: Option<bool> = None;
-
-    for ch in s.chars() {
-        let d = ch.is_ascii_digit();
-        match is_digit {
-            None => {
-                is_digit = Some(d);
-                buf.push(ch.to_ascii_lowercase());
-            }
-            Some(prev) if prev == d => {
-                buf.push(ch.to_ascii_lowercase());
-            }
-            Some(_) => {
-                if let Some(true) = is_digit {
-                    parts.push(NatPart::Num(buf.parse::<u128>().unwrap_or(0)));
-                } else {
-                    parts.push(NatPart::Str(buf.clone()));
-                }
-                buf.clear();
-                is_digit = Some(d);
-                buf.push(ch.to_ascii_lowercase());
-            }
-        }
-    }
-    if !buf.is_empty() {
-        if let Some(true) = is_digit {
-            parts.push(NatPart::Num(buf.parse::<u128>().unwrap_or(0)));
-        } else {
-            parts.push(NatPart::Str(buf));
-        }
-    }
-    parts
-}
+use super::animations::AnimationManager;
+use super::services::ServiceContainer;
+use super::state_components::{ContentState, SessionState, TreeState};
 
 // ===== Ghost overlay types =====
 
@@ -161,7 +100,7 @@ impl Default for RegularPreViewState {
 }
 
 impl RegularPreViewState {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             focus: RegularFocus::GitObjects,
             preview_scroll_position: 0,
@@ -178,61 +117,25 @@ impl RegularPreViewState {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct GitObjectsState {
-    pub list: Vec<GitObject>,
-    pub flat_view: Vec<FlatTreeRow>,
-    pub scroll_position: usize,
-    pub selected_index: usize,
-}
-
-impl GitObjectsState {
-    fn new() -> Self {
-        Self {
-            list: Vec::new(),
-            flat_view: Vec::new(),
-            scroll_position: 0,
-            selected_index: 0,
-        }
-    }
-}
-
 impl MainViewState {
     /// Cleanup timers; returns true if anything changed
     pub fn prune_timeouts(&mut self) -> bool {
-        let now = Instant::now();
-        let before_ghosts = self.ghosts.len();
-        self.ghosts.retain(|_, g| g.until > now);
-        let ghosts_changed = before_ghosts != self.ghosts.len();
-
-        let before_changed = self.changed_keys.len();
-        self.changed_keys.retain(|_, until| *until > now);
-        let changed_changed = before_changed != self.changed_keys.len();
-
-        let before_modified = self.modified_keys.len();
-        self.modified_keys.retain(|_, until| *until > now);
-        let modified_changed = before_modified != self.modified_keys.len();
-
-        ghosts_changed || changed_changed || modified_changed
+        self.animations.prune_timeouts()
     }
 }
 
 pub struct MainViewState {
-    pub git_objects: GitObjectsState,
-    pub git_object_info: String,
+    // Core state components (clean architecture)
+    pub tree: TreeState,
+    pub content: ContentState,
+    pub session: SessionState,
+
+    // UI and interaction state
     pub preview_state: PreviewState,
-    pub educational_content: Text<'static>,
-    // Live update persistence
-    pub last_selection: Option<SelectionIdentity>,
-    pub last_scroll_positions: Option<ScrollSnapshot>,
-    // Additions highlighting: per-item timers
-    pub changed_keys: HashMap<String, Instant>,
-    // Modifications highlighting: per-item timers
-    pub modified_keys: HashMap<String, Instant>,
-    // Deleted item overlay (red background), not mutating the tree
-    pub ghosts: HashMap<String, Ghost>,
-    // First-load guard
-    pub has_loaded_once: bool,
+    pub animations: AnimationManager,
+
+    // Domain services
+    pub services: ServiceContainer,
 }
 
 #[derive(Debug, Clone)]
@@ -250,16 +153,12 @@ pub struct ScrollSnapshot {
 impl MainViewState {
     pub fn new(ed_provider: &EducationalContent) -> Self {
         Self {
-            git_objects: GitObjectsState::new(),
-            git_object_info: String::new(),
-            educational_content: ed_provider.get_default_content(),
+            tree: TreeState::new(),
+            content: ContentState::new(ed_provider),
+            session: SessionState::new(),
             preview_state: PreviewState::Regular(RegularPreViewState::new()),
-            last_selection: None,
-            last_scroll_positions: None,
-            changed_keys: HashMap::new(),
-            modified_keys: HashMap::new(),
-            ghosts: HashMap::new(),
-            has_loaded_once: false,
+            animations: AnimationManager::new(),
+            services: ServiceContainer::new(),
         }
     }
 
@@ -283,8 +182,8 @@ impl MainViewState {
     }
 
     pub fn current_selection_key(&self) -> Option<String> {
-        if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let row = &self.git_objects.flat_view[self.git_objects.selected_index];
+        if self.tree.selected_index < self.tree.flat_view.len() {
+            let row = &self.tree.flat_view[self.tree.selected_index];
             Some(Self::selection_key(&row.object))
         } else {
             None
@@ -296,53 +195,11 @@ impl MainViewState {
     pub fn snapshot_old_positions(
         &self,
     ) -> (HashMap<String, OldPosition>, HashMap<String, GitObject>) {
-        fn walk(
-            out_pos: &mut HashMap<String, OldPosition>,
-            out_nodes: &mut HashMap<String, GitObject>,
-            children: &[GitObject],
-            parent_key: Option<String>,
-        ) {
-            for (idx, child) in children.iter().enumerate() {
-                let key = MainViewState::selection_key(child);
-                out_pos.insert(
-                    key.clone(),
-                    OldPosition {
-                        parent_key: parent_key.clone(),
-                        sibling_index: idx,
-                    },
-                );
-                out_nodes.insert(key.clone(), child.clone());
-                match child.obj_type {
-                    GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
-                        walk(out_pos, out_nodes, &child.children, Some(key));
-                    }
-                    _ => {}
-                }
-            }
-        }
-
-        let mut positions = HashMap::new();
-        let mut nodes = HashMap::new();
-        walk(&mut positions, &mut nodes, &self.git_objects.list, None);
-        (positions, nodes)
-    }
-
-    fn collect_all_keys(&self) -> HashSet<String> {
-        fn walk_keys(children: &[GitObject], acc: &mut HashSet<String>) {
-            for child in children {
-                let key = MainViewState::selection_key(child);
-                acc.insert(key);
-                match child.obj_type {
-                    GitObjectType::Category(_) | GitObjectType::FileSystemFolder { .. } => {
-                        walk_keys(&child.children, acc);
-                    }
-                    _ => {}
-                }
-            }
-        }
-        let mut keys = HashSet::new();
-        walk_keys(&self.git_objects.list, &mut keys);
-        keys
+        let snapshot = super::change_detection::ChangeDetectionService::snapshot_tree_positions(
+            &self.tree.list,
+            Self::selection_key,
+        );
+        (snapshot.positions, snapshot.nodes)
     }
 
     pub fn detect_tree_changes(
@@ -350,7 +207,11 @@ impl MainViewState {
         old_positions: &HashMap<String, OldPosition>,
         old_nodes: &HashMap<String, GitObject>,
     ) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
-        let new_keys = self.collect_all_keys();
+        // Use our change detection service to get the basic changes
+        let new_keys = super::change_detection::ChangeDetectionService::collect_all_keys(
+            &self.tree.list,
+            Self::selection_key,
+        );
         let old_keys: HashSet<String> = old_positions.keys().cloned().collect();
 
         let added_keys: HashSet<String> = new_keys.difference(&old_keys).cloned().collect();
@@ -362,7 +223,7 @@ impl MainViewState {
             .filter(|key| {
                 if let Some(old_node) = old_nodes.get(*key) {
                     if let Some(new_node) = self.find_node_by_key(key) {
-                        self.is_object_modified(old_node, new_node)
+                        Self::is_object_modified_static(old_node, new_node)
                     } else {
                         false
                     }
@@ -376,29 +237,34 @@ impl MainViewState {
         let now = Instant::now();
 
         // Additions (green, 5s)
-        self.changed_keys
+        self.animations
+            .changed_keys
             .retain(|k, until| *until > now && new_keys.contains(k));
         for k in &added_keys {
             // If there was a ghost for this key (re-appeared), drop it
-            self.ghosts.remove(k);
-            self.changed_keys
+            self.animations.ghosts.remove(k);
+            self.animations
+                .changed_keys
                 .insert(k.clone(), now + Duration::from_secs(5));
         }
 
         // Modifications (orange, 5s)
-        self.modified_keys
+        self.animations
+            .modified_keys
             .retain(|k, until| *until > now && new_keys.contains(k));
         for k in &modified_keys {
-            self.modified_keys
+            self.animations
+                .modified_keys
                 .insert(k.clone(), now + Duration::from_secs(5));
         }
 
         // Deletions -> ghosts overlay (red, 5s)
-        self.ghosts
+        self.animations
+            .ghosts
             .retain(|k, g| g.until > now && !new_keys.contains(k));
         let ghost_duration = Duration::from_secs(5);
         for k in &deleted_keys {
-            if self.ghosts.contains_key(k) {
+            if self.animations.ghosts.contains_key(k) {
                 continue;
             }
             if let Some(old_node) = old_nodes.get(k) {
@@ -407,7 +273,7 @@ impl MainViewState {
                 } else {
                     (None, 0)
                 };
-                self.ghosts.insert(
+                self.animations.ghosts.insert(
                     k.clone(),
                     Ghost {
                         until: now + ghost_duration,
@@ -422,293 +288,25 @@ impl MainViewState {
         (added_keys, deleted_keys, modified_keys)
     }
 
-    // ===== Sorting (natural sort, with "objects" pinned to top, "refs" pinned second) =====
-
-    pub fn sort_tree_for_display(nodes: &mut [GitObject]) {
-        // Sort the current level
-        nodes.sort_by(|a, b| {
-            // Special case: "objects" always comes first
-            let a_name = match &a.obj_type {
-                GitObjectType::Category(name) => name.as_str(),
-                GitObjectType::FileSystemFolder { path, .. } => {
-                    path.file_name().unwrap_or_default().to_str().unwrap_or("")
-                }
-                _ => &a.name,
-            };
-
-            let b_name = match &b.obj_type {
-                GitObjectType::Category(name) => name.as_str(),
-                GitObjectType::FileSystemFolder { path, .. } => {
-                    path.file_name().unwrap_or_default().to_str().unwrap_or("")
-                }
-                _ => &b.name,
-            };
-
-            // Objects folder always comes first, refs folder comes second
-            match (a_name, b_name) {
-                ("objects", "objects") => std::cmp::Ordering::Equal,
-                ("objects", _) => std::cmp::Ordering::Less,
-                (_, "objects") => std::cmp::Ordering::Greater,
-                ("refs", "refs") => std::cmp::Ordering::Equal,
-                ("refs", _) if b_name != "objects" => std::cmp::Ordering::Less,
-                (_, "refs") if a_name != "objects" => std::cmp::Ordering::Greater,
-                _ => natural_key(a_name).cmp(&natural_key(b_name)),
-            }
-        });
-
-        // Recursively sort children
-        for node in nodes.iter_mut() {
-            match &node.obj_type {
-                GitObjectType::Category(name) => {
-                    // Don't sort children of "objects" category (loose objects should keep their natural order)
-                    if name != "objects" && name != "Loose Objects" {
-                        MainViewState::sort_tree_for_display(&mut node.children);
-                    }
-                }
-                GitObjectType::FileSystemFolder { .. } => {
-                    MainViewState::sort_tree_for_display(&mut node.children);
-                }
-                _ => {}
-            }
-        }
-    }
-
     // ===== Flatten + overlay =====
 
     pub fn flatten_tree(&mut self) {
-        self.git_objects.flat_view.clear();
-        self.git_objects.flat_view.reserve(16);
-
-        // Clone to avoid borrow issues while recursing
-        let list_clone = self.git_objects.list.clone();
-        for obj in &list_clone {
-            self.flatten_node_recursive(obj, 0);
-        }
-
-        // Interleave ghosts overlay based on stored positions
+        // Clean up expired ghosts first
         let now = Instant::now();
-        self.ghosts.retain(|_, g| g.until > now);
-        if !self.ghosts.is_empty() {
-            // Group ghosts by parent_key
-            let mut by_parent: HashMap<Option<String>, Vec<(usize, String)>> = HashMap::new();
-            for (k, g) in &self.ghosts {
-                by_parent
-                    .entry(g.parent_key.clone())
-                    .or_default()
-                    .push((g.sibling_index, k.clone()));
-            }
-            for v in by_parent.values_mut() {
-                v.sort_by_key(|(idx, _)| *idx);
-            }
+        self.animations.ghosts.retain(|_, g| g.until > now);
 
-            let mut output: Vec<FlatTreeRow> = self.git_objects.flat_view.clone();
+        // Use TreeService to flatten the tree with animations
+        self.tree.flat_view = super::services::TreeService::flatten_tree_with_animations(
+            &self.tree.list,
+            &self.animations,
+            Self::selection_key,
+        );
 
-            // Top-level ghosts: precise mapping by sibling_index against top-level order
-            if let Some(top_list) = by_parent.get(&None) {
-                let top_keys: Vec<String> = self
-                    .git_objects
-                    .list
-                    .iter()
-                    .map(MainViewState::selection_key)
-                    .collect();
-
-                let find_top_flat_index = |key: &str, flat: &[FlatTreeRow]| -> Option<usize> {
-                    flat.iter().position(|row| {
-                        row.depth == 0 && MainViewState::selection_key(&row.object) == key
-                    })
-                };
-
-                let end_of_top_level = {
-                    let last_top_idx = output
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, row)| row.depth == 0)
-                        .map(|(i, _)| i)
-                        .next_back();
-                    match last_top_idx {
-                        Some(i) => {
-                            let mut j = i + 1;
-                            while j < output.len() {
-                                if output[j].depth == 0 {
-                                    break;
-                                }
-                                j += 1;
-                            }
-                            j
-                        }
-                        None => 0,
-                    }
-                };
-
-                for (sibling_index, ghost_key) in top_list.iter().rev() {
-                    if let Some(g) = self.ghosts.get(ghost_key) {
-                        let insert_at = if *sibling_index < top_keys.len() {
-                            if let Some(idx) =
-                                find_top_flat_index(&top_keys[*sibling_index], &output)
-                            {
-                                idx
-                            } else {
-                                end_of_top_level
-                            }
-                        } else {
-                            end_of_top_level
-                        };
-                        let ghost_highlight = HighlightInfo {
-                            color: Some(ratatui::style::Color::Red),
-                            expires_at: Some(g.until),
-                        };
-                        output.insert(
-                            insert_at,
-                            FlatTreeRow {
-                                depth: 0,
-                                object: g.display.clone(),
-                                render_status: RenderStatus::PendingRemoval,
-                                highlight: ghost_highlight,
-                            },
-                        );
-                    }
-                }
-            }
-
-            // Nested ghosts: if parent expanded, place among visible children at sibling_index;
-            // otherwise place right after parent row
-            for (parent, list) in by_parent.into_iter() {
-                if parent.is_none() {
-                    continue;
-                }
-                if let Some(parent_key) = parent
-                    && let Some(parent_row) = output
-                        .iter()
-                        .position(|row| Self::selection_key(&row.object) == parent_key)
-                {
-                    let parent_depth = output[parent_row].depth;
-                    // Get the current expansion state from the actual tree, not the old flat_view
-                    let parent_expanded =
-                        if let Some(parent_node) = self.find_node_by_key(&parent_key) {
-                            match parent_node.obj_type {
-                                GitObjectType::Category(_)
-                                | GitObjectType::FileSystemFolder { .. } => parent_node.expanded,
-                                _ => false,
-                            }
-                        } else {
-                            false
-                        };
-
-                    let mut child_rows: Vec<usize> = Vec::new();
-                    if parent_expanded {
-                        let mut i = parent_row + 1;
-                        while i < output.len() {
-                            let row = &output[i];
-                            if row.depth <= parent_depth {
-                                break;
-                            }
-                            if row.depth == parent_depth + 1 {
-                                child_rows.push(i);
-                            }
-                            i += 1;
-                        }
-                    }
-
-                    for (sibling_index, ghost_key) in list.into_iter().rev() {
-                        if let Some(g) = self.ghosts.get(&ghost_key) {
-                            // Only show ghosts if the parent is expanded
-                            // If parent is collapsed, its children (including ghosts) shouldn't be visible
-                            if parent_expanded {
-                                let insert_at = if sibling_index < child_rows.len() {
-                                    child_rows[sibling_index]
-                                } else {
-                                    child_rows.last().map(|x| x + 1).unwrap_or(parent_row + 1)
-                                };
-                                let ghost_highlight = HighlightInfo {
-                                    color: Some(ratatui::style::Color::Red),
-                                    expires_at: Some(g.until),
-                                };
-                                output.insert(
-                                    insert_at,
-                                    FlatTreeRow {
-                                        depth: parent_depth + 1,
-                                        object: g.display.clone(),
-                                        render_status: RenderStatus::PendingRemoval,
-                                        highlight: ghost_highlight,
-                                    },
-                                );
-                                for r in &mut child_rows {
-                                    if *r >= insert_at {
-                                        *r += 1;
-                                    }
-                                }
-                            }
-                            // If parent is collapsed, skip this ghost entirely
-                        }
-                    }
-                }
-            }
-
-            self.git_objects.flat_view = output;
-        }
-
-        // Cleanup expired timers
-        let now = Instant::now();
-        self.changed_keys.retain(|_, until| *until > now);
-        self.modified_keys.retain(|_, until| *until > now);
-    }
-
-    // ===== Highlight computation =====
-
-    fn compute_highlight_info(&self, key: &str) -> HighlightInfo {
-        let now = std::time::Instant::now();
-
-        // Check for additions (green) - highest priority
-        if let Some(until) = self.changed_keys.get(key).copied()
-            && until > now
-        {
-            return HighlightInfo {
-                color: Some(ratatui::style::Color::Green),
-                expires_at: Some(until),
-            };
-        }
-
-        // Check for modifications (orange) - medium priority
-        if let Some(until) = self.modified_keys.get(key).copied()
-            && until > now
-        {
-            return HighlightInfo {
-                color: Some(ratatui::style::Color::Rgb(255, 165, 0)), // Orange
-                expires_at: Some(until),
-            };
-        }
-
-        // Check for deletions/ghosts (red) - handled separately in ghost overlay
-        if let Some(ghost) = self.ghosts.get(key)
-            && ghost.until > now
-        {
-            return HighlightInfo {
-                color: Some(ratatui::style::Color::Red),
-                expires_at: Some(ghost.until),
-            };
-        }
-
-        // No highlight
-        HighlightInfo::default()
-    }
-
-    // Recursive flattener
-    fn flatten_node_recursive(&mut self, node: &GitObject, depth: usize) {
-        let key = Self::selection_key(node);
-        let highlight = self.compute_highlight_info(&key);
-
-        self.git_objects.flat_view.push(FlatTreeRow {
-            depth,
-            object: node.clone(),
-            render_status: RenderStatus::Normal,
-            highlight,
-        });
-
-        if node.expanded {
-            for child in &node.children {
-                self.flatten_node_recursive(child, depth + 1);
-            }
-        }
+        // Clean up expired animation timers
+        self.animations.changed_keys.retain(|_, until| *until > now);
+        self.animations
+            .modified_keys
+            .retain(|_, until| *until > now);
     }
 
     pub fn are_git_objects_focused(&self) -> bool {
@@ -723,19 +321,19 @@ impl MainViewState {
         visible_height: usize,
         new_index: usize,
     ) {
-        if new_index >= self.git_objects.scroll_position + visible_height {
-            self.git_objects.scroll_position = new_index.saturating_sub(visible_height - 1);
-        } else if new_index < self.git_objects.scroll_position {
-            self.git_objects.scroll_position = new_index;
-        }
+        self.tree.scroll_position =
+            super::services::UIService::update_git_objects_scroll_for_selection(
+                &self.tree.flat_view,
+                new_index,
+                self.tree.scroll_position,
+                visible_height,
+            );
     }
 
     // Toggle expansion for categories and filesystem folders
     pub fn toggle_expand(&mut self) -> Message {
-        if self.git_objects.selected_index < self.git_objects.flat_view.len() {
-            let selected_obj = &self.git_objects.flat_view[self.git_objects.selected_index]
-                .object
-                .clone();
+        if self.tree.selected_index < self.tree.flat_view.len() {
+            let selected_obj = &self.tree.flat_view[self.tree.selected_index].object.clone();
 
             match &selected_obj.obj_type {
                 GitObjectType::Category(category_name) => {
@@ -756,7 +354,7 @@ impl MainViewState {
                         false
                     }
 
-                    for obj in &mut self.git_objects.list {
+                    for obj in &mut self.tree.list {
                         if find_and_toggle_category(obj, &name_to_find) {
                             break;
                         }
@@ -766,19 +364,18 @@ impl MainViewState {
 
                     // Keep the selected category visible
                     let mut new_index = 0;
-                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                    for (i, row) in self.tree.flat_view.iter().enumerate() {
                         if let GitObjectType::Category(name) = &row.object.obj_type
-                            && name == &name_to_find
+                            && *name == name_to_find
                         {
                             new_index = i;
                             break;
                         }
                     }
-                    if !self.git_objects.flat_view.is_empty() {
-                        self.git_objects.selected_index =
-                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    if self.tree.flat_view.is_empty() {
+                        self.tree.selected_index = 0;
                     } else {
-                        self.git_objects.selected_index = 0;
+                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
                     }
                 }
                 GitObjectType::FileSystemFolder { path, .. } => {
@@ -795,7 +392,7 @@ impl MainViewState {
                         {
                             if !obj.expanded && !*is_loaded {
                                 // Load folder contents before expanding
-                                obj.load_folder_contents()?
+                                obj.load_folder_contents()?;
                             }
                             obj.expanded = !obj.expanded;
                             return Ok(true);
@@ -809,7 +406,7 @@ impl MainViewState {
                     }
 
                     let mut error_msg = None;
-                    for obj in &mut self.git_objects.list {
+                    for obj in &mut self.tree.list {
                         match find_and_toggle_folder(obj, &path_to_find) {
                             Ok(true) => break,
                             Ok(false) => continue,
@@ -822,8 +419,7 @@ impl MainViewState {
 
                     if let Some(error) = error_msg {
                         return Message::LoadGitObjects(Err(format!(
-                            "Failed to expand folder: {}",
-                            error
+                            "Failed to expand folder: {error}"
                         )));
                     }
 
@@ -831,19 +427,18 @@ impl MainViewState {
 
                     // Keep the selected folder visible
                     let mut new_index = 0;
-                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                    for (i, row) in self.tree.flat_view.iter().enumerate() {
                         if let GitObjectType::FileSystemFolder { path, .. } = &row.object.obj_type
-                            && path == &path_to_find
+                            && *path == path_to_find
                         {
                             new_index = i;
                             break;
                         }
                     }
-                    if !self.git_objects.flat_view.is_empty() {
-                        self.git_objects.selected_index =
-                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    if self.tree.flat_view.is_empty() {
+                        self.tree.selected_index = 0;
                     } else {
-                        self.git_objects.selected_index = 0;
+                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
                     }
                 }
                 GitObjectType::PackFolder { base_name, .. } => {
@@ -867,7 +462,7 @@ impl MainViewState {
                         false
                     }
 
-                    for obj in &mut self.git_objects.list {
+                    for obj in &mut self.tree.list {
                         if find_and_toggle_pack_folder(obj, &base_name_to_find) {
                             break;
                         }
@@ -877,19 +472,18 @@ impl MainViewState {
 
                     // Keep the selected pack folder visible
                     let mut new_index = 0;
-                    for (i, row) in self.git_objects.flat_view.iter().enumerate() {
+                    for (i, row) in self.tree.flat_view.iter().enumerate() {
                         if let GitObjectType::PackFolder { base_name, .. } = &row.object.obj_type
-                            && base_name == &base_name_to_find
+                            && *base_name == base_name_to_find
                         {
                             new_index = i;
                             break;
                         }
                     }
-                    if !self.git_objects.flat_view.is_empty() {
-                        self.git_objects.selected_index =
-                            new_index.min(self.git_objects.flat_view.len() - 1);
+                    if self.tree.flat_view.is_empty() {
+                        self.tree.selected_index = 0;
                     } else {
-                        self.git_objects.selected_index = 0;
+                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
                     }
                 }
                 _ => {} // Other object types are not expandable
@@ -901,79 +495,17 @@ impl MainViewState {
     // ===== Modification detection helpers =====
 
     /// Find a node in the current tree by its selection key
-    fn find_node_by_key(&self, key: &str) -> Option<&GitObject> {
-        fn search_in_children<'a>(
-            children: &'a [GitObject],
-            target_key: &str,
-        ) -> Option<&'a GitObject> {
-            for child in children {
-                let child_key = MainViewState::selection_key(child);
-                if child_key == target_key {
-                    return Some(child);
-                }
-                if let Some(found) = search_in_children(&child.children, target_key) {
-                    return Some(found);
-                }
-            }
-            None
-        }
-        search_in_children(&self.git_objects.list, key)
+    pub fn find_node_by_key(&self, key: &str) -> Option<&GitObject> {
+        super::services::TreeService::find_node_by_key(&self.tree.list, key, Self::selection_key)
     }
 
     /// Check if an object has been modified by comparing modification times
-    fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
-        match (&old.obj_type, &new.obj_type) {
-            (
-                GitObjectType::PackFolder {
-                    base_name: old_name,
-                    ..
-                },
-                GitObjectType::PackFolder {
-                    base_name: new_name,
-                    ..
-                },
-            ) => old_name != new_name, // Pack folders are different if base names differ
-            (GitObjectType::LooseObject { .. }, GitObjectType::LooseObject { .. }) => {
-                // Loose objects are content-addressable and immutable
-                // Same object_id = same content, different object_id = different object
-                // There's no concept of "modification" for loose objects
-                false
-            }
-            (
-                GitObjectType::Ref { path: old_path, .. },
-                GitObjectType::Ref { path: new_path, .. },
-            ) => self.compare_file_mtime(old_path, new_path),
-            (
-                GitObjectType::FileSystemFile { path: old_path, .. },
-                GitObjectType::FileSystemFile { path: new_path, .. },
-            ) => self.compare_file_mtime(old_path, new_path),
-            (GitObjectType::FileSystemFolder { .. }, GitObjectType::FileSystemFolder { .. }) => {
-                // For folders, we don't consider them "modified" in the traditional sense
-                // Content changes (files added/removed) are handled by the change detection system
-                // which compares the children, not the folder object itself
-                false
-            }
-            _ => false,
-        }
+    pub fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
+        super::services::GitRepositoryService::is_object_modified(old, new)
     }
 
-    /// Compare modification times of two files
-    fn compare_file_mtime(&self, old_path: &Path, new_path: &Path) -> bool {
-        if old_path != new_path {
-            return false; // Different paths, not the same file
-        }
-
-        self.is_file_recently_modified(old_path)
-    }
-
-    /// Check if a file was modified recently (within last 2 seconds)
-    fn is_file_recently_modified(&self, path: &Path) -> bool {
-        if let Ok(meta) = fs::metadata(path)
-            && let Ok(mtime) = meta.modified()
-            && let Ok(elapsed) = mtime.elapsed()
-        {
-            return elapsed.as_secs() < 2;
-        }
-        false
+    /// Static version of `is_object_modified` for use in closures
+    pub fn is_object_modified_static(old: &GitObject, new: &GitObject) -> bool {
+        super::services::GitRepositoryService::is_object_modified_static(old, new)
     }
 }

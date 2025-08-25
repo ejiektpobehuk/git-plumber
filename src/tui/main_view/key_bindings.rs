@@ -22,11 +22,10 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         focus: PackFocus::GitObjects,
                         ..
                     }) => {
-                        if !state.git_objects.flat_view.is_empty()
-                            && state.git_objects.selected_index < state.git_objects.flat_view.len()
+                        if !state.tree.flat_view.is_empty()
+                            && state.tree.selected_index < state.tree.flat_view.len()
                         {
-                            let row =
-                                &state.git_objects.flat_view[state.git_objects.selected_index];
+                            let row = &state.tree.flat_view[state.tree.selected_index];
                             let current_depth = row.depth;
                             let selected_obj = &row.object;
                             match &selected_obj.obj_type {
@@ -70,11 +69,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                 PreviewState::Regular(preview_state) => match preview_state.focus {
                     RegularFocus::GitObjects => {
                         // Check if the selected object is a loose object
-                        if let Some(row) = state
-                            .git_objects
-                            .flat_view
-                            .get(state.git_objects.selected_index)
-                        {
+                        if let Some(row) = state.tree.flat_view.get(state.tree.selected_index) {
                             if matches!(row.object.obj_type, GitObjectType::LooseObject { .. }) {
                                 Some(Message::OpenLooseObjectView)
                             } else {

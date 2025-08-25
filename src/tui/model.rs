@@ -638,9 +638,7 @@ impl AppState {
     // Check if animations are currently active
     pub fn has_active_animations(&self) -> bool {
         if let AppView::Main { state } = &self.view {
-            !state.changed_keys.is_empty()
-                || !state.ghosts.is_empty()
-                || !state.modified_keys.is_empty()
+            state.animations.has_active_animations()
         } else {
             false
         }

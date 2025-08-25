@@ -1,4 +1,4 @@
-use crate::tui::main_view::{MainViewState, PreviewState};
+use crate::tui::main_view::{ChangeDetectionService, MainViewState, PreviewState};
 use crate::tui::message::Message;
 use crate::tui::model::{AppState, AppView};
 use crate::tui::widget::PackObjectWidget;
@@ -25,68 +25,72 @@ impl AppState {
                 // Apply the loaded git objects list to the MainView state
                 if let AppView::Main { state } = &mut self.view {
                     // Snapshot for change detection if we already had a successful load
-                    let (old_positions, old_nodes) = if state.has_loaded_once {
-                        state.snapshot_old_positions()
+                    let old_snapshot = if state.session.has_loaded_once {
+                        Some(ChangeDetectionService::snapshot_tree_positions(
+                            &state.tree.list,
+                            MainViewState::selection_key,
+                        ))
                     } else {
-                        (
-                            std::collections::HashMap::new(),
-                            std::collections::HashMap::new(),
-                        )
+                        None
                     };
 
                     // Clone old tree before clearing for state restoration
-                    let old_tree = state.git_objects.list.clone();
+                    let old_tree = state.tree.list.clone();
 
                     // Set the new tree
-                    state.git_objects.list = data.git_objects_list;
+                    state.tree.list = data.git_objects_list;
 
                     // Ensure natural sorting for categories except "objects"
-                    MainViewState::sort_tree_for_display(&mut state.git_objects.list);
+                    crate::tui::main_view::NaturalSorter::sort_tree_for_display(
+                        &mut state.tree.list,
+                    );
+
+                    // Sync to new structure
 
                     // Restore expansion and loading state from old tree if this isn't the first load
-                    if state.has_loaded_once {
-                        for new_obj in &mut state.git_objects.list {
+                    if state.session.has_loaded_once {
+                        for new_obj in &mut state.tree.list {
                             new_obj.restore_state_from(&old_tree);
                         }
                     }
 
                     // Populate empty state caches to ensure consistent comparison
-                    for obj in &mut state.git_objects.list {
+                    for obj in &mut state.tree.list {
                         obj.populate_empty_caches_recursive();
                         // Refresh caches for collapsed folders to detect content changes
                         obj.refresh_empty_caches_for_collapsed();
                     }
 
+                    // Sync to new structure after all modifications
+
                     // NOW detect changes after full restoration and cache population
-                    if state.has_loaded_once {
-                        let _ = state.detect_tree_changes(&old_positions, &old_nodes);
+                    if let Some(old_snapshot) = old_snapshot {
+                        let _ =
+                            state.detect_tree_changes(&old_snapshot.positions, &old_snapshot.nodes);
                     }
 
                     state.flatten_tree();
 
                     // Try to restore previous selection
-                    if let Some(sel) = state.last_selection.take() {
+                    if let Some(sel) = state.session.last_selection.take() {
                         if let Some(idx) =
-                            state.git_objects.flat_view.iter().position(|row| {
+                            state.tree.flat_view.iter().position(|row| {
                                 MainViewState::selection_key(&row.object) == sel.key
                             })
                         {
-                            state.git_objects.selected_index = idx;
-                        } else if state.git_objects.selected_index
-                            >= state.git_objects.flat_view.len()
-                        {
-                            state.git_objects.selected_index = 0;
+                            state.tree.selected_index = idx;
+                        } else if state.tree.selected_index >= state.tree.flat_view.len() {
+                            state.tree.selected_index = 0;
                         }
-                    } else if state.git_objects.selected_index >= state.git_objects.flat_view.len()
-                    {
-                        state.git_objects.selected_index = 0;
+                    } else if state.tree.selected_index >= state.tree.flat_view.len() {
+                        state.tree.selected_index = 0;
                     }
 
                     // Restore scrolls
-                    if let Some(snap) = state.last_scroll_positions.take() {
-                        state.git_objects.scroll_position = snap
+                    if let Some(snap) = state.session.last_scroll_positions.take() {
+                        state.tree.scroll_position = snap
                             .git_list_scroll
-                            .min(state.git_objects.flat_view.len().saturating_sub(1));
+                            .min(state.tree.flat_view.len().saturating_sub(1));
                         match &mut state.preview_state {
                             PreviewState::Regular(r) => {
                                 if r.pack_index_widget.is_none() {
@@ -104,9 +108,9 @@ impl AppState {
                     }
 
                     // If there are any items, trigger details and educational content loads
-                    let should_load = !state.git_objects.flat_view.is_empty();
+                    let should_load = !state.tree.flat_view.is_empty();
                     // Mark first successful load complete to enable highlighting on subsequent refreshes
-                    state.has_loaded_once = true;
+                    state.session.has_loaded_once = true;
                     let _ = state;
 
                     if should_load {
@@ -122,7 +126,7 @@ impl AppState {
             Message::LoadGitObjectInfo(result) => match result {
                 Ok(info) => {
                     if let AppView::Main { state } = &mut self.view {
-                        state.git_object_info = info;
+                        state.content.git_object_info = info;
                         self.error = None;
                     }
                 }
@@ -134,7 +138,7 @@ impl AppState {
             Message::LoadEducationalContent(result) => match result {
                 Ok(preview) => {
                     if let AppView::Main { state } = &mut self.view {
-                        state.educational_content = preview;
+                        state.content.educational_content = preview;
                         // Only reset to regular state if we're not in a pack preview state
                         match &mut state.preview_state {
                             PreviewState::Regular(regular_state) => {
@@ -213,7 +217,7 @@ impl AppState {
             Message::Refresh => {
                 // Capture selection + scroll before reload to preserve focus/context
                 if let AppView::Main { state } = &mut self.view {
-                    state.last_selection = state
+                    state.session.last_selection = state
                         .current_selection_key()
                         .map(|key| super::main_view::SelectionIdentity { key });
                     // capture scrolls
@@ -229,10 +233,10 @@ impl AppState {
                     };
                     let pack_list_scroll = match &state.preview_state {
                         PreviewState::Pack(p) => p.pack_object_list_scroll_position,
-                        _ => 0,
+                        PreviewState::Regular(_) => 0,
                     };
-                    state.last_scroll_positions = Some(super::main_view::ScrollSnapshot {
-                        git_list_scroll: state.git_objects.scroll_position,
+                    state.session.last_scroll_positions = Some(super::main_view::ScrollSnapshot {
+                        git_list_scroll: state.tree.scroll_position,
                         preview_scroll,
                         pack_list_scroll,
                     });
@@ -243,7 +247,10 @@ impl AppState {
                 self.effects.push(crate::tui::message::Command::LoadInitial);
             }
 
-            Message::MainNavigation(_) | Message::OpenPackView | Message::OpenLooseObjectView => {
+            Message::MainNavigation(_)
+            | Message::OpenMainView
+            | Message::OpenPackView
+            | Message::OpenLooseObjectView => {
                 return self.handle_main_view_mode_message(msg, plumber);
             }
 
@@ -253,10 +260,6 @@ impl AppState {
 
             Message::LooseObjectNavigation(_) => {
                 return self.handle_loose_object_view_mode_message(msg);
-            }
-
-            Message::OpenMainView => {
-                return self.handle_main_view_mode_message(msg, plumber);
             }
 
             // Load result messages

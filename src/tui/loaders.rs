@@ -13,7 +13,7 @@ impl AppState {
         match &mut self.view {
             AppView::Main { state } => {
                 // Pre-build pipeline: snapshot old state for change detection
-                let (old_positions, old_nodes) = if state.has_loaded_once {
+                let (old_positions, old_nodes) = if state.session.has_loaded_once {
                     state.snapshot_old_positions()
                 } else {
                     (
@@ -23,16 +23,16 @@ impl AppState {
                 };
 
                 // Preserve old tree for state restoration
-                let old_tree = state.git_objects.list.clone();
+                let old_tree = state.tree.list.clone();
 
                 // Clear existing objects
-                state.git_objects.list.clear();
+                state.tree.list.clear();
 
                 // Use the new file tree structure
                 match crate::tui::git_tree::build_git_file_tree(plumber) {
                     Ok(mut git_objects) => {
                         // Restore expansion and loading state from old tree if this isn't the first load
-                        if state.has_loaded_once {
+                        if state.session.has_loaded_once {
                             for new_obj in &mut git_objects {
                                 new_obj.restore_state_from(&old_tree);
                             }
@@ -46,13 +46,15 @@ impl AppState {
                         }
 
                         // Sort the new tree before comparison
-                        MainViewState::sort_tree_for_display(&mut git_objects);
+                        crate::tui::main_view::NaturalSorter::sort_tree_for_display(
+                            &mut git_objects,
+                        );
 
                         // Set the new tree
-                        state.git_objects.list = git_objects;
+                        state.tree.list = git_objects;
 
                         // NOW detect changes after full restoration and cache population
-                        if state.has_loaded_once {
+                        if state.session.has_loaded_once {
                             let _ = state.detect_tree_changes(&old_positions, &old_nodes);
                         }
                     }
@@ -67,8 +69,8 @@ impl AppState {
                 state.flatten_tree();
 
                 // Reset selection
-                if !state.git_objects.flat_view.is_empty() {
-                    state.git_objects.selected_index = 0;
+                if !state.tree.flat_view.is_empty() {
+                    state.tree.selected_index = 0;
                 }
 
                 Message::LoadGitObjects(Ok(()))
@@ -81,8 +83,10 @@ impl AppState {
     pub fn load_git_object_details(&self, _plumber: &crate::GitPlumber) -> Message {
         match &self.view {
             AppView::Main { state } => {
-                if !state.git_objects.flat_view.is_empty() {
-                    let row = &state.git_objects.flat_view[state.git_objects.selected_index];
+                if state.tree.flat_view.is_empty() {
+                    Message::LoadGitObjectInfo(Ok("No object selected".to_string()))
+                } else {
+                    let row = &state.tree.flat_view[state.tree.selected_index];
                     let obj = &row.object;
                     match &obj.obj_type {
 
@@ -165,9 +169,7 @@ impl AppState {
                             };
 
                             let modified = modified_time
-                                .as_ref()
-                                .map(crate::tui::model::GitObject::format_time_ago)
-                                .unwrap_or_else(|| "Unknown time".to_string());
+                                .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
 
                             let info = format!(
                                 "Type: File\nPath: {}\nSize: {}\nLast modified: {}",
@@ -201,9 +203,7 @@ impl AppState {
                             };
 
                             let modified = modified_time
-                                .as_ref()
-                                .map(crate::tui::model::GitObject::format_time_ago)
-                                .unwrap_or_else(|| "Unknown time".to_string());
+                                .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
 
                             let info = format!(
                                 "Type: Pack {}\nPath: {}\nSize: {}\nLast modified: {}",
@@ -212,8 +212,6 @@ impl AppState {
                             Message::LoadGitObjectInfo(Ok(info))
                         }
                     }
-                } else {
-                    Message::LoadGitObjectInfo(Ok("No object selected".to_string()))
                 }
             }
             _ => Message::LoadGitObjectInfo(Err("Sent to the wrong View".to_string())),
@@ -221,11 +219,15 @@ impl AppState {
     }
 
     // Load educational content for the currently selected object
+    #[must_use]
     pub fn load_educational_content(&self, _plumber: &crate::GitPlumber) -> Message {
         match &self.view {
             AppView::Main { state } => {
-                if !state.git_objects.flat_view.is_empty() {
-                    let row = &state.git_objects.flat_view[state.git_objects.selected_index];
+                if state.tree.flat_view.is_empty() {
+                    let content = self.educational_content_provider.get_default_content();
+                    Message::LoadEducationalContent(Ok(content))
+                } else {
+                    let row = &state.tree.flat_view[state.tree.selected_index];
                     let obj = &row.object;
                     match &obj.obj_type {
                         GitObjectType::Category(name) => {
@@ -369,9 +371,6 @@ impl AppState {
                             }
                         }
                     }
-                } else {
-                    let content = self.educational_content_provider.get_default_content();
-                    Message::LoadEducationalContent(Ok(content))
                 }
             }
             _ => Message::LoadEducationalContent(Err("Sent for the wrong View".to_string())),

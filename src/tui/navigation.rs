@@ -1,7 +1,8 @@
 use crate::tui::main_view::MainViewState;
+use crate::tui::main_view::state_components::TreeState;
 use crate::tui::model::{AppState, AppView, GitObjectType};
 
-use super::main_view::{GitObjectsState, PackPreViewState, PreviewState};
+use super::main_view::{PackPreViewState, PreviewState};
 
 impl AppState {
     // Helper method to load pack objects if the selected object is a pack file
@@ -9,8 +10,8 @@ impl AppState {
         if let AppView::Main {
             state:
                 MainViewState {
-                    git_objects:
-                        GitObjectsState {
+                    tree:
+                        TreeState {
                             flat_view,
                             selected_index,
                             ..

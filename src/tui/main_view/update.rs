@@ -18,7 +18,17 @@ impl AppState {
         self.handle_preview_state_transition(new_index, is_pack_preview);
 
         // Update scroll position to keep selected item visible
-        self.update_git_objects_scroll_for_selection(new_index);
+        if let AppView::Main { state } = &mut self.view {
+            // Estimate visible height based on typical terminal size (conservative estimate)
+            let estimated_visible_height = 20.min(state.tree.flat_view.len());
+            state.tree.scroll_position =
+                super::services::UIService::update_git_objects_scroll_for_selection(
+                    &state.tree.flat_view,
+                    new_index,
+                    state.tree.scroll_position,
+                    estimated_visible_height,
+                );
+        }
 
         // Load details for the newly selected object
         let details_msg = self.load_git_object_details(plumber);
@@ -70,40 +80,35 @@ impl AppState {
                     if let AppView::Main { state } = &mut self.view {
                         match &mut state.preview_state {
                             PreviewState::Regular(preview_state) => {
-                                preview_state.focus = RegularFocus::GitObjects
+                                preview_state.focus = RegularFocus::GitObjects;
                             }
                             PreviewState::Pack(preview_state) => {
-                                preview_state.focus = PackFocus::GitObjects
+                                preview_state.focus = PackFocus::GitObjects;
                             }
-                        };
-                    };
+                        }
+                    }
                 }
 
                 MainNavigation::SelectNextGitObject => {
                     let (should_update, new_index, is_pack_preview) = match &mut self.view {
-                        AppView::Main {
-                            state: MainViewState { git_objects, .. },
-                            ..
-                        } => {
-                            if !git_objects.flat_view.is_empty() {
+                        AppView::Main { state, .. } => {
+                            if state.tree.flat_view.is_empty() {
+                                (false, 0, false)
+                            } else {
                                 let new_index =
-                                    (git_objects.selected_index + 1) % git_objects.flat_view.len();
-                                git_objects.selected_index = new_index;
+                                    (state.tree.selected_index + 1) % state.tree.flat_view.len();
+                                state.tree.selected_index = new_index;
 
-                                let is_pack = git_objects
-                                    .flat_view
-                                    .get(new_index)
-                                    .map(|row| match &row.object.obj_type {
+                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
+                                    |row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
-                                    })
-                                    .unwrap_or(false);
+                                    },
+                                );
                                 (true, new_index, is_pack)
-                            } else {
-                                (false, 0, false)
                             }
                         }
                         _ => (false, 0, false),
@@ -116,31 +121,27 @@ impl AppState {
 
                 MainNavigation::SelectPreviouwGitObject => {
                     let (should_update, new_index, is_pack_preview) = match &mut self.view {
-                        AppView::Main {
-                            state: MainViewState { git_objects, .. },
-                        } => {
-                            if !git_objects.flat_view.is_empty() {
-                                let new_index = if git_objects.selected_index > 0 {
-                                    git_objects.selected_index - 1
+                        AppView::Main { state } => {
+                            if state.tree.flat_view.is_empty() {
+                                (false, 0, false)
+                            } else {
+                                let new_index = if state.tree.selected_index > 0 {
+                                    state.tree.selected_index - 1
                                 } else {
-                                    git_objects.flat_view.len() - 1
+                                    state.tree.flat_view.len() - 1
                                 };
-                                git_objects.selected_index = new_index;
+                                state.tree.selected_index = new_index;
 
-                                let is_pack = git_objects
-                                    .flat_view
-                                    .get(new_index)
-                                    .map(|row| match &row.object.obj_type {
+                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
+                                    |row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
-                                    })
-                                    .unwrap_or(false);
+                                    },
+                                );
                                 (true, new_index, is_pack)
-                            } else {
-                                (false, 0, false)
                             }
                         }
                         _ => (false, 0, false),
@@ -153,26 +154,22 @@ impl AppState {
 
                 MainNavigation::SelectFirstGitObject => {
                     let (should_update, new_index, is_pack_preview) = match &mut self.view {
-                        AppView::Main {
-                            state: MainViewState { git_objects, .. },
-                        } => {
-                            if !git_objects.flat_view.is_empty() {
-                                git_objects.selected_index = 0;
+                        AppView::Main { state } => {
+                            if state.tree.flat_view.is_empty() {
+                                (false, 0, false)
+                            } else {
+                                state.tree.selected_index = 0;
 
-                                let is_pack = git_objects
-                                    .flat_view
-                                    .first()
-                                    .map(|row| match &row.object.obj_type {
+                                let is_pack = state.tree.flat_view.first().is_some_and(|row| {
+                                    match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
-                                    })
-                                    .unwrap_or(false);
+                                    }
+                                });
                                 (true, 0, is_pack)
-                            } else {
-                                (false, 0, false)
                             }
                         }
                         _ => (false, 0, false),
@@ -185,27 +182,23 @@ impl AppState {
 
                 MainNavigation::SelectLastGitObject => {
                     let (should_update, new_index, is_pack_preview) = match &mut self.view {
-                        AppView::Main {
-                            state: MainViewState { git_objects, .. },
-                        } => {
-                            if !git_objects.flat_view.is_empty() {
-                                let new_index = git_objects.flat_view.len() - 1;
-                                git_objects.selected_index = new_index;
+                        AppView::Main { state } => {
+                            if state.tree.flat_view.is_empty() {
+                                (false, 0, false)
+                            } else {
+                                let new_index = state.tree.flat_view.len() - 1;
+                                state.tree.selected_index = new_index;
 
-                                let is_pack = git_objects
-                                    .flat_view
-                                    .get(new_index)
-                                    .map(|row| match &row.object.obj_type {
+                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
+                                    |row| match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
                                         GitObjectType::PackFile { file_type, .. } => {
                                             file_type == "packfile" || file_type == "pack"
                                         }
                                         _ => false,
-                                    })
-                                    .unwrap_or(false);
+                                    },
+                                );
                                 (true, new_index, is_pack)
-                            } else {
-                                (false, 0, false)
                             }
                         }
                         _ => (false, 0, false),
@@ -221,15 +214,14 @@ impl AppState {
                         if let AppView::Main { state } = &mut self.view {
                             let toggle_msg = state.toggle_expand();
                             // Extract the information we need before calling update to avoid borrow conflicts
-                            let has_items = !state.git_objects.flat_view.is_empty();
-                            let selected_index = state.git_objects.selected_index;
-                            let is_pack = if let Some(row) =
-                                state.git_objects.flat_view.get(selected_index)
-                            {
-                                matches!(row.object.obj_type, GitObjectType::PackFolder { .. })
-                            } else {
-                                false
-                            };
+                            let has_items = !state.tree.flat_view.is_empty();
+                            let selected_index = state.tree.selected_index;
+                            let is_pack =
+                                if let Some(row) = state.tree.flat_view.get(selected_index) {
+                                    matches!(row.object.obj_type, GitObjectType::PackFolder { .. })
+                                } else {
+                                    false
+                                };
                             (toggle_msg, has_items, selected_index, is_pack)
                         } else {
                             return true; // Not in main view
@@ -245,24 +237,30 @@ impl AppState {
 
                 MainNavigation::JumpToParentCategory => {
                     if let AppView::Main { state } = &mut self.view
-                        && !state.git_objects.flat_view.is_empty()
-                        && state.git_objects.selected_index < state.git_objects.flat_view.len()
+                        && !state.tree.flat_view.is_empty()
+                        && state.tree.selected_index < state.tree.flat_view.len()
                     {
-                        let current_depth =
-                            state.git_objects.flat_view[state.git_objects.selected_index].depth;
+                        let current_depth = state.tree.flat_view[state.tree.selected_index].depth;
 
                         if current_depth > 0 {
                             // Find parent category by looking backwards for an object at depth - 1
-                            for i in (0..state.git_objects.selected_index).rev() {
-                                let parent_row = &state.git_objects.flat_view[i];
+                            for i in (0..state.tree.selected_index).rev() {
+                                let parent_row = &state.tree.flat_view[i];
                                 if parent_row.depth == current_depth - 1
                                     && let GitObjectType::Category(_) = &parent_row.object.obj_type
                                 {
                                     // Jump to this parent category
-                                    state.git_objects.selected_index = i;
+                                    state.tree.selected_index = i;
 
                                     // Update scroll position to keep selected item visible
-                                    self.update_git_objects_scroll_for_selection(i);
+                                    let estimated_visible_height =
+                                        20.min(state.tree.flat_view.len());
+                                    state.tree.scroll_position = super::services::UIService::update_git_objects_scroll_for_selection(
+                                        &state.tree.flat_view,
+                                        i,
+                                        state.tree.scroll_position,
+                                        estimated_visible_height,
+                                    );
 
                                     // Load details for the newly selected object
                                     self.handle_git_object_selection(i, false, plumber);
@@ -320,10 +318,10 @@ impl AppState {
                         match &mut state.preview_state {
                             PreviewState::Regular(preview_state) => match preview_state.focus {
                                 RegularFocus::GitObjects => {
-                                    preview_state.focus = RegularFocus::Preview
+                                    preview_state.focus = RegularFocus::Preview;
                                 }
                                 RegularFocus::Preview => {
-                                    preview_state.focus = RegularFocus::GitObjects
+                                    preview_state.focus = RegularFocus::GitObjects;
                                 }
                             },
 
@@ -340,13 +338,13 @@ impl AppState {
                                 }
                                 PackFocus::PackObjectsList => {
                                     if is_wide_screen {
-                                        preview_state.focus = PackFocus::PackObjectDetails
+                                        preview_state.focus = PackFocus::PackObjectDetails;
                                     } else {
-                                        preview_state.focus = PackFocus::GitObjects
+                                        preview_state.focus = PackFocus::GitObjects;
                                     }
                                 }
                                 PackFocus::PackObjectDetails => {
-                                    preview_state.focus = PackFocus::GitObjects
+                                    preview_state.focus = PackFocus::GitObjects;
                                 }
                             },
                         }
@@ -502,7 +500,7 @@ impl AppState {
                         state:
                             MainViewState {
                                 preview_state,
-                                educational_content,
+                                content,
                                 ..
                             },
                         ..
@@ -518,7 +516,7 @@ impl AppState {
                                 ..
                             }) => {
                                 // Calculate maximum scroll position based on content
-                                let content_lines = educational_content.lines.len();
+                                let content_lines = content.educational_content.lines.len();
                                 let visible_height =
                                     self.layout_dimensions.educational_content_height;
                                 let max_scroll = content_lines.saturating_sub(visible_height);
@@ -557,7 +555,7 @@ impl AppState {
                         state:
                             MainViewState {
                                 preview_state,
-                                educational_content,
+                                content,
                                 ..
                             },
                         ..
@@ -570,7 +568,7 @@ impl AppState {
                                 educational_scroll_position,
                                 ..
                             }) => {
-                                let content_lines = educational_content.lines.len();
+                                let content_lines = content.educational_content.lines.len();
                                 let visible_height =
                                     self.layout_dimensions.educational_content_height;
                                 *educational_scroll_position =
@@ -610,7 +608,7 @@ impl AppState {
                     if let AppView::Main {
                         state:
                             MainViewState {
-                                educational_content,
+                                content,
                                 preview_state,
                                 ..
                             },
@@ -626,7 +624,7 @@ impl AppState {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_down();
                                 } else {
-                                    let content_lines = educational_content.lines.len();
+                                    let content_lines = content.educational_content.lines.len();
                                     let visible_height =
                                         self.layout_dimensions.educational_content_height;
                                     let max_scroll = content_lines.saturating_sub(visible_height);
@@ -683,7 +681,7 @@ impl AppState {
                     if let AppView::Main {
                         state:
                             MainViewState {
-                                educational_content,
+                                content,
                                 preview_state,
                                 ..
                             },
@@ -699,7 +697,7 @@ impl AppState {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_to_bottom();
                                 } else {
-                                    let content_lines = educational_content.lines.len();
+                                    let content_lines = content.educational_content.lines.len();
                                     let visible_height =
                                         self.layout_dimensions.educational_content_height;
                                     let max_scroll = content_lines.saturating_sub(visible_height);
@@ -742,12 +740,9 @@ impl AppState {
                 }
             }
             Message::OpenLooseObjectView => {
-                if let AppView::Main {
-                    state: MainViewState { git_objects, .. },
-                } = &self.view
-                {
+                if let AppView::Main { state } = &self.view {
                     // Get the currently selected loose object
-                    if let Some(row) = git_objects.flat_view.get(git_objects.selected_index)
+                    if let Some(row) = state.tree.flat_view.get(state.tree.selected_index)
                         && let GitObjectType::LooseObject {
                             parsed_object: Some(loose_obj),
                             ..
@@ -792,7 +787,7 @@ impl AppState {
         if let AppView::Main { state } = &mut self.view {
             if is_pack {
                 // Ensure we have a Pack preview state
-                if let Some(row) = state.git_objects.flat_view.get(selected_index) {
+                if let Some(row) = state.tree.flat_view.get(selected_index) {
                     let path = match &row.object.obj_type {
                         GitObjectType::PackFolder { pack_group, .. } => {
                             if let Some(pack_path) = &pack_group.pack_file {
