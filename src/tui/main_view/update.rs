@@ -243,28 +243,36 @@ impl AppState {
                         let current_depth = state.tree.flat_view[state.tree.selected_index].depth;
 
                         if current_depth > 0 {
-                            // Find parent category by looking backwards for an object at depth - 1
+                            // Find parent by looking backwards for an object at depth - 1
+                            // Accept Category, FileSystemFolder, or PackFolder as valid parents
                             for i in (0..state.tree.selected_index).rev() {
                                 let parent_row = &state.tree.flat_view[i];
-                                if parent_row.depth == current_depth - 1
-                                    && let GitObjectType::Category(_) = &parent_row.object.obj_type
-                                {
-                                    // Jump to this parent category
-                                    state.tree.selected_index = i;
+                                if parent_row.depth == current_depth - 1 {
+                                    match &parent_row.object.obj_type {
+                                        GitObjectType::Category(_)
+                                        | GitObjectType::FileSystemFolder { .. }
+                                        | GitObjectType::PackFolder { .. } => {
+                                            // Jump to this parent
+                                            state.tree.selected_index = i;
 
-                                    // Update scroll position to keep selected item visible
-                                    let estimated_visible_height =
-                                        20.min(state.tree.flat_view.len());
-                                    state.tree.scroll_position = super::services::UIService::update_git_objects_scroll_for_selection(
-                                        &state.tree.flat_view,
-                                        i,
-                                        state.tree.scroll_position,
-                                        estimated_visible_height,
-                                    );
+                                            // Update scroll position to keep selected item visible
+                                            let estimated_visible_height =
+                                                20.min(state.tree.flat_view.len());
+                                            state.tree.scroll_position = super::services::UIService::update_git_objects_scroll_for_selection(
+                                                &state.tree.flat_view,
+                                                i,
+                                                state.tree.scroll_position,
+                                                estimated_visible_height,
+                                            );
 
-                                    // Load details for the newly selected object
-                                    self.handle_git_object_selection(i, false, plumber);
-                                    break;
+                                            // Load details for the newly selected object
+                                            self.handle_git_object_selection(i, false, plumber);
+                                            break;
+                                        }
+                                        _ => {
+                                            // Not a valid parent type, continue searching
+                                        }
+                                    }
                                 }
                             }
                         }
