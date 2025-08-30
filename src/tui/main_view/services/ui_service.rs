@@ -35,24 +35,28 @@ impl UIService {
         visible_height: usize,
     ) -> usize {
         if flat_view.is_empty() || visible_height == 0 {
-            return current_scroll;
+            return 0;
         }
 
         let safe_selected = selected_index.min(flat_view.len().saturating_sub(1));
 
+        // Calculate maximum valid scroll position
+        let max_scroll = flat_view.len().saturating_sub(visible_height);
+
         // If selection is above visible area, scroll up
         if safe_selected < current_scroll {
-            return safe_selected;
+            return safe_selected.min(max_scroll);
         }
 
         // If selection is below visible area, scroll down
         let visible_end = current_scroll + visible_height;
         if safe_selected >= visible_end {
-            return safe_selected.saturating_sub(visible_height.saturating_sub(1));
+            let new_scroll = safe_selected.saturating_sub(visible_height.saturating_sub(1));
+            return new_scroll.min(max_scroll);
         }
 
-        // Selection is within visible area, no scroll change needed
-        current_scroll
+        // Selection is within visible area, but ensure scroll position is still valid
+        current_scroll.min(max_scroll)
     }
 
     /// Find the best selection index after tree changes
@@ -171,6 +175,21 @@ impl UIService {
         let start = scroll_position.min(flat_view.len());
         let end = (start + visible_height).min(flat_view.len());
         (start, end)
+    }
+
+    /// Ensure scroll position is valid for the current tree size
+    #[must_use]
+    pub fn clamp_scroll_position(
+        flat_view: &[super::super::FlatTreeRow],
+        scroll_position: usize,
+        visible_height: usize,
+    ) -> usize {
+        if flat_view.is_empty() || visible_height == 0 {
+            return 0;
+        }
+
+        let max_scroll = flat_view.len().saturating_sub(visible_height);
+        scroll_position.min(max_scroll)
     }
 }
 

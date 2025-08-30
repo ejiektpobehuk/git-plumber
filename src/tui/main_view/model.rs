@@ -338,7 +338,7 @@ impl MainViewState {
     }
 
     // Toggle expansion for categories and filesystem folders
-    pub fn toggle_expand(&mut self) -> Message {
+    pub fn toggle_expand(&mut self, visible_height: usize) -> Message {
         if self.tree.selected_index < self.tree.flat_view.len() {
             let selected_obj = &self.tree.flat_view[self.tree.selected_index].object.clone();
 
@@ -367,6 +367,12 @@ impl MainViewState {
                         }
                     }
 
+                    // Remember the visual position of the toggled category before flattening
+                    let old_visual_position = self
+                        .tree
+                        .selected_index
+                        .saturating_sub(self.tree.scroll_position);
+
                     self.flatten_tree();
 
                     // Keep the selected category visible
@@ -381,8 +387,18 @@ impl MainViewState {
                     }
                     if self.tree.flat_view.is_empty() {
                         self.tree.selected_index = 0;
+                        self.tree.scroll_position = 0;
                     } else {
                         self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
+
+                        // Preserve visual position: try to keep the toggled item at the same visual offset
+                        let desired_scroll = new_index.saturating_sub(old_visual_position);
+                        self.tree.scroll_position =
+                            super::services::UIService::clamp_scroll_position(
+                                &self.tree.flat_view,
+                                desired_scroll,
+                                visible_height,
+                            );
                     }
                 }
                 GitObjectType::FileSystemFolder { path, .. } => {
@@ -430,6 +446,12 @@ impl MainViewState {
                         )));
                     }
 
+                    // Remember the visual position of the toggled folder before flattening
+                    let old_visual_position = self
+                        .tree
+                        .selected_index
+                        .saturating_sub(self.tree.scroll_position);
+
                     self.flatten_tree();
 
                     // Keep the selected folder visible
@@ -444,8 +466,18 @@ impl MainViewState {
                     }
                     if self.tree.flat_view.is_empty() {
                         self.tree.selected_index = 0;
+                        self.tree.scroll_position = 0;
                     } else {
                         self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
+
+                        // Preserve visual position: try to keep the toggled item at the same visual offset
+                        let desired_scroll = new_index.saturating_sub(old_visual_position);
+                        self.tree.scroll_position =
+                            super::services::UIService::clamp_scroll_position(
+                                &self.tree.flat_view,
+                                desired_scroll,
+                                visible_height,
+                            );
                     }
                 }
                 GitObjectType::PackFolder { base_name, .. } => {
@@ -475,6 +507,12 @@ impl MainViewState {
                         }
                     }
 
+                    // Remember the visual position of the toggled pack folder before flattening
+                    let old_visual_position = self
+                        .tree
+                        .selected_index
+                        .saturating_sub(self.tree.scroll_position);
+
                     self.flatten_tree();
 
                     // Keep the selected pack folder visible
@@ -489,8 +527,18 @@ impl MainViewState {
                     }
                     if self.tree.flat_view.is_empty() {
                         self.tree.selected_index = 0;
+                        self.tree.scroll_position = 0;
                     } else {
                         self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
+
+                        // Preserve visual position: try to keep the toggled item at the same visual offset
+                        let desired_scroll = new_index.saturating_sub(old_visual_position);
+                        self.tree.scroll_position =
+                            super::services::UIService::clamp_scroll_position(
+                                &self.tree.flat_view,
+                                desired_scroll,
+                                visible_height,
+                            );
                     }
                 }
                 _ => {} // Other object types are not expandable

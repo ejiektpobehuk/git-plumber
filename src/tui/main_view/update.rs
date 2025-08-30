@@ -19,14 +19,14 @@ impl AppState {
 
         // Update scroll position to keep selected item visible
         if let AppView::Main { state } = &mut self.view {
-            // Estimate visible height based on typical terminal size (conservative estimate)
-            let estimated_visible_height = 20.min(state.tree.flat_view.len());
+            // Use actual layout dimensions for accurate scroll positioning
+            let visible_height = self.layout_dimensions.git_objects_height;
             state.tree.scroll_position =
                 super::services::UIService::update_git_objects_scroll_for_selection(
                     &state.tree.flat_view,
                     new_index,
                     state.tree.scroll_position,
-                    estimated_visible_height,
+                    visible_height,
                 );
         }
 
@@ -212,7 +212,8 @@ impl AppState {
                 MainNavigation::ToggleExpand => {
                     let (toggle_msg, has_items, selected_index, is_pack) =
                         if let AppView::Main { state } = &mut self.view {
-                            let toggle_msg = state.toggle_expand();
+                            let visible_height = self.layout_dimensions.git_objects_height;
+                            let toggle_msg = state.toggle_expand(visible_height);
                             // Extract the information we need before calling update to avoid borrow conflicts
                             let has_items = !state.tree.flat_view.is_empty();
                             let selected_index = state.tree.selected_index;
@@ -256,13 +257,13 @@ impl AppState {
                                             state.tree.selected_index = i;
 
                                             // Update scroll position to keep selected item visible
-                                            let estimated_visible_height =
-                                                20.min(state.tree.flat_view.len());
+                                            let visible_height =
+                                                self.layout_dimensions.git_objects_height;
                                             state.tree.scroll_position = super::services::UIService::update_git_objects_scroll_for_selection(
                                                 &state.tree.flat_view,
                                                 i,
                                                 state.tree.scroll_position,
-                                                estimated_visible_height,
+                                                visible_height,
                                             );
 
                                             // Load details for the newly selected object

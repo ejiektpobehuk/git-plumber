@@ -88,9 +88,14 @@ impl AppState {
 
                     // Restore scrolls
                     if let Some(snap) = state.session.last_scroll_positions.take() {
-                        state.tree.scroll_position = snap
-                            .git_list_scroll
-                            .min(state.tree.flat_view.len().saturating_sub(1));
+                        // Use actual layout dimensions for proper scroll clamping
+                        let visible_height = self.layout_dimensions.git_objects_height;
+                        state.tree.scroll_position =
+                            super::main_view::services::UIService::clamp_scroll_position(
+                                &state.tree.flat_view,
+                                snap.git_list_scroll,
+                                visible_height,
+                            );
                         match &mut state.preview_state {
                             PreviewState::Regular(r) => {
                                 if r.pack_index_widget.is_none() {
