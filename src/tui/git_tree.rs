@@ -40,16 +40,16 @@ pub fn build_git_file_tree(plumber: &crate::GitPlumber) -> Result<Vec<GitObject>
                 }
             });
 
-            // Add all found items
+            // Add all found items - use full tree loading for all filesystem folders
             for (_, entry_path, is_dir) in items {
                 if is_dir {
-                    git_contents.push(GitObject::new_filesystem_folder(entry_path, false));
+                    git_contents.push(build_full_filesystem_folder(entry_path, false)?);
                 } else {
                     git_contents.push(GitObject::new_filesystem_file(entry_path));
                 }
             }
         }
-        Err(e) => return Err(format!("Error reading .git directory: {}", e)),
+        Err(e) => return Err(format!("Error reading .git directory: {e}")),
     }
 
     Ok(git_contents)
@@ -87,10 +87,10 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
         objects_folder.add_child(pack_folder);
     }
 
-    // Add info folder if it exists (make it expandable)
+    // Add info folder if it exists (use full loading)
     let info_path = objects_path.join("info");
     if info_path.exists() {
-        objects_folder.add_child(GitObject::new_filesystem_folder(info_path, false));
+        objects_folder.add_child(build_full_filesystem_folder(info_path, false)?);
     }
 
     // Create a special folder for loose objects with educational content
@@ -218,4 +218,85 @@ fn build_refs_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String> {
     }
 
     Ok(refs_folder)
+}
+
+/// Build a complete filesystem folder with all contents loaded recursively
+/// This replaces the lazy loading approach with a full tree that includes all files and modification times
+fn build_full_filesystem_folder(
+    path: std::path::PathBuf,
+    is_educational: bool,
+) -> Result<GitObject, String> {
+    let mut folder = GitObject::new_filesystem_folder(path, is_educational);
+
+    // Always start collapsed for non-educational folders (user can expand as needed)
+    folder.expanded = is_educational;
+
+    // Load all contents immediately
+    load_folder_contents_recursively(&mut folder)?;
+
+    // Mark as loaded since we populated it
+    if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut folder.obj_type {
+        *is_loaded = true;
+    }
+
+    Ok(folder)
+}
+
+/// Recursively load all contents of a filesystem folder
+fn load_folder_contents_recursively(folder: &mut GitObject) -> Result<(), String> {
+    let path = match &folder.obj_type {
+        GitObjectType::FileSystemFolder { path, .. } => path.clone(),
+        _ => return Err("Not a filesystem folder".to_string()),
+    };
+
+    // Read directory contents
+    match std::fs::read_dir(&path) {
+        Ok(entries) => {
+            let mut items: Vec<(String, std::path::PathBuf, bool)> = Vec::new();
+
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                let name = entry.file_name().to_string_lossy().to_string();
+                let is_dir = entry_path.is_dir();
+                items.push((name, entry_path, is_dir));
+            }
+
+            // Sort: directories first, then files, both alphabetically
+            items.sort_by(|a, b| {
+                match (a.2, b.2) {
+                    (true, false) => std::cmp::Ordering::Less, // dirs before files
+                    (false, true) => std::cmp::Ordering::Greater, // files after dirs
+                    _ => a.0.cmp(&b.0),                        // alphabetical within same type
+                }
+            });
+
+            // Create child objects and recursively load subdirectories
+            for (_, entry_path, is_dir) in items {
+                if is_dir {
+                    // Recursively build subdirectories with full contents
+                    let mut subfolder = GitObject::new_filesystem_folder(entry_path, false);
+                    subfolder.expanded = false; // Start collapsed
+
+                    // Load subfolder contents
+                    load_folder_contents_recursively(&mut subfolder)?;
+
+                    // Mark as loaded
+                    if let GitObjectType::FileSystemFolder { is_loaded, .. } =
+                        &mut subfolder.obj_type
+                    {
+                        *is_loaded = true;
+                    }
+
+                    folder.children.push(subfolder);
+                } else {
+                    folder
+                        .children
+                        .push(GitObject::new_filesystem_file(entry_path));
+                }
+            }
+
+            Ok(())
+        }
+        Err(e) => Err(format!("Error reading directory {}: {}", path.display(), e)),
+    }
 }

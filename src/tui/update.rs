@@ -247,6 +247,27 @@ impl AppState {
                 self.effects.push(crate::tui::message::Command::LoadInitial);
             }
 
+            Message::DirectFileChanges {
+                added_files,
+                modified_files,
+                deleted_files,
+            } => {
+                // Apply highlights directly without full tree rebuild
+                if let AppView::Main { state } = &mut self.view {
+                    super::main_view::services::DirectHighlightService::apply_filtered_watcher_changes(
+                        &mut state.animations,
+                        &state.tree.list,
+                        &added_files,
+                        &modified_files,
+                        &deleted_files,
+                        super::main_view::MainViewState::selection_key,
+                    );
+
+                    // Re-flatten tree to apply new highlights (but no tree rebuild needed!)
+                    state.flatten_tree();
+                }
+            }
+
             Message::MainNavigation(_)
             | Message::OpenMainView
             | Message::OpenPackView

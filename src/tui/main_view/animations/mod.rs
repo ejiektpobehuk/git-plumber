@@ -2,6 +2,15 @@ use crate::tui::main_view::{Ghost, HighlightInfo};
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// Dynamic information about what file highlights are currently active inside a folder
+#[derive(Debug, Clone)]
+pub struct DynamicFolderHighlight {
+    /// Color computed from active file highlights inside
+    pub color: ratatui::style::Color,
+    /// Earliest expiration time of any file highlight inside
+    pub expires_at: Instant,
+}
+
 /// Animation and highlighting system for the main view
 pub struct AnimationManager {
     /// Keys that were added (green highlighting)
@@ -54,7 +63,7 @@ impl AnimationManager {
             };
         }
 
-        // Check for modifications (orange) - medium priority
+        // Check for modifications (orange) - second highest priority
         if let Some(until) = self.modified_keys.get(key).copied()
             && until > now
         {
@@ -64,7 +73,7 @@ impl AnimationManager {
             };
         }
 
-        // Check for deletions/ghosts (red) - handled separately in ghost overlay
+        // Check for deletions/ghosts (red) - third priority
         if let Some(ghost) = self.ghosts.get(key)
             && ghost.until > now
         {
@@ -74,13 +83,90 @@ impl AnimationManager {
             };
         }
 
-        // No highlight
+        // No highlight for individual files
         HighlightInfo::default()
     }
 
-    /// Check if there are any active animations
+    /// Compute dynamic folder highlight based on files inside (called externally with tree context)
+    pub fn compute_folder_highlight(
+        &self,
+        _folder_key: &str,
+        files_inside: &[String],
+    ) -> Option<DynamicFolderHighlight> {
+        let now = Instant::now();
+        let mut active_colors = Vec::new();
+        let mut earliest_expiration = None;
+
+        // Check each file inside the folder for active highlights
+        for file_key in files_inside {
+            // Check if this file has any active highlight
+            if let Some(until) = self.changed_keys.get(file_key).copied()
+                && until > now
+            {
+                active_colors.push(ratatui::style::Color::Green);
+                earliest_expiration = Some(match earliest_expiration {
+                    None => until,
+                    Some(existing) => std::cmp::min(existing, until),
+                });
+            }
+
+            if let Some(until) = self.modified_keys.get(file_key).copied()
+                && until > now
+            {
+                active_colors.push(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
+                earliest_expiration = Some(match earliest_expiration {
+                    None => until,
+                    Some(existing) => std::cmp::min(existing, until),
+                });
+            }
+
+            if let Some(ghost) = self.ghosts.get(file_key)
+                && ghost.until > now
+            {
+                active_colors.push(ratatui::style::Color::Red);
+                earliest_expiration = Some(match earliest_expiration {
+                    None => ghost.until,
+                    Some(existing) => std::cmp::min(existing, ghost.until),
+                });
+            }
+        }
+
+        // If no active highlights found, no folder highlight
+        if active_colors.is_empty() {
+            return None;
+        }
+
+        // Compute folder color based on active file highlights
+        let folder_color = Self::compute_mixed_color(&active_colors);
+
+        Some(DynamicFolderHighlight {
+            color: folder_color,
+            expires_at: earliest_expiration.unwrap(),
+        })
+    }
+
+    /// Check if there are any active animations (must be called with tree context for folder highlights)
     pub fn has_active_animations(&self) -> bool {
         !self.changed_keys.is_empty() || !self.ghosts.is_empty() || !self.modified_keys.is_empty()
+    }
+
+    /// Check if there are any active animations including dynamic folder highlights
+    pub fn has_active_animations_with_tree(
+        &self,
+        tree: &[crate::tui::model::GitObject],
+        selection_key_fn: fn(&crate::tui::model::GitObject) -> String,
+    ) -> bool {
+        // Check regular animations first
+        if self.has_active_animations() {
+            return true;
+        }
+
+        // Check for dynamic folder highlights
+        crate::tui::main_view::services::DynamicFolderService::has_active_folder_highlights(
+            self,
+            tree,
+            selection_key_fn,
+        )
     }
 
     /// Clear all animations
@@ -88,6 +174,33 @@ impl AnimationManager {
         self.changed_keys.clear();
         self.modified_keys.clear();
         self.ghosts.clear();
+    }
+
+    /// Compute mixed color from a list of active highlight colors
+    fn compute_mixed_color(colors: &[ratatui::style::Color]) -> ratatui::style::Color {
+        if colors.is_empty() {
+            return ratatui::style::Color::Gray;
+        }
+
+        // Remove duplicates and check what types we have
+        let mut unique_colors = std::collections::HashSet::new();
+        for color in colors {
+            unique_colors.insert(*color);
+        }
+
+        // Convert to a sorted vector for consistent behavior
+        let mut color_vec: Vec<_> = unique_colors.into_iter().collect();
+        color_vec.sort_by_key(|color| match color {
+            ratatui::style::Color::Green => 0,
+            ratatui::style::Color::Rgb(255, 165, 0) => 1, // Orange
+            ratatui::style::Color::Red => 2,
+            _ => 3,
+        });
+
+        match color_vec.len() {
+            1 => color_vec[0],                  // Single color type
+            _ => ratatui::style::Color::Yellow, // Mixed colors
+        }
     }
 }
 

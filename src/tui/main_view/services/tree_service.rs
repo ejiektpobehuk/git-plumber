@@ -7,20 +7,51 @@ pub struct TreeService;
 
 impl TreeService {
     /// Create a new `TreeService` instance
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
 
-    /// Flatten a tree with animation support
+    /// Flatten a tree with animation support (including dynamic folder highlights)
+    /// DEPRECATED: Use `flatten_tree_with_precomputed_highlights` for better alignment
     pub fn flatten_tree_with_animations(
         tree: &[GitObject],
         animations: &AnimationManager,
         selection_key_fn: fn(&GitObject) -> String,
     ) -> Vec<FlatTreeRow> {
-        let highlight_fn = |key: &str| animations.compute_highlight_info(key);
+        let highlight_fn = |key: &str| {
+            super::DynamicFolderService::compute_highlight_with_folders(
+                animations,
+                tree,
+                key,
+                selection_key_fn,
+            )
+        };
         TreeFlattener::flatten_tree_with_ghosts(
             tree,
             highlight_fn,
+            selection_key_fn,
+            &animations.ghosts,
+        )
+    }
+
+    /// Flatten a tree with pre-computed highlights for perfect alignment
+    pub fn flatten_tree_with_precomputed_highlights(
+        tree: &[GitObject],
+        animations: &AnimationManager,
+        selection_key_fn: fn(&GitObject) -> String,
+    ) -> Vec<FlatTreeRow> {
+        // Step 1: Pre-compute all highlights for perfect alignment
+        let highlights = super::PrecomputedHighlightService::compute_all_highlights(
+            tree,
+            animations,
+            selection_key_fn,
+        );
+
+        // Step 2: Flatten tree using pre-computed highlights WITH ghost overlay support!
+        TreeFlattener::flatten_tree_with_precomputed_highlights_and_ghosts(
+            tree,
+            &highlights,
             selection_key_fn,
             &animations.ghosts,
         )

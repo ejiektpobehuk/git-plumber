@@ -30,7 +30,7 @@ pub fn run_tui_with_options(plumber: crate::GitPlumber, opts: RunOptions) -> Res
     }
 
     // Main event loop
-    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx.clone());
+    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx);
 
     // Clean up
     disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {e}"))?;
@@ -83,7 +83,7 @@ mod watcher;
 
 // Include the main view module
 mod loose_details;
-mod main_view;
+pub mod main_view;
 mod pack_details;
 pub mod widget; // Made public for CLI formatter
 

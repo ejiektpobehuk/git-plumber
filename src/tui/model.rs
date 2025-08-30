@@ -75,6 +75,7 @@ pub struct GitObject {
 impl GitObject {
     /// Check if this folder is empty (has no children)
     /// Note: This method should avoid filesystem I/O as it's called during rendering
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         match &self.obj_type {
             GitObjectType::Category(_) => self.children.is_empty(),
@@ -158,6 +159,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_category(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -167,6 +169,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_filesystem_folder(path: PathBuf, is_educational: bool) -> Self {
         let name = path
             .file_name()
@@ -187,6 +190,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_filesystem_file(path: PathBuf) -> Self {
         let name = path
             .file_name()
@@ -216,6 +220,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_pack_folder(pack_group: crate::git::repository::PackGroup) -> Self {
         let mut pack_folder = Self {
             name: pack_group.base_name.clone(),
@@ -243,6 +248,7 @@ impl GitObject {
         pack_folder
     }
 
+    #[must_use]
     pub fn new_pack_file(file_type: String, path: PathBuf) -> Self {
         let name = match file_type.as_str() {
             "packfile" => "packfile",
@@ -277,6 +283,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_ref(path: PathBuf) -> Self {
         let name = path
             .file_name()
@@ -300,6 +307,7 @@ impl GitObject {
         }
     }
 
+    #[must_use]
     pub fn new_parsed_loose_object(parsed_object: LooseObject) -> Self {
         // Create a display name that includes the object type
         let short_id = if parsed_object.object_id.len() >= 8 {
@@ -325,8 +333,8 @@ impl GitObject {
         self.children.push(child);
     }
 
-    /// Restore expansion and loading state from another GitObject tree
-    pub fn restore_state_from(&mut self, old_tree: &[GitObject]) {
+    /// Restore expansion and loading state from another `GitObject` tree
+    pub fn restore_state_from(&mut self, old_tree: &[Self]) {
         fn find_matching_object<'a>(
             children: &'a [GitObject],
             target_key: &str,
@@ -369,15 +377,18 @@ impl GitObject {
                         *is_loaded = *old_is_loaded;
                         *is_empty_cached = *old_is_empty_cached; // Keep cache for educational folders
                     } else {
-                        // Regular folders: if they were expanded, reload their contents now
-                        if old_obj.expanded {
+                        // Regular folders: with full tree loading, they should already be loaded
+                        // Check if contents are already loaded by the new full tree system
+                        if *is_loaded && !self.children.is_empty() {
+                            // Already loaded by full tree system, keep the state
+                            *is_empty_cached = *old_is_empty_cached;
+                        } else if old_obj.expanded {
+                            // Old behavior for backwards compatibility (shouldn't happen with full tree)
                             *is_loaded = false; // Mark as not loaded to trigger reload
-                            // Keep the old cache until we reload - it's better than nothing
                             *is_empty_cached = *old_is_empty_cached;
                             let _ = self.load_folder_contents(); // Load fresh contents immediately
                         } else {
                             *is_loaded = false; // Will load on-demand when expanded
-                            // Keep the old cache for collapsed folders - this prevents false "modifications"
                             *is_empty_cached = *old_is_empty_cached;
                         }
                     }
@@ -442,10 +453,9 @@ impl GitObject {
                         for (_, entry_path, is_dir) in items {
                             if is_dir {
                                 self.children
-                                    .push(GitObject::new_filesystem_folder(entry_path, false));
+                                    .push(Self::new_filesystem_folder(entry_path, false));
                             } else {
-                                self.children
-                                    .push(GitObject::new_filesystem_file(entry_path));
+                                self.children.push(Self::new_filesystem_file(entry_path));
                             }
                         }
 
@@ -454,7 +464,7 @@ impl GitObject {
                         *is_loaded = true;
                         Ok(())
                     }
-                    Err(e) => Err(format!("Failed to read directory: {}", e)),
+                    Err(e) => Err(format!("Failed to read directory: {e}")),
                 }
             }
             _ => Err("Cannot load contents of non-folder object".to_string()),
@@ -462,6 +472,7 @@ impl GitObject {
     }
 
     // Utility method to format SystemTime as "time ago" string
+    #[must_use]
     pub fn format_time_ago(time: &SystemTime) -> String {
         match time.elapsed() {
             Ok(elapsed) => {
@@ -538,6 +549,7 @@ pub struct AppState {
 
 impl AppState {
     // Initialize a new application state
+    #[must_use]
     pub fn new(repo_path: PathBuf) -> Self {
         let educational_content_provider = EducationalContent::new();
 
@@ -596,7 +608,7 @@ impl AppState {
     }
 
     // Update layout dimensions based on terminal size
-    pub fn update_layout_dimensions(&mut self, terminal_size: ratatui::layout::Size) {
+    pub const fn update_layout_dimensions(&mut self, terminal_size: ratatui::layout::Size) {
         // Calculate the main content area (subtract header and footer)
         let main_content_height = terminal_size.height.saturating_sub(2) as usize;
 
@@ -620,25 +632,29 @@ impl AppState {
         self.layout_dimensions.terminal_width = terminal_size.width as usize;
     }
 
-    pub fn is_wide_screen(&self) -> bool {
+    #[must_use]
+    pub const fn is_wide_screen(&self) -> bool {
         self.layout_dimensions.terminal_width > 158
     }
 
     // Rendering optimization methods
     pub fn check_terminal_resize(&mut self, current_size: ratatui::layout::Size) -> bool {
-        if self.last_terminal_size != Some(current_size) {
+        if self.last_terminal_size == Some(current_size) {
+            false
+        } else {
             self.update_layout_dimensions(current_size);
             self.last_terminal_size = Some(current_size);
             true
-        } else {
-            false
         }
     }
 
-    // Check if animations are currently active
+    // Check if animations are currently active (including folder highlights)
     pub fn has_active_animations(&self) -> bool {
         if let AppView::Main { state } = &self.view {
-            state.animations.has_active_animations()
+            state.animations.has_active_animations_with_tree(
+                &state.tree.list,
+                crate::tui::main_view::MainViewState::selection_key,
+            )
         } else {
             false
         }

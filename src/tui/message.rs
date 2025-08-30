@@ -22,6 +22,12 @@ pub enum Message {
     LoadGitObjectInfo(Result<String, String>),
     LoadEducationalContent(Result<Text<'static>, String>),
     Refresh,
+    /// Direct file changes from file system watcher (bypasses full tree rebuild)
+    DirectFileChanges {
+        added_files: std::collections::HashSet<std::path::PathBuf>,
+        modified_files: std::collections::HashSet<std::path::PathBuf>,
+        deleted_files: std::collections::HashSet<std::path::PathBuf>,
+    },
     LoadPackObjects {
         path: std::path::PathBuf,
         result: Result<Vec<PackObject>, String>,

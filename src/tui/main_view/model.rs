@@ -100,6 +100,7 @@ impl Default for RegularPreViewState {
 }
 
 impl RegularPreViewState {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             focus: RegularFocus::GitObjects,
@@ -108,6 +109,7 @@ impl RegularPreViewState {
         }
     }
 
+    #[must_use]
     pub fn new_with_pack_index(pack_index: crate::git::pack::PackIndex) -> Self {
         Self {
             focus: RegularFocus::GitObjects,
@@ -151,6 +153,7 @@ pub struct ScrollSnapshot {
 }
 
 impl MainViewState {
+    #[must_use]
     pub fn new(ed_provider: &EducationalContent) -> Self {
         Self {
             tree: TreeState::new(),
@@ -164,6 +167,7 @@ impl MainViewState {
 
     // ===== Selection key (stable identity) =====
 
+    #[must_use]
     pub fn selection_key(obj: &GitObject) -> String {
         match &obj.obj_type {
             GitObjectType::Category(name) => format!("category:{name}"),
@@ -181,6 +185,7 @@ impl MainViewState {
         }
     }
 
+    #[must_use]
     pub fn current_selection_key(&self) -> Option<String> {
         if self.tree.selected_index < self.tree.flat_view.len() {
             let row = &self.tree.flat_view[self.tree.selected_index];
@@ -295,12 +300,13 @@ impl MainViewState {
         let now = Instant::now();
         self.animations.ghosts.retain(|_, g| g.until > now);
 
-        // Use TreeService to flatten the tree with animations
-        self.tree.flat_view = super::services::TreeService::flatten_tree_with_animations(
-            &self.tree.list,
-            &self.animations,
-            Self::selection_key,
-        );
+        // Use new pre-computed highlighting for perfect alignment
+        self.tree.flat_view =
+            super::services::TreeService::flatten_tree_with_precomputed_highlights(
+                &self.tree.list,
+                &self.animations,
+                Self::selection_key,
+            );
 
         // Clean up expired animation timers
         self.animations.changed_keys.retain(|_, until| *until > now);
@@ -309,6 +315,7 @@ impl MainViewState {
             .retain(|_, until| *until > now);
     }
 
+    #[must_use]
     pub fn are_git_objects_focused(&self) -> bool {
         match &self.preview_state {
             PreviewState::Pack(state) => state.focus == PackFocus::GitObjects,
@@ -500,11 +507,13 @@ impl MainViewState {
     }
 
     /// Check if an object has been modified by comparing modification times
+    #[must_use]
     pub fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
         super::services::GitRepositoryService::is_object_modified(old, new)
     }
 
     /// Static version of `is_object_modified` for use in closures
+    #[must_use]
     pub fn is_object_modified_static(old: &GitObject, new: &GitObject) -> bool {
         super::services::GitRepositoryService::is_object_modified_static(old, new)
     }
