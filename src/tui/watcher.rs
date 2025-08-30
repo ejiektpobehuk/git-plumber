@@ -69,8 +69,7 @@ fn is_meaningful(event: &Event) -> bool {
     let has_lock = event.paths.iter().any(|p| {
         p.file_name()
             .and_then(|n| n.to_str())
-            .map(|n| n.ends_with(".lock"))
-            .unwrap_or(false)
+            .is_some_and(|n| n.ends_with(".lock"))
     });
     if has_lock {
         return false;

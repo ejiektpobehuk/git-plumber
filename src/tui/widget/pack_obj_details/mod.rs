@@ -19,7 +19,8 @@ pub enum PackObjectWidget {
 }
 
 impl PackObjectWidget {
-    pub fn new(pack_obj: PackObject) -> Self {
+    #[must_use]
+    pub const fn new(pack_obj: PackObject) -> Self {
         Self::Initiolized {
             pack_obj,
             scroll_position: 0,
@@ -28,7 +29,8 @@ impl PackObjectWidget {
         }
     }
 
-    pub fn uninitiolized() -> Self {
+    #[must_use]
+    pub const fn uninitiolized() -> Self {
         Self::Uninitiolized
     }
 
@@ -50,7 +52,7 @@ impl PackObjectWidget {
         }
     }
 
-    pub fn scroll_up(&mut self) {
+    pub const fn scroll_up(&mut self) {
         if let Self::Initiolized {
             scroll_position, ..
         } = self
@@ -70,7 +72,7 @@ impl PackObjectWidget {
         }
     }
 
-    pub fn scroll_to_top(&mut self) {
+    pub const fn scroll_to_top(&mut self) {
         if let Self::Initiolized {
             scroll_position, ..
         } = self
@@ -79,7 +81,7 @@ impl PackObjectWidget {
         }
     }
 
-    pub fn scroll_to_bottom(&mut self) {
+    pub const fn scroll_to_bottom(&mut self) {
         if let Self::Initiolized {
             scroll_position,
             max_scroll,
@@ -90,7 +92,7 @@ impl PackObjectWidget {
         }
     }
 
-    fn scroll_position(&self) -> usize {
+    const fn scroll_position(&self) -> usize {
         match self {
             Self::Initiolized {
                 scroll_position, ..
@@ -130,7 +132,7 @@ struct PackObjectFormatter<'a> {
 }
 
 impl<'a> PackObjectFormatter<'a> {
-    fn new(pack_obj: &'a PackObject) -> Self {
+    const fn new(pack_obj: &'a PackObject) -> Self {
         Self { pack_obj }
     }
 

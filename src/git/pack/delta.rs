@@ -9,10 +9,10 @@ pub enum DeltaInstruction {
 impl fmt::Display for DeltaInstruction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DeltaInstruction::Copy { offset, size } => {
+            Self::Copy { offset, size } => {
                 write!(f, "Copy: offset={offset}, size={size}")
             }
-            DeltaInstruction::Insert { data } => {
+            Self::Insert { data } => {
                 write!(f, "Insert: {} bytes", data.len())?;
                 if data.len() <= 100 {
                     write!(f, " (Data: {:?})", String::from_utf8_lossy(data))
@@ -95,6 +95,7 @@ pub fn parse_delta_instructions(input: &[u8]) -> nom::IResult<&[u8], Vec<DeltaIn
     Ok((&input[i..], instructions))
 }
 
+#[must_use]
 pub fn parse_delta_object(data: &[u8]) -> Vec<u8> {
     let mut i = 0;
     let mut _shift = 0;

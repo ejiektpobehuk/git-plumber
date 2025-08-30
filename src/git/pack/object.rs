@@ -26,14 +26,14 @@ impl TryFrom<u8> for ObjectType {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(ObjectType::Invalid),
-            1 => Ok(ObjectType::Commit),
-            2 => Ok(ObjectType::Tree),
-            3 => Ok(ObjectType::Blob),
-            4 => Ok(ObjectType::Tag),
-            5 => Ok(ObjectType::Reserved),
-            6 => Ok(ObjectType::OfsDelta),
-            7 => Ok(ObjectType::RefDelta),
+            0 => Ok(Self::Invalid),
+            1 => Ok(Self::Commit),
+            2 => Ok(Self::Tree),
+            3 => Ok(Self::Blob),
+            4 => Ok(Self::Tag),
+            5 => Ok(Self::Reserved),
+            6 => Ok(Self::OfsDelta),
+            7 => Ok(Self::RefDelta),
             _ => Err(PackError::InvalidObjectType(value)),
         }
     }
@@ -79,7 +79,8 @@ pub enum ObjectHeader {
 
 impl ObjectHeader {
     // Helper method to get the object type
-    pub fn obj_type(&self) -> ObjectType {
+    #[must_use]
+    pub const fn obj_type(&self) -> ObjectType {
         match self {
             Self::Regular { obj_type, .. } => *obj_type,
             Self::OfsDelta { .. } => ObjectType::OfsDelta,
@@ -88,7 +89,8 @@ impl ObjectHeader {
     }
 
     // Helper method to get the uncompressed size
-    pub fn uncompressed_data_size(&self) -> usize {
+    #[must_use]
+    pub const fn uncompressed_data_size(&self) -> usize {
         match self {
             Self::Regular {
                 uncompressed_data_size,
@@ -106,6 +108,7 @@ impl ObjectHeader {
     }
 
     // Helper method to get the raw header data
+    #[must_use]
     pub fn raw_data(&self) -> &[u8] {
         match self {
             Self::Regular { raw_data, .. }

@@ -12,6 +12,7 @@ pub struct TreeState {
 }
 
 impl TreeState {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             list: Vec::new(),
@@ -36,6 +37,7 @@ pub struct ContentState {
 }
 
 impl ContentState {
+    #[must_use]
     pub fn new(ed_provider: &EducationalContent) -> Self {
         Self {
             git_object_info: String::new(),
@@ -53,6 +55,7 @@ pub struct SessionState {
 }
 
 impl SessionState {
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             last_selection: None,

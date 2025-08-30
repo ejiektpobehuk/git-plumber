@@ -7,12 +7,13 @@ pub struct FanoutFormatter<'a> {
 }
 
 impl<'a> FanoutFormatter<'a> {
-    pub fn new(pack_index: &'a PackIndex) -> Self {
+    #[must_use]
+    pub const fn new(pack_index: &'a PackIndex) -> Self {
         Self { pack_index }
     }
 
     /// Calculate the 1-based byte position in the .idx file for a fanout entry
-    fn calculate_fanout_byte_position(&self, fanout_index: usize) -> u64 {
+    const fn calculate_fanout_byte_position(&self, fanout_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_start = header_size; // Fan-out table starts at byte 8 (0-based)
 
@@ -71,12 +72,10 @@ impl<'a> FanoutFormatter<'a> {
         }
 
         lines.push(Line::from(format!(
-            "• Non-empty buckets: {} / 256",
-            non_empty_buckets
+            "• Non-empty buckets: {non_empty_buckets} / 256"
         )));
         lines.push(Line::from(format!(
-            "• Largest bucket: {} objects",
-            max_bucket_size
+            "• Largest bucket: {max_bucket_size} objects"
         )));
         lines.push(Line::from(""));
     }
@@ -141,18 +140,15 @@ impl<'a> FanoutFormatter<'a> {
                     // Active row: different colors for different data types
                     let line_parts = vec![
                         ("│ ".to_string(), Style::default()),
-                        (format!("{:4}", byte_pos), Style::default().fg(Color::Cyan)),
+                        (format!("{byte_pos:4}"), Style::default().fg(Color::Cyan)),
                         (" │ ".to_string(), Style::default()),
-                        (format!("0x{:02x}", i), Style::default().fg(Color::Cyan)),
+                        (format!("0x{i:02x}"), Style::default().fg(Color::Cyan)),
                         (" │ ".to_string(), Style::default()),
                         (hex_value, Style::default().fg(Color::Blue)),
                         (" │ ".to_string(), Style::default()),
-                        (format!("{:7}", count), Style::default().fg(Color::Cyan)),
+                        (format!("{count:7}"), Style::default().fg(Color::Cyan)),
                         (" │ ".to_string(), Style::default()),
-                        (
-                            format!("{:6}", bucket_size),
-                            Style::default().fg(Color::Cyan),
-                        ),
+                        (format!("{bucket_size:6}"), Style::default().fg(Color::Cyan)),
                         (" │".to_string(), Style::default()),
                     ];
 
@@ -165,18 +161,15 @@ impl<'a> FanoutFormatter<'a> {
                     // Inactive row: unstyled borders, gray content
                     let line_parts = vec![
                         ("│ ".to_string(), Style::default()),
-                        (format!("{:4}", byte_pos), Style::default().fg(Color::Gray)),
+                        (format!("{byte_pos:4}"), Style::default().fg(Color::Gray)),
                         (" │ ".to_string(), Style::default()),
-                        (format!("0x{:02x}", i), Style::default().fg(Color::Gray)),
+                        (format!("0x{i:02x}"), Style::default().fg(Color::Gray)),
                         (" │ ".to_string(), Style::default()),
                         (hex_value, Style::default().fg(Color::Gray)),
                         (" │ ".to_string(), Style::default()),
-                        (format!("{:7}", count), Style::default().fg(Color::Gray)),
+                        (format!("{count:7}"), Style::default().fg(Color::Gray)),
                         (" │ ".to_string(), Style::default()),
-                        (
-                            format!("{:6}", bucket_size),
-                            Style::default().fg(Color::Gray),
-                        ),
+                        (format!("{bucket_size:6}"), Style::default().fg(Color::Gray)),
                         (" │".to_string(), Style::default()),
                     ];
 
@@ -360,11 +353,11 @@ impl<'a> FanoutFormatter<'a> {
         let range_size = end_idx - start_idx;
 
         lines.push(Line::styled(
-            format!("1. Check fan_out[0x41] = {} (start of range)", start_idx),
+            format!("1. Check fan_out[0x41] = {start_idx} (start of range)"),
             Style::default().fg(Color::Yellow),
         ));
         lines.push(Line::styled(
-            format!("2. Check fan_out[0x42] = {} (end of range)", end_idx),
+            format!("2. Check fan_out[0x42] = {end_idx} (end of range)"),
             Style::default().fg(Color::Yellow),
         ));
         lines.push(Line::styled(
@@ -380,16 +373,13 @@ impl<'a> FanoutFormatter<'a> {
 
         let total_objects = self.pack_index.object_count();
         let search_reduction = if total_objects > 0 {
-            (range_size as f64 / total_objects as f64) * 100.0
+            (f64::from(range_size) / total_objects as f64) * 100.0
         } else {
             0.0
         };
 
         lines.push(Line::styled(
-            format!(
-                "Search space reduced to {:.1}% of total objects!",
-                search_reduction
-            ),
+            format!("Search space reduced to {search_reduction:.1}% of total objects!"),
             Style::default()
                 .fg(Color::Green)
                 .add_modifier(Modifier::BOLD),

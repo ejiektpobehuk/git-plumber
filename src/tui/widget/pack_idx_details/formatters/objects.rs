@@ -7,7 +7,8 @@ pub struct ObjectsFormatter<'a> {
 }
 
 impl<'a> ObjectsFormatter<'a> {
-    pub fn new(pack_index: &'a PackIndex) -> Self {
+    #[must_use]
+    pub const fn new(pack_index: &'a PackIndex) -> Self {
         Self { pack_index }
     }
 
@@ -22,7 +23,7 @@ impl<'a> ObjectsFormatter<'a> {
     /// - Large offsets: variable (if any)
     /// - Pack checksum: 20 bytes
     /// - Index checksum: 20 bytes
-    fn calculate_object_byte_position(&self, object_index: usize) -> u64 {
+    const fn calculate_object_byte_position(&self, object_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_size = 256 * 4u64; // 256 entries * 4 bytes each
         let object_names_start = header_size + fanout_size;
@@ -33,7 +34,7 @@ impl<'a> ObjectsFormatter<'a> {
     }
 
     /// Calculate the 1-based byte position in the .idx file for a CRC32 entry
-    fn calculate_crc32_byte_position(&self, object_index: usize) -> u64 {
+    const fn calculate_crc32_byte_position(&self, object_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_size = 256 * 4u64; // 256 entries * 4 bytes each
         let object_names_size = self.pack_index.object_count() as u64 * 20; // N * 20 bytes
@@ -45,7 +46,7 @@ impl<'a> ObjectsFormatter<'a> {
     }
 
     /// Calculate the 1-based byte position in the .idx file for an offset entry
-    fn calculate_offset_byte_position(&self, object_index: usize) -> u64 {
+    const fn calculate_offset_byte_position(&self, object_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_size = 256 * 4u64; // 256 entries * 4 bytes each
         let object_names_size = self.pack_index.object_count() as u64 * 20; // N * 20 bytes
@@ -107,7 +108,7 @@ impl<'a> ObjectsFormatter<'a> {
 
                 let line_parts = vec![
                     ("│ ".to_string(), Style::default()),
-                    (format!("{:4}", byte_pos), Style::default().fg(Color::Cyan)),
+                    (format!("{byte_pos:4}"), Style::default().fg(Color::Cyan)),
                     (" │ ".to_string(), Style::default()),
                     (hash, Style::default().fg(Color::Yellow)),
                     (" │".to_string(), Style::default()),
@@ -192,12 +193,9 @@ impl<'a> ObjectsFormatter<'a> {
 
                 let line_parts = vec![
                     ("│ ".to_string(), Style::default()),
-                    (format!("{:4}", byte_pos), Style::default().fg(Color::Cyan)),
+                    (format!("{byte_pos:4}"), Style::default().fg(Color::Cyan)),
                     (" │ ".to_string(), Style::default()),
-                    (
-                        format!("{:11}", hex_bytes),
-                        Style::default().fg(Color::Blue),
-                    ),
+                    (format!("{hex_bytes:11}"), Style::default().fg(Color::Blue)),
                     (" │".to_string(), Style::default()),
                 ];
 
@@ -252,10 +250,7 @@ impl<'a> ObjectsFormatter<'a> {
 
         if large_offset_count > 0 {
             lines.push(Line::styled(
-                format!(
-                    "Large offsets: {} (MSB set, using 8-byte table)",
-                    large_offset_count
-                ),
+                format!("Large offsets: {large_offset_count} (MSB set, using 8-byte table)"),
                 Style::default().fg(Color::Yellow),
             ));
         }
@@ -291,19 +286,16 @@ impl<'a> ObjectsFormatter<'a> {
                 );
 
                 let offset_display = if raw_offset & 0x80000000 != 0 {
-                    format!("{:>8} L", actual_offset) // L for Large offset
+                    format!("{actual_offset:>8} L") // L for Large offset
                 } else {
-                    format!("{:>9}", actual_offset)
+                    format!("{actual_offset:>9}")
                 };
 
                 let line_parts = vec![
                     ("│ ".to_string(), Style::default()),
-                    (format!("{:4}", byte_pos), Style::default().fg(Color::Cyan)),
+                    (format!("{byte_pos:4}"), Style::default().fg(Color::Cyan)),
                     (" │ ".to_string(), Style::default()),
-                    (
-                        format!("{:10}", hex_bytes),
-                        Style::default().fg(Color::Blue),
-                    ),
+                    (format!("{hex_bytes:10}"), Style::default().fg(Color::Blue)),
                     (" │ ".to_string(), Style::default()),
                     (
                         offset_display,
@@ -361,8 +353,7 @@ impl<'a> ObjectsFormatter<'a> {
             let min_large = large_offsets.iter().min().unwrap_or(&0);
             let max_large = large_offsets.iter().max().unwrap_or(&0);
             lines.push(Line::from(format!(
-                "Range: {} - {} bytes",
-                min_large, max_large
+                "Range: {min_large} - {max_large} bytes"
             )));
         }
         lines.push(Line::from(""));

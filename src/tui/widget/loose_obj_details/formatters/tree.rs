@@ -7,7 +7,8 @@ pub struct TreeFormatter<'a> {
 }
 
 impl<'a> TreeFormatter<'a> {
-    pub fn new(tree: &'a TreeObject) -> Self {
+    #[must_use]
+    pub const fn new(tree: &'a TreeObject) -> Self {
         Self { tree }
     }
 

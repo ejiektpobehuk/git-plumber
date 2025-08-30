@@ -7,7 +7,8 @@ pub struct HeaderFormatter<'a> {
 }
 
 impl<'a> HeaderFormatter<'a> {
-    pub fn new(pack_index: &'a PackIndex) -> Self {
+    #[must_use]
+    pub const fn new(pack_index: &'a PackIndex) -> Self {
         Self { pack_index }
     }
 

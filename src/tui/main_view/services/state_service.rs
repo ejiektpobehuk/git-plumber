@@ -8,11 +8,13 @@ pub struct StateService;
 
 impl StateService {
     /// Create a new `StateService` instance
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
 
     /// Create initial state components
+    #[must_use]
     pub fn create_initial_state(
         ed_provider: &EducationalContent,
     ) -> (TreeState, ContentState, SessionState) {
@@ -53,6 +55,7 @@ impl StateService {
     }
 
     /// Create backward compatibility state from new structure
+    #[must_use]
     pub fn create_compatibility_state(
         tree: &TreeState,
         content: &ContentState,
@@ -110,11 +113,13 @@ impl StateService {
     }
 
     /// Restore selection from saved state
+    #[must_use]
     pub fn restore_selection(session: &SessionState) -> Option<String> {
         session.last_selection.as_ref().map(|sel| sel.key.clone())
     }
 
     /// Restore scroll positions from saved state
+    #[must_use]
     pub fn restore_scroll_positions(session: &SessionState) -> Option<(usize, usize, usize)> {
         session.last_scroll_positions.as_ref().map(|snap| {
             (
@@ -133,6 +138,7 @@ impl StateService {
     }
 
     /// Get state summary for debugging
+    #[must_use]
     pub const fn get_state_summary(
         tree: &TreeState,
         content: &ContentState,

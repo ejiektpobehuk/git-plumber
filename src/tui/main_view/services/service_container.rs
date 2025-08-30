@@ -10,6 +10,7 @@ pub struct ServiceContainer {
 
 impl ServiceContainer {
     /// Create a new service container with all services initialized
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             tree_service: TreeService::new(),
@@ -20,21 +21,25 @@ impl ServiceContainer {
     }
 
     /// Get a reference to the tree service
+    #[must_use]
     pub const fn tree(&self) -> &TreeService {
         &self.tree_service
     }
 
     /// Get a reference to the state service
+    #[must_use]
     pub const fn state(&self) -> &StateService {
         &self.state_service
     }
 
     /// Get a reference to the UI service
+    #[must_use]
     pub const fn ui(&self) -> &UIService {
         &self.ui_service
     }
 
     /// Get a reference to the git service
+    #[must_use]
     pub const fn git(&self) -> &GitRepositoryService {
         &self.git_service
     }

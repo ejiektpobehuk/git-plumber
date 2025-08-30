@@ -7,6 +7,7 @@ pub struct TagFormatter<'a> {
 }
 
 impl<'a> TagFormatter<'a> {
+    #[must_use]
     pub const fn new(tag: &'a TagObject) -> Self {
         Self { tag }
     }

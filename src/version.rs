@@ -23,6 +23,7 @@ impl Default for VersionInfo {
 }
 
 impl VersionInfo {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             version: built_info::PKG_VERSION,
@@ -36,6 +37,7 @@ impl VersionInfo {
         }
     }
 
+    #[must_use]
     pub fn is_development_build(&self) -> bool {
         // Consider it a dev build if:
         // 1. The working directory is dirty, OR
@@ -49,6 +51,7 @@ impl VersionInfo {
             })
     }
 
+    #[must_use]
     pub fn short_version(&self) -> String {
         if self.is_development_build() {
             if let Some(git_version) = self.git_version {
@@ -128,6 +131,7 @@ impl fmt::Display for VersionInfo {
     }
 }
 
+#[must_use]
 pub fn get_version_info() -> VersionInfo {
     VersionInfo::new()
 }

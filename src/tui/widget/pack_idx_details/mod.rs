@@ -16,6 +16,7 @@ pub enum PackIndexWidget {
 }
 
 impl PackIndexWidget {
+    #[must_use]
     pub fn new(pack_index: PackIndex) -> Self {
         let mut scrollable_widget = ScrollableTextWidget::new();
         // Pre-generate and cache the content
@@ -28,6 +29,7 @@ impl PackIndexWidget {
         }
     }
 
+    #[must_use]
     pub fn text(&self) -> ratatui::text::Text<'static> {
         match self {
             Self::Initialized {
@@ -37,7 +39,7 @@ impl PackIndexWidget {
         }
     }
 
-    pub fn scroll_up(&mut self) {
+    pub const fn scroll_up(&mut self) {
         if let Self::Initialized {
             scrollable_widget, ..
         } = self
@@ -55,7 +57,7 @@ impl PackIndexWidget {
         }
     }
 
-    pub fn scroll_to_top(&mut self) {
+    pub const fn scroll_to_top(&mut self) {
         if let Self::Initialized {
             scrollable_widget, ..
         } = self
@@ -64,7 +66,7 @@ impl PackIndexWidget {
         }
     }
 
-    pub fn scroll_to_bottom(&mut self) {
+    pub const fn scroll_to_bottom(&mut self) {
         if let Self::Initialized {
             scrollable_widget, ..
         } = self

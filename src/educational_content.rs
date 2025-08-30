@@ -8,6 +8,7 @@ pub struct EducationalContent {
 }
 
 impl EducationalContent {
+    #[must_use]
     pub fn new() -> Self {
         let mut content_map = HashMap::new();
 
@@ -139,6 +140,7 @@ impl EducationalContent {
     }
 
     /// Get educational content for a specific category
+    #[must_use]
     pub fn get_category_content(&self, category_name: &str) -> Text<'static> {
         self.content_map
             .get(category_name)
@@ -151,6 +153,7 @@ impl EducationalContent {
     }
 
     /// Get preview content for a reference file
+    #[must_use]
     pub fn get_ref_preview(&self, content: &str) -> Text<'static> {
         Text::from(format!(
             "Reference Content\n\n{}\n\nThis reference points to the commit hash shown above.",
@@ -159,6 +162,7 @@ impl EducationalContent {
     }
 
     /// Get preview content for a loose object
+    #[must_use]
     pub fn get_loose_object_preview(&self, object_id: &str) -> Text<'static> {
         Text::from(format!(
             "Loose Object Preview\n\nObject ID: {object_id}\n\nThis is a raw Git object stored as a single file.\nUse 'cat-file' command to examine its contents."
@@ -166,6 +170,7 @@ impl EducationalContent {
     }
 
     /// Get pack file preview with detailed header breakdown
+    #[must_use]
     pub fn get_pack_preview(&self, header: &crate::git::pack::Header) -> Text<'static> {
         let mut lines: Vec<Line> = Vec::new();
         let border_style = Style::default().fg(Color::Gray);
@@ -462,6 +467,7 @@ impl EducationalContent {
     }
 
     /// Get default content when no object is selected
+    #[must_use]
     pub fn get_default_content(&self) -> Text<'static> {
         Text::from("Select an object to view details")
     }

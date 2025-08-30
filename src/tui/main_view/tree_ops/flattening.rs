@@ -297,7 +297,7 @@ impl TreeFlattener {
                 let mut current_path = path_components[..=git_index].join("/");
 
                 for (idx, component) in path_components.iter().enumerate().skip(git_index + 1) {
-                    current_path = format!("{}/{}", current_path, component);
+                    current_path = format!("{current_path}/{component}");
                     if idx == git_index + 1 {
                         // First level after .git could be either a Category or a FileSystemFolder
                         // Add both possible keys since we can't know which format it uses

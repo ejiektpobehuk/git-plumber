@@ -11,6 +11,7 @@ pub struct ZlibHeaderFormatter<'a> {
 }
 
 impl<'a> ZlibHeaderFormatter<'a> {
+    #[must_use]
     pub const fn new(compressed_data: &'a [u8]) -> Self {
         Self { compressed_data }
     }
@@ -184,6 +185,7 @@ pub struct DeflateBlockFormatter<'a> {
 }
 
 impl<'a> DeflateBlockFormatter<'a> {
+    #[must_use]
     pub const fn new(compressed_data: &'a [u8]) -> Self {
         Self { compressed_data }
     }
@@ -273,7 +275,8 @@ pub struct Adler32Formatter<'a> {
 }
 
 impl<'a> Adler32Formatter<'a> {
-    pub fn new(compressed_data: &'a [u8], uncompressed_data: &'a [u8]) -> Self {
+    #[must_use]
+    pub const fn new(compressed_data: &'a [u8], uncompressed_data: &'a [u8]) -> Self {
         Self {
             compressed_data,
             uncompressed_data,

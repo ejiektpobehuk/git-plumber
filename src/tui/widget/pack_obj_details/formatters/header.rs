@@ -11,6 +11,7 @@ pub struct HeaderFormatter<'a> {
 }
 
 impl<'a> HeaderFormatter<'a> {
+    #[must_use]
     pub const fn new(header: &'a crate::git::pack::ObjectHeader) -> Self {
         Self { header }
     }

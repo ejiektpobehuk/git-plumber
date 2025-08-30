@@ -50,7 +50,7 @@ impl Header {
 
         Ok((
             input,
-            Header {
+            Self {
                 version,
                 object_count,
                 raw_data,

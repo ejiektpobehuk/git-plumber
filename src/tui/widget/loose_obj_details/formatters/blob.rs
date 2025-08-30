@@ -7,7 +7,8 @@ pub struct BlobFormatter<'a> {
 }
 
 impl<'a> BlobFormatter<'a> {
-    pub fn new(content: &'a [u8], is_binary: bool) -> Self {
+    #[must_use]
+    pub const fn new(content: &'a [u8], is_binary: bool) -> Self {
         Self { content, is_binary }
     }
 

@@ -6,7 +6,7 @@ pub const COLORS: [Color; 4] = [Color::Blue, Color::Magenta, Color::Cyan, Color:
 pub const PREVIEW_SIZE_LIMIT: usize = 1000;
 pub const HEX_PREVIEW_LIMIT: usize = 32;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeaderSection {
     Size,
     Hash,
@@ -24,6 +24,7 @@ impl fmt::Display for HeaderSection {
 }
 
 impl HeaderSection {
+    #[must_use]
     pub fn from_byte_position(
         byte_index: usize,
         obj_type: crate::git::pack::ObjectType,
@@ -49,6 +50,7 @@ impl HeaderSection {
 }
 
 // Helper function to calculate the number of bytes used for size encoding
+#[must_use]
 pub fn calculate_size_byte_count(obj_type: crate::git::pack::ObjectType, raw_data: &[u8]) -> usize {
     const HASH_BYTES: usize = 20;
     match obj_type {
@@ -73,6 +75,7 @@ pub fn calculate_size_byte_count(obj_type: crate::git::pack::ObjectType, raw_dat
 }
 
 // Add Adler-32 checksum calculation function
+#[must_use]
 pub fn calculate_adler32(data: &[u8]) -> u32 {
     const ADLER32_MODULUS: u32 = 65521;
     let mut a: u32 = 1;

@@ -11,6 +11,7 @@ pub struct ContentFormatter<'a> {
 }
 
 impl<'a> ContentFormatter<'a> {
+    #[must_use]
     pub const fn new(object_data: &'a crate::git::pack::Object) -> Self {
         Self { object_data }
     }

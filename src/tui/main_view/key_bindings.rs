@@ -6,6 +6,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use super::RegularFocus;
 
 /// Handle key events for the main view and convert them to appropriate messages
+#[must_use]
 pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
     match &app.view {
         AppView::Main { state } => match key.code {

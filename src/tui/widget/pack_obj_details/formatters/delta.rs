@@ -9,6 +9,7 @@ pub struct DeltaFormatter<'a> {
 }
 
 impl<'a> DeltaFormatter<'a> {
+    #[must_use]
     pub const fn new(uncompressed_data: &'a [u8]) -> Self {
         Self { uncompressed_data }
     }

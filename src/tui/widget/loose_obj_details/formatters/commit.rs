@@ -7,7 +7,8 @@ pub struct CommitFormatter<'a> {
 }
 
 impl<'a> CommitFormatter<'a> {
-    pub fn new(commit: &'a CommitObject) -> Self {
+    #[must_use]
+    pub const fn new(commit: &'a CommitObject) -> Self {
         Self { commit }
     }
 

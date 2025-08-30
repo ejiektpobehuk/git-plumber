@@ -6,6 +6,7 @@ pub struct GitRepositoryService;
 
 impl GitRepositoryService {
     /// Create a new `GitRepositoryService` instance
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
@@ -16,11 +17,13 @@ impl GitRepositoryService {
     }
 
     /// Check if an object has been modified by comparing modification times
+    #[must_use]
     pub fn is_object_modified(old: &GitObject, new: &GitObject) -> bool {
         Self::is_object_modified_static(old, new)
     }
 
     /// Static version of `is_object_modified` for use in closures
+    #[must_use]
     pub fn is_object_modified_static(old: &GitObject, new: &GitObject) -> bool {
         match (&old.obj_type, &new.obj_type) {
             (
@@ -119,6 +122,7 @@ impl GitRepositoryService {
     }
 
     /// Get repository statistics
+    #[must_use]
     pub fn get_repository_stats(tree: &[GitObject]) -> RepositoryStats {
         let mut stats = RepositoryStats::default();
 
@@ -154,6 +158,7 @@ impl GitRepositoryService {
     }
 
     /// Validate repository structure
+    #[must_use]
     pub fn validate_repository_structure(tree: &[GitObject]) -> Vec<ValidationIssue> {
         let mut issues = Vec::new();
 

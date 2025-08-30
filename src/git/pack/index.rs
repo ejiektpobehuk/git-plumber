@@ -41,7 +41,7 @@ impl PackIndex {
         let original_input = input;
 
         // Parse header (magic + version)
-        let (input, _) = Self::parse_header(input)?;
+        let (input, ()) = Self::parse_header(input)?;
 
         // Parse fan-out table (256 entries)
         let (input, fan_out) = Self::parse_fan_out_table(input)?;
@@ -89,7 +89,7 @@ impl PackIndex {
 
         Ok((
             input,
-            PackIndex {
+            Self {
                 version: 2, // We only support version 2
                 fan_out,
                 object_names,
@@ -148,12 +148,14 @@ impl PackIndex {
     }
 
     /// Get the total number of objects in this index
-    pub fn object_count(&self) -> usize {
+    #[must_use]
+    pub const fn object_count(&self) -> usize {
         self.object_names.len()
     }
 
     /// Look up an object by its SHA-1 hash
     /// Returns the offset in the pack file if found
+    #[must_use]
     pub fn lookup_object(&self, sha1: &[u8; 20]) -> Option<u64> {
         // Use fan-out table for efficient binary search
         let first_byte = sha1[0] as usize;
@@ -179,6 +181,7 @@ impl PackIndex {
     }
 
     /// Get the pack file offset for an object at the given index
+    #[must_use]
     pub fn get_object_offset(&self, index: usize) -> u64 {
         if index >= self.offsets.len() {
             return 0;
@@ -197,16 +200,17 @@ impl PackIndex {
             }
         }
 
-        offset as u64
+        u64::from(offset)
     }
 
     /// Get the CRC32 checksum for an object at the given index
+    #[must_use]
     pub fn get_object_crc32(&self, index: usize) -> Option<u32> {
         self.crc32_checksums.get(index).copied()
     }
 
     /// Verify the integrity of the index file
-    pub fn verify_checksum(&self) -> Result<(), PackError> {
+    pub const fn verify_checksum(&self) -> Result<(), PackError> {
         // TODO: Implement SHA-1 checksum verification
         // This would involve calculating SHA-1 of all data except the final 20 bytes
         // and comparing with self.index_checksum
@@ -231,7 +235,7 @@ impl fmt::Display for PackIndex {
         for (byte, &count) in self.fan_out.iter().enumerate() {
             let objects_for_byte = count - prev_count;
             if objects_for_byte > 0 {
-                writeln!(f, "  0x{:02x}: {} objects", byte, objects_for_byte)?;
+                writeln!(f, "  0x{byte:02x}: {objects_for_byte} objects")?;
             }
             prev_count = count;
         }

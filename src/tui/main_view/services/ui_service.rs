@@ -6,16 +6,19 @@ pub struct UIService;
 
 impl UIService {
     /// Create a new `UIService` instance
+    #[must_use]
     pub const fn new() -> Self {
         Self
     }
 
     /// Create initial preview state
+    #[must_use]
     pub const fn create_initial_preview_state() -> PreviewState {
         PreviewState::Regular(RegularPreViewState::new())
     }
 
     /// Check if git objects are currently focused
+    #[must_use]
     pub fn are_git_objects_focused(preview_state: &PreviewState) -> bool {
         match preview_state {
             PreviewState::Pack(state) => state.focus == PackFocus::GitObjects,
@@ -24,6 +27,7 @@ impl UIService {
     }
 
     /// Update scroll position for git objects based on selection
+    #[must_use]
     pub fn update_git_objects_scroll_for_selection(
         flat_view: &[super::super::FlatTreeRow],
         selected_index: usize,
@@ -71,6 +75,7 @@ impl UIService {
     }
 
     /// Navigate selection up
+    #[must_use]
     pub const fn navigate_up(
         current_selection: usize,
         flat_view: &[super::super::FlatTreeRow],
@@ -82,6 +87,7 @@ impl UIService {
     }
 
     /// Navigate selection down
+    #[must_use]
     pub fn navigate_down(
         current_selection: usize,
         flat_view: &[super::super::FlatTreeRow],
@@ -93,21 +99,25 @@ impl UIService {
     }
 
     /// Navigate to first item
+    #[must_use]
     pub const fn navigate_to_first() -> usize {
         0
     }
 
     /// Navigate to last item
+    #[must_use]
     pub const fn navigate_to_last(flat_view: &[super::super::FlatTreeRow]) -> usize {
         flat_view.len().saturating_sub(1)
     }
 
     /// Page up navigation
+    #[must_use]
     pub fn navigate_page_up(current_selection: usize, visible_height: usize) -> usize {
         current_selection.saturating_sub(visible_height.max(1))
     }
 
     /// Page down navigation
+    #[must_use]
     pub fn navigate_page_down(
         current_selection: usize,
         flat_view: &[super::super::FlatTreeRow],
@@ -120,6 +130,7 @@ impl UIService {
     }
 
     /// Get the currently selected object
+    #[must_use]
     pub fn get_selected_object(
         flat_view: &[super::super::FlatTreeRow],
         selected_index: usize,
@@ -128,11 +139,13 @@ impl UIService {
     }
 
     /// Check if an index is within bounds
+    #[must_use]
     pub const fn is_valid_index(flat_view: &[super::super::FlatTreeRow], index: usize) -> bool {
         index < flat_view.len()
     }
 
     /// Get safe selection index (ensures it's within bounds)
+    #[must_use]
     pub fn get_safe_selection_index(
         flat_view: &[super::super::FlatTreeRow],
         requested_index: usize,
@@ -145,6 +158,7 @@ impl UIService {
     }
 
     /// Calculate visible range for rendering
+    #[must_use]
     pub fn calculate_visible_range(
         flat_view: &[super::super::FlatTreeRow],
         scroll_position: usize,

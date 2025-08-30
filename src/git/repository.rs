@@ -16,7 +16,8 @@ pub struct PackGroup {
 }
 
 impl PackGroup {
-    /// Creates a new PackGroup with the given base name
+    /// Creates a new `PackGroup` with the given base name
+    #[must_use]
     pub fn new(base_name: &str) -> Self {
         Self {
             base_name: base_name.to_string(),
@@ -28,16 +29,19 @@ impl PackGroup {
     }
 
     /// Returns true if this group has at least a .pack file
-    pub fn is_valid(&self) -> bool {
+    #[must_use]
+    pub const fn is_valid(&self) -> bool {
         self.pack_file.is_some()
     }
 
     /// Returns true if this group has both .pack and .idx files
-    pub fn has_index(&self) -> bool {
+    #[must_use]
+    pub const fn has_index(&self) -> bool {
         self.pack_file.is_some() && self.idx_file.is_some()
     }
 
     /// Returns all available file paths in this group
+    #[must_use]
     pub fn get_all_files(&self) -> Vec<(&str, &PathBuf)> {
         let mut files = Vec::new();
 
@@ -64,8 +68,7 @@ impl PackGroup {
                 Ok(data) => match PackIndex::parse(&data) {
                     Ok((_, index)) => Ok(Some(index)),
                     Err(e) => Err(PackError::ParseError(format!(
-                        "Failed to parse index: {:?}",
-                        e
+                        "Failed to parse index: {e:?}"
                     ))),
                 },
                 Err(e) => Err(PackError::DecompressionError(e)),
@@ -138,15 +141,15 @@ impl std::fmt::Display for PackGroupStats {
         writeln!(f, "Pack Group: {}", self.base_name)?;
 
         if let Some(count) = self.object_count {
-            writeln!(f, "Objects: {}", count)?;
+            writeln!(f, "Objects: {count}")?;
         }
 
         if let Some(size) = self.pack_size {
-            writeln!(f, "Pack size: {} bytes", size)?;
+            writeln!(f, "Pack size: {size} bytes")?;
         }
 
         if let Some(size) = self.index_size {
-            writeln!(f, "Index size: {} bytes", size)?;
+            writeln!(f, "Index size: {size} bytes")?;
         }
 
         writeln!(f, "Files present:")?;

@@ -13,6 +13,7 @@ pub struct LooseObjectWidget {
 }
 
 impl LooseObjectWidget {
+    #[must_use]
     pub fn new(loose_obj: LooseObject) -> Self {
         let mut scrollable_widget = ScrollableTextWidget::new();
         // Pre-generate and cache the content
@@ -25,16 +26,18 @@ impl LooseObjectWidget {
         }
     }
 
+    #[must_use]
     pub fn text(&self) -> ratatui::text::Text<'static> {
         self.scrollable_widget.text()
     }
 
     /// Get the underlying loose object
-    pub fn loose_object(&self) -> &LooseObject {
+    #[must_use]
+    pub const fn loose_object(&self) -> &LooseObject {
         &self.loose_obj
     }
 
-    pub fn scroll_up(&mut self) {
+    pub const fn scroll_up(&mut self) {
         self.scrollable_widget.scroll_up();
     }
 
@@ -42,11 +45,11 @@ impl LooseObjectWidget {
         self.scrollable_widget.scroll_down();
     }
 
-    pub fn scroll_to_top(&mut self) {
+    pub const fn scroll_to_top(&mut self) {
         self.scrollable_widget.scroll_to_top();
     }
 
-    pub fn scroll_to_bottom(&mut self) {
+    pub const fn scroll_to_bottom(&mut self) {
         self.scrollable_widget.scroll_to_bottom();
     }
 

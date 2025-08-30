@@ -17,10 +17,12 @@ pub struct PackIndexFormatter<'a> {
 }
 
 impl<'a> PackIndexFormatter<'a> {
-    pub fn new(pack_index: &'a PackIndex) -> Self {
+    #[must_use]
+    pub const fn new(pack_index: &'a PackIndex) -> Self {
         Self { pack_index }
     }
 
+    #[must_use]
     pub fn generate_content(&self) -> Text<'static> {
         let mut lines = Vec::new();
         // Add educational information at the top

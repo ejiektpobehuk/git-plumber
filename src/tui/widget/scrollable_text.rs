@@ -2,7 +2,7 @@ use crate::tui::helpers::render_styled_paragraph_with_scrollbar;
 use ratatui::text::Text;
 
 /// A unified widget for displaying scrollable text content.
-/// This eliminates code duplication across LooseObjectWidget, PackIndexWidget, and PackObjectWidget.
+/// This eliminates code duplication across `LooseObjectWidget`, `PackIndexWidget`, and `PackObjectWidget`.
 #[derive(Debug, Clone)]
 pub struct ScrollableTextWidget {
     text_cache: Option<Text<'static>>,
@@ -12,7 +12,8 @@ pub struct ScrollableTextWidget {
 
 impl ScrollableTextWidget {
     /// Create a new scrollable text widget
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             text_cache: None,
             scroll_position: 0,
@@ -29,15 +30,15 @@ impl ScrollableTextWidget {
     }
 
     /// Get the cached text content, or return a default if not set
+    #[must_use]
     pub fn text(&self) -> Text<'static> {
         self.text_cache
-            .as_ref()
-            .cloned()
+            .clone()
             .unwrap_or_else(|| Text::from("Loading..."))
     }
 
     /// Scroll up by one line
-    pub fn scroll_up(&mut self) {
+    pub const fn scroll_up(&mut self) {
         self.scroll_position = self.scroll_position.saturating_sub(1);
     }
 
@@ -47,17 +48,18 @@ impl ScrollableTextWidget {
     }
 
     /// Scroll to the top of the content
-    pub fn scroll_to_top(&mut self) {
+    pub const fn scroll_to_top(&mut self) {
         self.scroll_position = 0;
     }
 
     /// Scroll to the bottom of the content
-    pub fn scroll_to_bottom(&mut self) {
+    pub const fn scroll_to_bottom(&mut self) {
         self.scroll_position = self.max_scroll;
     }
 
     /// Get the current scroll position
-    pub fn scroll_position(&self) -> usize {
+    #[must_use]
+    pub const fn scroll_position(&self) -> usize {
         self.scroll_position
     }
 
@@ -87,7 +89,8 @@ impl ScrollableTextWidget {
     }
 
     /// Check if the widget has content
-    pub fn has_content(&self) -> bool {
+    #[must_use]
+    pub const fn has_content(&self) -> bool {
         self.text_cache.is_some()
     }
 

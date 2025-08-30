@@ -23,6 +23,7 @@ pub struct AnimationManager {
 
 impl AnimationManager {
     /// Create a new animation manager
+    #[must_use]
     pub fn new() -> Self {
         Self {
             changed_keys: HashMap::new(),
@@ -50,6 +51,7 @@ impl AnimationManager {
     }
 
     /// Compute highlight information for a given key
+    #[must_use]
     pub fn compute_highlight_info(&self, key: &str) -> HighlightInfo {
         let now = Instant::now();
 
@@ -88,6 +90,7 @@ impl AnimationManager {
     }
 
     /// Compute dynamic folder highlight based on files inside (called externally with tree context)
+    #[must_use]
     pub fn compute_folder_highlight(
         &self,
         _folder_key: &str,
@@ -146,6 +149,7 @@ impl AnimationManager {
     }
 
     /// Check if there are any active animations (must be called with tree context for folder highlights)
+    #[must_use]
     pub fn has_active_animations(&self) -> bool {
         !self.changed_keys.is_empty() || !self.ghosts.is_empty() || !self.modified_keys.is_empty()
     }
