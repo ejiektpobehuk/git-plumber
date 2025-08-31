@@ -63,7 +63,7 @@ impl<'a> FanoutFormatter<'a> {
         let mut prev_count = 0;
 
         for &count in &self.pack_index.fan_out {
-            let bucket_size = count - prev_count;
+            let bucket_size = count.saturating_sub(prev_count);
             if bucket_size > 0 {
                 non_empty_buckets += 1;
                 max_bucket_size = max_bucket_size.max(bucket_size);
@@ -132,7 +132,7 @@ impl<'a> FanoutFormatter<'a> {
                     lines.push(line);
                 }
 
-                let bucket_size = count - prev_count;
+                let bucket_size = count.saturating_sub(prev_count);
                 let byte_pos = self.calculate_fanout_byte_position(i);
                 let hex_value = self.format_hex_value(count);
 
@@ -288,7 +288,7 @@ impl<'a> FanoutFormatter<'a> {
         // First pass: identify active (non-empty) entries
         let mut active_entries = vec![false; 256];
         for (i, &count) in self.pack_index.fan_out.iter().enumerate() {
-            let bucket_size = count - prev_count;
+            let bucket_size = count.saturating_sub(prev_count);
             if bucket_size > 0 {
                 active_entries[i] = true;
             }
@@ -350,7 +350,7 @@ impl<'a> FanoutFormatter<'a> {
             self.pack_index.fan_out[first_byte - 1]
         };
         let end_idx = self.pack_index.fan_out[first_byte];
-        let range_size = end_idx - start_idx;
+        let range_size = end_idx.saturating_sub(start_idx);
 
         lines.push(Line::styled(
             format!("1. Check fan_out[0x41] = {start_idx} (start of range)"),
@@ -365,7 +365,7 @@ impl<'a> FanoutFormatter<'a> {
                 "3. Binary search within {} objects (indices {}-{})",
                 range_size,
                 start_idx,
-                end_idx - 1
+                end_idx.saturating_sub(1)
             ),
             Style::default().fg(Color::Green),
         ));
