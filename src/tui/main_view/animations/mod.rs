@@ -238,8 +238,8 @@ impl AnimationManager {
         });
 
         match color_vec.len() {
-            1 => color_vec[0],                  // Single color type
-            _ => ratatui::style::Color::Yellow, // Mixed colors
+            1 => color_vec[0],                   // Single color type
+            _ => ratatui::style::Color::Magenta, // Mixed colors - use magenta to avoid conflict with selection yellow
         }
     }
 }
