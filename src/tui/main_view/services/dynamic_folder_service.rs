@@ -31,6 +31,7 @@ impl DynamicFolderService {
                 return HighlightInfo {
                     color: Some(dynamic_highlight.color),
                     expires_at: Some(dynamic_highlight.expires_at),
+                    animation_type: crate::tui::main_view::model::AnimationType::FolderBlink,
                 };
             }
         }

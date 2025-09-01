@@ -34,10 +34,25 @@ pub enum RenderStatus {
     PendingRemoval,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimationType {
+    /// File animation: shrinking background highlight
+    FileShrink,
+    /// Folder animation: blinking indicator
+    FolderBlink,
+}
+
+impl Default for AnimationType {
+    fn default() -> Self {
+        Self::FileShrink
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct HighlightInfo {
     pub color: Option<ratatui::style::Color>,
     pub expires_at: Option<std::time::Instant>,
+    pub animation_type: AnimationType,
 }
 
 #[derive(Debug, Clone)]

@@ -30,25 +30,35 @@ fn apply_git_tree_highlight_fx(
         let _key = crate::tui::main_view::MainViewState::selection_key(&row.object);
 
         // Use highlight information from the flattened tree row
-        let (color, start) = if let Some(highlight_color) = row.highlight.color {
+        let (color, start, animation_type) = if let Some(highlight_color) = row.highlight.color {
             let expires_at = row.highlight.expires_at.unwrap_or(now);
             if expires_at > now {
                 let start_time = expires_at
                     .checked_sub(std::time::Duration::from_millis(total))
                     .unwrap();
-                (Some(highlight_color), Some(start_time))
+                (
+                    Some(highlight_color),
+                    Some(start_time),
+                    row.highlight.animation_type,
+                )
             } else {
-                (None, None)
+                (None, None, row.highlight.animation_type)
             }
         } else {
-            (None, None)
+            (None, None, row.highlight.animation_type)
         };
 
-        let (bg, start_at) = match (color, start) {
-            (Some(c), Some(s)) => (c, s),
+        let (bg, start_at, anim_type) = match (color, start) {
+            (Some(c), Some(s)) => (c, s, animation_type),
             _ => continue,
         };
 
+        // Skip folder blink animations - they are handled in the main rendering
+        if anim_type == crate::tui::main_view::model::AnimationType::FolderBlink {
+            continue;
+        }
+
+        // Handle file shrinking animation only
         let n_cols: u16 = if reduced {
             if now.duration_since(start_at).as_millis() as u64 <= hold_ms {
                 width
@@ -607,11 +617,45 @@ fn render_git_tree(
                 }
             };
 
-            let display_text = format!("{}{}{}", indent, prefix, obj.name);
             let _key = MainViewState::selection_key(obj);
 
-            // Simple item rendering; highlight is applied in a post-render cell pass
-            ListItem::new(display_text).style({
+            // Check if this folder should have blinking indicator
+            let should_blink_folder = match &obj.obj_type {
+                GitObjectType::Category(_)
+                | GitObjectType::FileSystemFolder { .. }
+                | GitObjectType::PackFolder { .. } => {
+                    // Check if folder has blink animation
+                    if let Some(highlight_color) = row.highlight.color
+                        && row.highlight.animation_type
+                            == crate::tui::main_view::model::AnimationType::FolderBlink
+                        && state.animations.folder_blink_state
+                    {
+                        Some(highlight_color)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+
+            // Create styled content for the row
+            let content = if let Some(blink_color) = should_blink_folder {
+                // For folders with blink animation, style only the indicator
+                let spans = vec![
+                    Span::raw(indent),
+                    // Style the prefix (folder indicator) with background color
+                    Span::styled(prefix, Style::default().bg(blink_color)),
+                    Span::raw(obj.name.clone()),
+                ];
+
+                ratatui::text::Line::from(spans)
+            } else {
+                // For regular items, use plain text
+                ratatui::text::Line::from(format!("{}{}{}", indent, prefix, obj.name))
+            };
+
+            // Simple item rendering; highlight is applied in a post-render cell pass for files
+            ListItem::new(content).style({
                 if is_selected {
                     Style::default().fg(Color::Yellow)
                 } else {

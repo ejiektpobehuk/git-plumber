@@ -135,6 +135,8 @@ impl PrecomputedHighlightService {
                             let highlight_info = HighlightInfo {
                                 color: Some(dynamic_highlight.color),
                                 expires_at: Some(dynamic_highlight.expires_at),
+                                animation_type:
+                                    crate::tui::main_view::model::AnimationType::FolderBlink,
                             };
                             highlights.add_highlight(folder_key, highlight_info);
                         }

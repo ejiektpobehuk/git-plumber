@@ -19,6 +19,10 @@ pub struct AnimationManager {
     pub modified_keys: HashMap<String, Instant>,
     /// Keys that were deleted (red ghost overlay)
     pub ghosts: HashMap<String, Ghost>,
+    /// Current blink state for folder animations (true = visible, false = hidden)
+    pub folder_blink_state: bool,
+    /// Last time the blink state was toggled
+    pub last_blink_toggle: Instant,
 }
 
 impl AnimationManager {
@@ -29,6 +33,8 @@ impl AnimationManager {
             changed_keys: HashMap::new(),
             modified_keys: HashMap::new(),
             ghosts: HashMap::new(),
+            folder_blink_state: true,
+            last_blink_toggle: Instant::now(),
         }
     }
 
@@ -47,13 +53,23 @@ impl AnimationManager {
         self.modified_keys.retain(|_, until| *until > now);
         let modified_changed = before_modified != self.modified_keys.len();
 
-        ghosts_changed || changed_changed || modified_changed
+        // Update blink state every 500ms (twice per second)
+        let blink_changed = if now.duration_since(self.last_blink_toggle).as_millis() >= 500 {
+            self.folder_blink_state = !self.folder_blink_state;
+            self.last_blink_toggle = now;
+            true
+        } else {
+            false
+        };
+
+        ghosts_changed || changed_changed || modified_changed || blink_changed
     }
 
     /// Compute highlight information for a given key
     #[must_use]
     pub fn compute_highlight_info(&self, key: &str) -> HighlightInfo {
         let now = Instant::now();
+        let is_folder = Self::is_folder_key(key);
 
         // Check for additions (green) - highest priority
         if let Some(until) = self.changed_keys.get(key).copied()
@@ -62,6 +78,11 @@ impl AnimationManager {
             return HighlightInfo {
                 color: Some(ratatui::style::Color::Green),
                 expires_at: Some(until),
+                animation_type: if is_folder {
+                    crate::tui::main_view::model::AnimationType::FolderBlink
+                } else {
+                    crate::tui::main_view::model::AnimationType::FileShrink
+                },
             };
         }
 
@@ -72,6 +93,11 @@ impl AnimationManager {
             return HighlightInfo {
                 color: Some(ratatui::style::Color::Rgb(255, 165, 0)), // Orange
                 expires_at: Some(until),
+                animation_type: if is_folder {
+                    crate::tui::main_view::model::AnimationType::FolderBlink
+                } else {
+                    crate::tui::main_view::model::AnimationType::FileShrink
+                },
             };
         }
 
@@ -82,11 +108,21 @@ impl AnimationManager {
             return HighlightInfo {
                 color: Some(ratatui::style::Color::Red),
                 expires_at: Some(ghost.until),
+                animation_type: if is_folder {
+                    crate::tui::main_view::model::AnimationType::FolderBlink
+                } else {
+                    crate::tui::main_view::model::AnimationType::FileShrink
+                },
             };
         }
 
         // No highlight for individual files
         HighlightInfo::default()
+    }
+
+    /// Determine if a selection key represents a folder
+    fn is_folder_key(key: &str) -> bool {
+        key.starts_with("folder:") || key.starts_with("category:")
     }
 
     /// Compute dynamic folder highlight based on files inside (called externally with tree context)

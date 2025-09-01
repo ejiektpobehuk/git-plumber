@@ -169,6 +169,7 @@ impl TreeFlattener {
                     let ghost_highlight = HighlightInfo {
                         color: Some(ratatui::style::Color::Red),
                         expires_at: Some(g.until),
+                        animation_type: crate::tui::main_view::model::AnimationType::FileShrink,
                     };
                     output.insert(
                         insert_at,
@@ -235,6 +236,7 @@ impl TreeFlattener {
                         let ghost_highlight = HighlightInfo {
                             color: Some(ratatui::style::Color::Red),
                             expires_at: Some(ghost.until),
+                            animation_type: crate::tui::main_view::model::AnimationType::FileShrink,
                         };
                         let ghost_row = FlatTreeRow {
                             depth: target_depth + 1,
@@ -258,6 +260,7 @@ impl TreeFlattener {
                 output[target_flat_index].highlight = HighlightInfo {
                     color: Some(ratatui::style::Color::Red),
                     expires_at: ghost_expiration,
+                    animation_type: crate::tui::main_view::model::AnimationType::FolderBlink,
                 };
 
                 // Highlight all collapsed ancestor folders
@@ -271,6 +274,8 @@ impl TreeFlattener {
                             output[ancestor_flat_index].highlight = HighlightInfo {
                                 color: Some(ratatui::style::Color::Red),
                                 expires_at: ghost_expiration,
+                                animation_type:
+                                    crate::tui::main_view::model::AnimationType::FolderBlink,
                             };
                         }
                     }
