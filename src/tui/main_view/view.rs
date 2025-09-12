@@ -462,7 +462,17 @@ fn render_git_tree(
     area: ratatui::layout::Rect,
     reduced: bool,
 ) {
-    render_list_with_scrollbar(
+    // Calculate visible height for scrollbar indicators
+    let visible_height = (area.height as usize).saturating_sub(2); // Account for borders
+
+    // Get scrollbar indicators for out-of-view changes
+    let indicators = state.animations.get_scrollbar_indicators(
+        &state.tree.flat_view,
+        state.tree.scroll_position,
+        visible_height,
+    );
+
+    crate::tui::helpers::render_list_with_scrollbar_indicators(
         f,
         area,
         &state.tree.flat_view,
@@ -470,6 +480,7 @@ fn render_git_tree(
         state.tree.scroll_position,
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
+        &indicators,
         |i, row, is_selected| {
             let depth = &row.depth;
             let obj = &row.object;

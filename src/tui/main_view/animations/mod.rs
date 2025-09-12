@@ -11,6 +11,17 @@ pub struct DynamicFolderHighlight {
     pub expires_at: Instant,
 }
 
+/// Represents a change indicator on the scrollbar for out-of-view items
+#[derive(Debug, Clone)]
+pub struct ScrollbarIndicator {
+    /// Position on the scrollbar from 0.0 (top) to 1.0 (bottom)
+    pub relative_position: f32,
+    /// Color of the indicator (matches the change type)
+    pub color: ratatui::style::Color,
+    /// When this indicator expires
+    pub expires_at: Instant,
+}
+
 /// Animation and highlighting system for the main view
 pub struct AnimationManager {
     /// Keys that were added (green highlighting)
@@ -207,6 +218,56 @@ impl AnimationManager {
             tree,
             selection_key_fn,
         )
+    }
+
+    /// Get scrollbar indicators for out-of-view changes
+    /// Returns a list of (`relative_position`, color) where `relative_position` is 0.0-1.0
+    #[must_use]
+    pub fn get_scrollbar_indicators(
+        &self,
+        flat_view: &[crate::tui::main_view::FlatTreeRow],
+        scroll_position: usize,
+        visible_height: usize,
+    ) -> Vec<ScrollbarIndicator> {
+        let now = std::time::Instant::now();
+        let mut indicators = Vec::new();
+
+        if flat_view.is_empty() {
+            return indicators;
+        }
+
+        let total_items = flat_view.len();
+        let viewport_start = scroll_position;
+        let viewport_end = (scroll_position + visible_height).min(total_items);
+
+        // Check for changes outside the current viewport
+        for (index, row) in flat_view.iter().enumerate() {
+            // Skip items that are currently visible
+            if index >= viewport_start && index < viewport_end {
+                continue;
+            }
+
+            // Check if this row has any active highlight
+            if let Some(color) = row.highlight.color
+                && let Some(expires_at) = row.highlight.expires_at
+                && expires_at > now
+            {
+                // Calculate relative position on the scrollbar (0.0 = top, 1.0 = bottom)
+                let relative_position = if total_items > 1 {
+                    index as f32 / (total_items - 1) as f32
+                } else {
+                    0.0
+                };
+
+                indicators.push(ScrollbarIndicator {
+                    relative_position,
+                    color,
+                    expires_at,
+                });
+            }
+        }
+
+        indicators
     }
 
     /// Clear all animations
