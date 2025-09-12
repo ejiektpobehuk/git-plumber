@@ -226,6 +226,7 @@ impl MainViewState {
         &mut self,
         old_positions: &HashMap<String, OldPosition>,
         old_nodes: &HashMap<String, GitObject>,
+        animation_duration_secs: u64,
     ) -> (HashSet<String>, HashSet<String>, HashSet<String>) {
         // Use our change detection service to get the basic changes
         let new_keys = super::change_detection::ChangeDetectionService::collect_all_keys(
@@ -256,33 +257,35 @@ impl MainViewState {
 
         let now = Instant::now();
 
-        // Additions (green, 5s)
+        // Additions - green
         self.animations
             .changed_keys
             .retain(|k, until| *until > now && new_keys.contains(k));
         for k in &added_keys {
             // If there was a ghost for this key (re-appeared), drop it
             self.animations.ghosts.remove(k);
-            self.animations
-                .changed_keys
-                .insert(k.clone(), now + Duration::from_secs(5));
+            self.animations.changed_keys.insert(
+                k.clone(),
+                now + Duration::from_secs(animation_duration_secs),
+            );
         }
 
-        // Modifications (orange, 5s)
+        // Modifications - orange, 10s
         self.animations
             .modified_keys
             .retain(|k, until| *until > now && new_keys.contains(k));
         for k in &modified_keys {
-            self.animations
-                .modified_keys
-                .insert(k.clone(), now + Duration::from_secs(5));
+            self.animations.modified_keys.insert(
+                k.clone(),
+                now + Duration::from_secs(animation_duration_secs),
+            );
         }
 
-        // Deletions -> ghosts overlay (red, 5s)
+        // Deletions -> ghosts overlay - red
         self.animations
             .ghosts
             .retain(|k, g| g.until > now && !new_keys.contains(k));
-        let ghost_duration = Duration::from_secs(5);
+        let ghost_duration = Duration::from_secs(animation_duration_secs);
         for k in &deleted_keys {
             if self.animations.ghosts.contains_key(k) {
                 continue;

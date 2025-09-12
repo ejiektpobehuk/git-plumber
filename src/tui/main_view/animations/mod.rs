@@ -269,7 +269,7 @@ mod tests {
         // Add a changed key
         manager
             .changed_keys
-            .insert("test_key".to_string(), now + Duration::from_secs(5));
+            .insert("test_key".to_string(), now + Duration::from_secs(10));
 
         let highlight = manager.compute_highlight_info("test_key");
         assert!(highlight.color.is_some());

@@ -65,8 +65,11 @@ impl AppState {
 
                     // NOW detect changes after full restoration and cache population
                     if let Some(old_snapshot) = old_snapshot {
-                        let _ =
-                            state.detect_tree_changes(&old_snapshot.positions, &old_snapshot.nodes);
+                        let _ = state.detect_tree_changes(
+                            &old_snapshot.positions,
+                            &old_snapshot.nodes,
+                            self.animation_duration_secs,
+                        );
                     }
 
                     state.flatten_tree();
@@ -266,6 +269,7 @@ impl AppState {
                         &modified_files,
                         &deleted_files,
                         super::main_view::MainViewState::selection_key,
+                        self.animation_duration_secs,
                     );
 
                     // Re-flatten tree to apply new highlights (but no tree rebuild needed!)

@@ -55,7 +55,11 @@ impl AppState {
 
                         // NOW detect changes after full restoration and cache population
                         if state.session.has_loaded_once {
-                            let _ = state.detect_tree_changes(&old_positions, &old_nodes);
+                            let _ = state.detect_tree_changes(
+                                &old_positions,
+                                &old_nodes,
+                                self.animation_duration_secs,
+                            );
                         }
                     }
                     Err(e) => {

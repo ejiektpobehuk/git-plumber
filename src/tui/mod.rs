@@ -1,5 +1,5 @@
 use crossbeam_channel::{Receiver, select, tick, unbounded};
-pub fn run_tui_with_options(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), String> {
+pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), String> {
     // Terminal initialization
     enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
     let mut stdout = io::stdout();
@@ -13,6 +13,7 @@ pub fn run_tui_with_options(plumber: crate::GitPlumber, opts: RunOptions) -> Res
     // Initialize application state
     let mut app = AppState::new(plumber.get_repo_path().to_path_buf());
     app.reduced_motion = opts.reduced_motion;
+    app.animation_duration_secs = opts.animation_duration_secs;
 
     // Background channel for worker -> UI messages
     let (tx, rx) = unbounded::<crate::tui::message::Message>();
@@ -45,17 +46,9 @@ pub fn run_tui_with_options(plumber: crate::GitPlumber, opts: RunOptions) -> Res
     result
 }
 
-pub fn run_tui(plumber: crate::GitPlumber) -> Result<(), String> {
-    run_tui_with_options(
-        plumber,
-        RunOptions {
-            reduced_motion: false,
-        },
-    )
-}
-
 pub struct RunOptions {
     pub reduced_motion: bool,
+    pub animation_duration_secs: u64,
 }
 
 use crossterm::ExecutableCommand;

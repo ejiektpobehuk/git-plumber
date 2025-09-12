@@ -543,6 +543,7 @@ pub struct AppState {
     pub fs_watcher: Option<notify::RecommendedWatcher>,
     // Preferences
     pub reduced_motion: bool,
+    pub animation_duration_secs: u64,
     // Rendering optimization
     pub last_terminal_size: Option<ratatui::layout::Size>,
 }
@@ -584,8 +585,10 @@ impl AppState {
             educational_content_provider,
             tx: None,
             effects: Vec::new(),
-            // Default; overwritten by run_tui_with_options
+            // Overwritten by run_tui
+            // TODO: use default values from config
             reduced_motion: false,
+            animation_duration_secs: 10,
             // Rendering optimization
             last_terminal_size: None,
         }

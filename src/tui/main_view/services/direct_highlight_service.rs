@@ -16,9 +16,10 @@ impl DirectHighlightService {
         added_files: &HashSet<PathBuf>,
         modified_files: &HashSet<PathBuf>,
         deleted_files: &HashSet<PathBuf>,
+        animation_duration_secs: u64,
     ) {
         let now = Instant::now();
-        let highlight_duration = Duration::from_secs(5);
+        let highlight_duration = Duration::from_secs(animation_duration_secs);
 
         // Convert file paths to selection keys and apply highlights
         for path in added_files {
@@ -53,9 +54,10 @@ impl DirectHighlightService {
         modified_files: &HashSet<PathBuf>,
         deleted_files: &HashSet<PathBuf>,
         selection_key_fn: fn(&GitObject) -> String,
+        animation_duration_secs: u64,
     ) {
         let now = Instant::now();
-        let highlight_duration = Duration::from_secs(5);
+        let highlight_duration = Duration::from_secs(animation_duration_secs);
 
         // Build a mapping from paths to selection keys using the actual tree
         let path_to_key_map = Self::build_path_to_key_map(tree, selection_key_fn);
@@ -310,6 +312,7 @@ impl DirectHighlightService {
         modified_files: &HashSet<PathBuf>,
         deleted_files: &HashSet<PathBuf>,
         selection_key_fn: fn(&GitObject) -> String,
+        animation_duration_secs: u64,
     ) {
         // Filter to only relevant paths
         let relevant_added: HashSet<PathBuf> = added_files
@@ -344,6 +347,7 @@ impl DirectHighlightService {
             &relevant_modified,
             &relevant_deleted,
             selection_key_fn,
+            animation_duration_secs,
         );
     }
 }
@@ -402,6 +406,7 @@ mod tests {
             &added_files,
             &modified_files,
             &deleted_files,
+            10, // Test with 10 seconds
         );
 
         // Check that highlights were applied

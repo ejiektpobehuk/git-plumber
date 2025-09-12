@@ -1,4 +1,4 @@
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{Parser, Subcommand};
 use std::io::{self, Write};
 use std::path::PathBuf;
 
@@ -62,12 +62,29 @@ pub struct Cli {
 }
 
 #[derive(Subcommand)]
+pub enum ConfigCommands {
+    /// Show configuration file locations and current values
+    Show,
+    /// Create a default configuration file
+    Init,
+}
+
+#[derive(Subcommand)]
 pub enum Commands {
     /// Start the TUI interface
     Tui {
         /// Reduce motion/animations in the TUI
         #[arg(long = "reduced-motion", short = 'm', action = clap::ArgAction::SetTrue)]
         reduced_motion: bool,
+        /// Animation duration in seconds (overrides config file)
+        #[arg(long = "animation-duration")]
+        animation_duration: Option<u64>,
+    },
+
+    /// Configuration management
+    Config {
+        #[command(subcommand)]
+        config_command: ConfigCommands,
     },
 
     /// List objects
@@ -108,15 +125,52 @@ pub fn run() -> Result<(), String> {
         return Ok(());
     }
 
+    // Load configuration from files and environment
+    let config = crate::config::GitPlumberConfig::load()
+        .map_err(|e| format!("Failed to load configuration: {e}"))?;
+
     let plumber = crate::GitPlumber::new(&cli.repo_path);
 
     match &cli.command {
-        Some(Commands::Tui { reduced_motion }) => crate::tui::run_tui_with_options(
-            plumber,
-            crate::tui::RunOptions {
-                reduced_motion: *reduced_motion,
-            },
-        ),
+        Some(Commands::Tui {
+            reduced_motion,
+            animation_duration,
+        }) => {
+            // CLI arguments override config file values
+            let final_reduced_motion = *reduced_motion || config.tui.reduced_motion;
+            let final_animation_duration =
+                animation_duration.unwrap_or(config.tui.animation_duration_secs);
+
+            crate::tui::run_tui(
+                plumber,
+                crate::tui::RunOptions {
+                    reduced_motion: final_reduced_motion,
+                    animation_duration_secs: final_animation_duration,
+                },
+            )
+        }
+        Some(Commands::Config { config_command }) => match config_command {
+            ConfigCommands::Show => {
+                crate::config::GitPlumberConfig::print_config_info();
+                println!("\nCurrent configuration:");
+                println!(
+                    "  Animation duration: {} seconds",
+                    config.tui.animation_duration_secs
+                );
+                println!("  Reduced motion: {}", config.tui.reduced_motion);
+                Ok(())
+            }
+            ConfigCommands::Init => {
+                match crate::config::GitPlumberConfig::create_default_config_file() {
+                    Ok(path) => {
+                        println!("Created default configuration file at: {}", path.display());
+                        println!("You can edit this file to customize git-plumber settings.");
+                        Ok(())
+                    }
+                    Err(e) => Err(format!("Failed to create config file: {e}")),
+                }
+            }
+        },
         Some(Commands::List { object_type }) => {
             match object_type.as_str() {
                 "pack" => {
@@ -269,9 +323,14 @@ pub fn run() -> Result<(), String> {
             }
         }
         None => {
-            let mut cmd = Cli::command();
-            cmd.print_help().map_err(|e| e.to_string())?;
-            Ok(())
+            // Default to TUI mode with configuration values
+            crate::tui::run_tui(
+                plumber,
+                crate::tui::RunOptions {
+                    reduced_motion: config.tui.reduced_motion,
+                    animation_duration_secs: config.tui.animation_duration_secs,
+                },
+            )
         }
     }
 }

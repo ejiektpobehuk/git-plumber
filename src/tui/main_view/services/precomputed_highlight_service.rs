@@ -297,7 +297,7 @@ mod tests {
         let now = Instant::now();
         animations.changed_keys.insert(
             "file:/test/src/main.rs".to_string(),
-            now + Duration::from_secs(5),
+            now + Duration::from_secs(10),
         );
 
         let selection_key = |obj: &GitObject| -> String {
