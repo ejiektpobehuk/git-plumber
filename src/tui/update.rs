@@ -23,7 +23,23 @@ impl AppState {
 
             Message::GitObjectsLoaded(data) => {
                 // Apply the loaded git objects list to the MainView state
-                if let AppView::Main { state } = &mut self.view {
+                // Handle loading regardless of current view (could be in TerminalTooSmall initially)
+                let main_view_state = match &mut self.view {
+                    AppView::Main { state } => Some(state),
+                    AppView::TerminalTooSmall { .. } => {
+                        // Check if there's a main view in the stack
+                        self.view_stack.iter_mut().find_map(|view| {
+                            if let AppView::Main { state } = view {
+                                Some(state)
+                            } else {
+                                None
+                            }
+                        })
+                    }
+                    _ => None,
+                };
+
+                if let Some(state) = main_view_state {
                     // Snapshot for change detection if we already had a successful load
                     let old_snapshot = if state.session.has_loaded_once {
                         Some(ChangeDetectionService::snapshot_tree_positions(
@@ -133,7 +149,23 @@ impl AppState {
 
             Message::LoadGitObjectInfo(result) => match result {
                 Ok(info) => {
-                    if let AppView::Main { state } = &mut self.view {
+                    // Handle loading regardless of current view (could be in TerminalTooSmall initially)
+                    let main_view_state = match &mut self.view {
+                        AppView::Main { state } => Some(state),
+                        AppView::TerminalTooSmall { .. } => {
+                            // Check if there's a main view in the stack
+                            self.view_stack.iter_mut().find_map(|view| {
+                                if let AppView::Main { state } = view {
+                                    Some(state)
+                                } else {
+                                    None
+                                }
+                            })
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(state) = main_view_state {
                         state.content.git_object_info = info;
                         self.error = None;
                     }
@@ -145,7 +177,23 @@ impl AppState {
 
             Message::LoadEducationalContent(result) => match result {
                 Ok(preview) => {
-                    if let AppView::Main { state } = &mut self.view {
+                    // Handle loading regardless of current view (could be in TerminalTooSmall initially)
+                    let main_view_state = match &mut self.view {
+                        AppView::Main { state } => Some(state),
+                        AppView::TerminalTooSmall { .. } => {
+                            // Check if there's a main view in the stack
+                            self.view_stack.iter_mut().find_map(|view| {
+                                if let AppView::Main { state } = view {
+                                    Some(state)
+                                } else {
+                                    None
+                                }
+                            })
+                        }
+                        _ => None,
+                    };
+
+                    if let Some(state) = main_view_state {
                         state.content.educational_content = preview;
                         // Only reset to regular state if we're not in a pack preview state
                         match &mut state.preview_state {
@@ -327,8 +375,36 @@ impl AppState {
                     AppView::LooseObjectDetail { .. } => {
                         crate::tui::loose_details::handle_key_event(key, self)
                     }
+                    AppView::TerminalTooSmall { .. } => {
+                        // In terminal too small view, only allow quitting
+                        match key.code {
+                            crossterm::event::KeyCode::Char('q')
+                            | crossterm::event::KeyCode::Char('Q') => {
+                                return false; // Quit the application
+                            }
+                            crossterm::event::KeyCode::Esc => {
+                                return false; // Also quit on Escape
+                            }
+                            _ => None, // Ignore all other keys
+                        }
+                    }
                 } {
                     return self.update(msg, plumber);
+                }
+            }
+        }
+
+        // Check if we need to reload selection-dependent content after view restoration
+        if self.needs_selection_reload {
+            self.needs_selection_reload = false;
+
+            // If we have items in the main view, load details and educational content
+            if let AppView::Main { state } = &self.view {
+                if !state.tree.flat_view.is_empty() {
+                    let details_msg = self.load_git_object_details(plumber);
+                    self.update(details_msg, plumber);
+                    let content_msg = self.load_educational_content(plumber);
+                    self.update(content_msg, plumber);
                 }
             }
         }

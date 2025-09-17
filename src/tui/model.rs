@@ -16,6 +16,10 @@ use crate::tui::loose_details::LooseObjectViewState;
 use crate::tui::main_view::MainViewState;
 use crate::tui::pack_details::PackViewState;
 
+// Minimum terminal dimensions required for the app to function properly
+pub const MIN_TERMINAL_WIDTH: u16 = 45; // Left panel (42) + minimal right panel
+pub const MIN_TERMINAL_HEIGHT: u16 = 8; // Header + footer + minimal content
+
 // Define a structure for individual pack objects
 #[derive(Debug, Clone)]
 pub struct PackObject {
@@ -494,9 +498,21 @@ impl GitObject {
 
 // Define the application view modes (simplified)
 pub enum AppView {
-    Main { state: MainViewState },
-    PackObjectDetail { state: PackViewState },
-    LooseObjectDetail { state: LooseObjectViewState },
+    Main {
+        state: MainViewState,
+    },
+    PackObjectDetail {
+        state: PackViewState,
+    },
+    LooseObjectDetail {
+        state: LooseObjectViewState,
+    },
+    TerminalTooSmall {
+        width: u16,
+        height: u16,
+        min_width: u16,
+        min_height: u16,
+    },
 }
 
 // Store layout dimensions for accurate scrolling
@@ -546,6 +562,8 @@ pub struct AppState {
     pub animation_duration_secs: u64,
     // Rendering optimization
     pub last_terminal_size: Option<ratatui::layout::Size>,
+    // Flag to indicate we need to reload selection-dependent content after view restoration
+    pub needs_selection_reload: bool,
 }
 
 impl AppState {
@@ -591,6 +609,7 @@ impl AppState {
             animation_duration_secs: 10,
             // Rendering optimization
             last_terminal_size: None,
+            needs_selection_reload: false,
         }
     }
 
@@ -640,12 +659,60 @@ impl AppState {
         self.layout_dimensions.terminal_width > 158
     }
 
+    // Check if terminal size meets minimum requirements
+    pub fn is_terminal_too_small(size: ratatui::layout::Size) -> bool {
+        size.width < MIN_TERMINAL_WIDTH || size.height < MIN_TERMINAL_HEIGHT
+    }
+
     // Rendering optimization methods
     pub fn check_terminal_resize(&mut self, current_size: ratatui::layout::Size) -> bool {
         if self.last_terminal_size == Some(current_size) {
             false
         } else {
+            // Always update layout dimensions first to ensure proper initialization
             self.update_layout_dimensions(current_size);
+
+            // Check if terminal is too small and switch to appropriate view
+            if Self::is_terminal_too_small(current_size) {
+                // Store the previous view if we're not already in TerminalTooSmall view
+                if !matches!(self.view, AppView::TerminalTooSmall { .. }) {
+                    // Push current view to stack to restore later
+                    let current_view = std::mem::replace(
+                        &mut self.view,
+                        AppView::TerminalTooSmall {
+                            width: current_size.width,
+                            height: current_size.height,
+                            min_width: MIN_TERMINAL_WIDTH,
+                            min_height: MIN_TERMINAL_HEIGHT,
+                        },
+                    );
+                    self.view_stack.push(current_view);
+                } else {
+                    // Already in TerminalTooSmall view, just update the dimensions
+                    if let AppView::TerminalTooSmall { width, height, .. } = &mut self.view {
+                        *width = current_size.width;
+                        *height = current_size.height;
+                    }
+                }
+            } else {
+                // Terminal is large enough, check if we need to restore from TerminalTooSmall view
+                if matches!(self.view, AppView::TerminalTooSmall { .. }) {
+                    // Restore the previous view
+                    if let Some(previous_view) = self.view_stack.pop() {
+                        self.view = previous_view;
+                    } else {
+                        // Fallback: create a new main view if no previous view exists
+                        let main_view_state =
+                            MainViewState::new(&self.educational_content_provider);
+                        self.view = AppView::Main {
+                            state: main_view_state,
+                        };
+                    }
+                    // Mark that we need to reload selection-dependent content after restoration
+                    self.needs_selection_reload = true;
+                }
+            }
+
             self.last_terminal_size = Some(current_size);
             true
         }

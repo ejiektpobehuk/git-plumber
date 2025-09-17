@@ -17,12 +17,12 @@ pub fn render_styled_paragraph_with_scrollbar(
     is_focused: bool,
 ) {
     let total_lines = content.lines.len();
-    let visible_height = area.height as usize - 2; // Account for borders
+    let visible_height = (area.height as usize).saturating_sub(2); // Account for borders
 
     // Prepare the displayed content with scrolling
     let max_start = total_lines.saturating_sub(visible_height);
     let start = scroll_position.min(max_start);
-    let end = start + visible_height.min(total_lines - start);
+    let end = start + visible_height.min(total_lines.saturating_sub(start));
 
     // Create new Text with only the visible lines
     let displayed_content = Text::from(content.lines[start..end].to_vec());
@@ -81,13 +81,13 @@ pub fn render_list_with_scrollbar<T>(
     is_focused: bool,
     mut item_renderer: impl FnMut(usize, &T, bool) -> ListItem,
 ) {
-    let visible_height = area.height as usize - 2; // Account for borders
+    let visible_height = (area.height as usize).saturating_sub(2); // Account for borders
     let total_items = items.len();
 
     // Prepare the displayed items with scrolling
     let max_start = total_items.saturating_sub(visible_height);
     let start = scroll_position.min(max_start);
-    let end = start + visible_height.min(total_items - start);
+    let end = start + visible_height.min(total_items.saturating_sub(start));
 
     // Create list items for the visible range
     let list_items: Vec<ListItem> = items[start..end]
@@ -156,13 +156,13 @@ pub fn render_list_with_scrollbar_indicators<T>(
     indicators: &[crate::tui::main_view::animations::ScrollbarIndicator],
     mut item_renderer: impl FnMut(usize, &T, bool) -> ListItem,
 ) {
-    let visible_height = area.height as usize - 2; // Account for borders
+    let visible_height = (area.height as usize).saturating_sub(2); // Account for borders
     let total_items = items.len();
 
     // Prepare the displayed items with scrolling
     let max_start = total_items.saturating_sub(visible_height);
     let start = scroll_position.min(max_start);
-    let end = start + visible_height.min(total_items - start);
+    let end = start + visible_height.min(total_items.saturating_sub(start));
 
     // Create list items for the visible range
     let list_items: Vec<ListItem> = items[start..end]

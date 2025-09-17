@@ -10,12 +10,13 @@ pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), Strin
     let mut terminal =
         Terminal::new(backend).map_err(|e| format!("Failed to create terminal: {e}"))?;
 
-    // Initialize application state
+    // Initialize application state with main view (always initialize widgets first)
     let mut app = AppState::new(plumber.get_repo_path().to_path_buf());
     app.reduced_motion = opts.reduced_motion;
     app.animation_duration_secs = opts.animation_duration_secs;
 
-    // Set initial terminal size to ensure proper layout dimensions
+    // Set initial terminal size - this will switch to TerminalTooSmall view if needed,
+    // but the main view widgets are already properly initialized by AppState::new()
     let initial_size = terminal
         .size()
         .map_err(|e| format!("Failed to get terminal size: {e}"))?;
