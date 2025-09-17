@@ -15,6 +15,12 @@ pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), Strin
     app.reduced_motion = opts.reduced_motion;
     app.animation_duration_secs = opts.animation_duration_secs;
 
+    // Set initial terminal size to ensure proper layout dimensions
+    let initial_size = terminal
+        .size()
+        .map_err(|e| format!("Failed to get terminal size: {e}"))?;
+    app.check_terminal_resize(initial_size);
+
     // Background channel for worker -> UI messages
     let (tx, rx) = unbounded::<crate::tui::message::Message>();
     app.set_tx(tx.clone());

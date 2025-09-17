@@ -17,10 +17,12 @@ impl AppState {
         // Handle preview state transition based on object type
         self.handle_preview_state_transition(new_index, is_pack_preview);
 
-        // Update scroll position to keep selected item visible
+        // Update both selection index and scroll position to keep selected item visible
         if let AppView::Main { state } = &mut self.view {
             // Use actual layout dimensions for accurate scroll positioning
             let visible_height = self.layout_dimensions.git_objects_height;
+
+            // Update scroll position first, before changing selection index
             state.tree.scroll_position =
                 super::services::UIService::update_git_objects_scroll_for_selection(
                     &state.tree.flat_view,
@@ -28,6 +30,9 @@ impl AppState {
                     state.tree.scroll_position,
                     visible_height,
                 );
+
+            // Now update the selection index
+            state.tree.selected_index = new_index;
         }
 
         // Load details for the newly selected object
@@ -90,14 +95,13 @@ impl AppState {
                 }
 
                 MainNavigation::SelectNextGitObject => {
-                    let (should_update, new_index, is_pack_preview) = match &mut self.view {
+                    let (should_update, new_index, is_pack_preview) = match &self.view {
                         AppView::Main { state, .. } => {
                             if state.tree.flat_view.is_empty() {
                                 (false, 0, false)
                             } else {
                                 let new_index =
                                     (state.tree.selected_index + 1) % state.tree.flat_view.len();
-                                state.tree.selected_index = new_index;
 
                                 let is_pack = state.tree.flat_view.get(new_index).is_some_and(
                                     |row| match &row.object.obj_type {
@@ -120,7 +124,7 @@ impl AppState {
                 }
 
                 MainNavigation::SelectPreviouwGitObject => {
-                    let (should_update, new_index, is_pack_preview) = match &mut self.view {
+                    let (should_update, new_index, is_pack_preview) = match &self.view {
                         AppView::Main { state } => {
                             if state.tree.flat_view.is_empty() {
                                 (false, 0, false)
@@ -130,7 +134,6 @@ impl AppState {
                                 } else {
                                     state.tree.flat_view.len() - 1
                                 };
-                                state.tree.selected_index = new_index;
 
                                 let is_pack = state.tree.flat_view.get(new_index).is_some_and(
                                     |row| match &row.object.obj_type {
@@ -153,13 +156,11 @@ impl AppState {
                 }
 
                 MainNavigation::SelectFirstGitObject => {
-                    let (should_update, new_index, is_pack_preview) = match &mut self.view {
+                    let (should_update, new_index, is_pack_preview) = match &self.view {
                         AppView::Main { state } => {
                             if state.tree.flat_view.is_empty() {
                                 (false, 0, false)
                             } else {
-                                state.tree.selected_index = 0;
-
                                 let is_pack = state.tree.flat_view.first().is_some_and(|row| {
                                     match &row.object.obj_type {
                                         GitObjectType::PackFolder { .. } => true,
@@ -181,13 +182,12 @@ impl AppState {
                 }
 
                 MainNavigation::SelectLastGitObject => {
-                    let (should_update, new_index, is_pack_preview) = match &mut self.view {
+                    let (should_update, new_index, is_pack_preview) = match &self.view {
                         AppView::Main { state } => {
                             if state.tree.flat_view.is_empty() {
                                 (false, 0, false)
                             } else {
                                 let new_index = state.tree.flat_view.len() - 1;
-                                state.tree.selected_index = new_index;
 
                                 let is_pack = state.tree.flat_view.get(new_index).is_some_and(
                                     |row| match &row.object.obj_type {
@@ -253,20 +253,7 @@ impl AppState {
                                         GitObjectType::Category(_)
                                         | GitObjectType::FileSystemFolder { .. }
                                         | GitObjectType::PackFolder { .. } => {
-                                            // Jump to this parent
-                                            state.tree.selected_index = i;
-
-                                            // Update scroll position to keep selected item visible
-                                            let visible_height =
-                                                self.layout_dimensions.git_objects_height;
-                                            state.tree.scroll_position = super::services::UIService::update_git_objects_scroll_for_selection(
-                                                &state.tree.flat_view,
-                                                i,
-                                                state.tree.scroll_position,
-                                                visible_height,
-                                            );
-
-                                            // Load details for the newly selected object
+                                            // Jump to this parent - let handle_git_object_selection handle both selection and scroll updates
                                             self.handle_git_object_selection(i, false, plumber);
                                             break;
                                         }
