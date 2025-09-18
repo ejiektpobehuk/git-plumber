@@ -1,4 +1,4 @@
-use crate::git::pack::PackIndex;
+use crate::git::pack::{PackIndex, PackReverseIndex};
 use crate::tui::model::PackObject;
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -33,6 +33,7 @@ pub enum Message {
         result: Result<Vec<PackObject>, String>,
     },
     LoadPackIndexDetails(Box<Result<PackIndex, String>>),
+    LoadPackReverseIndexDetails(Box<Result<PackReverseIndex, String>>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
     LooseObjectNavigation(LooseObjectNavigation),

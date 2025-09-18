@@ -31,14 +31,14 @@ pub fn render_styled_paragraph_with_scrollbar(
     let paragraph = Paragraph::new(displayed_content)
         .wrap(ratatui::widgets::Wrap { trim: false })
         .block(if is_focused {
-        Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_type(ratatui::widgets::BorderType::Plain)
-            .border_style(Style::default().fg(Color::Yellow))
-    } else {
-        Block::default().title(title).borders(Borders::ALL)
-    });
+            Block::default()
+                .title(title)
+                .borders(Borders::ALL)
+                .border_type(ratatui::widgets::BorderType::Plain)
+                .border_style(Style::default().fg(Color::Yellow))
+        } else {
+            Block::default().title(title).borders(Borders::ALL)
+        });
 
     f.render_widget(paragraph, area);
 

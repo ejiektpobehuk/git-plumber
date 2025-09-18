@@ -117,10 +117,12 @@ impl AppState {
                             );
                         match &mut state.preview_state {
                             PreviewState::Regular(r) => {
-                                if r.pack_index_widget.is_none() {
+                                if r.pack_index_widget.is_none()
+                                    && r.pack_reverse_index_widget.is_none()
+                                {
                                     r.preview_scroll_position = snap.preview_scroll;
                                 }
-                                // PackIndex widget manages its own scrolling, no restoration needed
+                                // PackIndex and PackReverseIndex widgets manage their own scrolling, no restoration needed
                             }
                             PreviewState::Pack(p) => {
                                 p.educational_scroll_position = snap.preview_scroll;
@@ -198,8 +200,9 @@ impl AppState {
                         // Only reset to regular state if we're not in a pack preview state
                         match &mut state.preview_state {
                             PreviewState::Regular(regular_state) => {
-                                // Clear pack index widget for regular state
+                                // Clear specialized widgets for regular state
                                 regular_state.pack_index_widget = None;
+                                regular_state.pack_reverse_index_widget = None;
                             }
                             PreviewState::Pack(_) => {
                                 // Preserve pack preview state - don't reset it!
@@ -220,6 +223,23 @@ impl AppState {
                         state.preview_state = PreviewState::Regular(
                             crate::tui::main_view::RegularPreViewState::new_with_pack_index(
                                 pack_index,
+                            ),
+                        );
+                        self.error = None;
+                    }
+                }
+                Err(e) => {
+                    self.error = Some(e);
+                }
+            },
+
+            Message::LoadPackReverseIndexDetails(result) => match *result {
+                Ok(reverse_index) => {
+                    if let AppView::Main { state } = &mut self.view {
+                        // Switch to Regular preview state with pack reverse index widget
+                        state.preview_state = PreviewState::Regular(
+                            crate::tui::main_view::RegularPreViewState::new_with_pack_reverse_index(
+                                reverse_index,
                             ),
                         );
                         self.error = None;
@@ -279,8 +299,10 @@ impl AppState {
                     // capture scrolls
                     let preview_scroll = match &state.preview_state {
                         PreviewState::Regular(r) => {
-                            if r.pack_index_widget.is_some() {
-                                0 // PackIndex widget manages its own scrolling
+                            if r.pack_index_widget.is_some()
+                                || r.pack_reverse_index_widget.is_some()
+                            {
+                                0 // PackIndex and PackReverseIndex widgets manage their own scrolling
                             } else {
                                 r.preview_scroll_position
                             }
@@ -345,6 +367,7 @@ impl AppState {
             | Message::LoadGitObjectInfo(_)
             | Message::LoadEducationalContent(_)
             | Message::LoadPackIndexDetails(_)
+            | Message::LoadPackReverseIndexDetails(_)
             | Message::LoadPackObjects { .. }
             | Message::GitObjectsLoaded(_) => {
                 return self.handle_load_result_message(msg, plumber);

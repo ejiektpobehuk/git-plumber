@@ -1,0 +1,98 @@
+pub mod formatters;
+
+use crate::git::pack::PackReverseIndex;
+use crate::tui::widget::ScrollableTextWidget;
+use ratatui::text::ToText;
+
+use formatters::PackReverseIndexFormatter;
+
+#[derive(Debug, Clone)]
+pub enum PackReverseIndexWidget {
+    Uninitialized,
+    Initialized {
+        reverse_index: PackReverseIndex,
+        scrollable_widget: ScrollableTextWidget,
+    },
+}
+
+impl PackReverseIndexWidget {
+    #[must_use]
+    pub fn new(reverse_index: PackReverseIndex) -> Self {
+        let mut scrollable_widget = ScrollableTextWidget::new();
+        // Pre-generate and cache the content
+        let content = PackReverseIndexFormatter::new(&reverse_index).generate_content();
+        scrollable_widget.set_text(content);
+
+        Self::Initialized {
+            reverse_index,
+            scrollable_widget,
+        }
+    }
+
+    #[must_use]
+    pub fn text(&self) -> ratatui::text::Text<'static> {
+        match self {
+            Self::Initialized {
+                scrollable_widget, ..
+            } => scrollable_widget.text(),
+            Self::Uninitialized => "Initializing Pack Reverse Index Preview...".to_text(),
+        }
+    }
+
+    pub const fn scroll_up(&mut self) {
+        if let Self::Initialized {
+            scrollable_widget, ..
+        } = self
+        {
+            scrollable_widget.scroll_up();
+        }
+    }
+
+    pub fn scroll_down(&mut self) {
+        if let Self::Initialized {
+            scrollable_widget, ..
+        } = self
+        {
+            scrollable_widget.scroll_down();
+        }
+    }
+
+    pub const fn scroll_to_top(&mut self) {
+        if let Self::Initialized {
+            scrollable_widget, ..
+        } = self
+        {
+            scrollable_widget.scroll_to_top();
+        }
+    }
+
+    pub const fn scroll_to_bottom(&mut self) {
+        if let Self::Initialized {
+            scrollable_widget, ..
+        } = self
+        {
+            scrollable_widget.scroll_to_bottom();
+        }
+    }
+
+    pub fn render(
+        &mut self,
+        f: &mut ratatui::Frame,
+        area: ratatui::layout::Rect,
+        is_focused: bool,
+    ) {
+        match self {
+            Self::Initialized {
+                scrollable_widget, ..
+            } => {
+                scrollable_widget.render(f, area, "Pack Reverse Index Details", is_focused);
+            }
+            Self::Uninitialized => {
+                // For uninitialized state, create a temporary scrollable widget with the loading message
+                let mut temp_widget = ScrollableTextWidget::new();
+                temp_widget.set_text("Initializing Pack Reverse Index Preview...".to_text());
+                temp_widget.render(f, area, "Pack Reverse Index Details", is_focused);
+            }
+        }
+    }
+}

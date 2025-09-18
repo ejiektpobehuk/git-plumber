@@ -355,10 +355,28 @@ impl AppState {
                                     }
                                 }
                                 "rev" => {
-                                    let content = self
-                                        .educational_content_provider
-                                        .get_category_content("Reverse Index");
-                                    Message::LoadEducationalContent(Ok(content))
+                                    // Try to parse reverse index file for detailed preview
+                                    match std::fs::read(path) {
+                                        Ok(rev_data) => {
+                                            match crate::git::pack::PackReverseIndex::parse(
+                                                &rev_data,
+                                            ) {
+                                                Ok((_, reverse_index)) => {
+                                                    Message::LoadPackReverseIndexDetails(Box::new(
+                                                        Ok(reverse_index),
+                                                    ))
+                                                }
+                                                Err(e) => Message::LoadPackReverseIndexDetails(
+                                                    Box::new(Err(format!(
+                                                        "Error parsing pack reverse index: {e:?}"
+                                                    ))),
+                                                ),
+                                            }
+                                        }
+                                        Err(e) => Message::LoadPackReverseIndexDetails(Box::new(
+                                            Err(format!("Error reading reverse index file: {e}")),
+                                        )),
+                                    }
                                 }
                                 "mtime" => {
                                     let content = self

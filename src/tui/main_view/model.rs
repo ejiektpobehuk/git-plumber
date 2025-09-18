@@ -1,7 +1,7 @@
 use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
-use crate::tui::widget::{PackIndexWidget, PackObjectWidget};
+use crate::tui::widget::{PackIndexWidget, PackObjectWidget, PackReverseIndexWidget};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -106,6 +106,7 @@ pub struct RegularPreViewState {
     pub focus: RegularFocus,
     pub preview_scroll_position: usize,
     pub pack_index_widget: Option<PackIndexWidget>,
+    pub pack_reverse_index_widget: Option<PackReverseIndexWidget>,
 }
 
 impl Default for RegularPreViewState {
@@ -121,6 +122,7 @@ impl RegularPreViewState {
             focus: RegularFocus::GitObjects,
             preview_scroll_position: 0,
             pack_index_widget: None,
+            pack_reverse_index_widget: None,
         }
     }
 
@@ -130,6 +132,17 @@ impl RegularPreViewState {
             focus: RegularFocus::GitObjects,
             preview_scroll_position: 0,
             pack_index_widget: Some(PackIndexWidget::new(pack_index)),
+            pack_reverse_index_widget: None,
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_pack_reverse_index(reverse_index: crate::git::pack::PackReverseIndex) -> Self {
+        Self {
+            focus: RegularFocus::GitObjects,
+            preview_scroll_position: 0,
+            pack_index_widget: None,
+            pack_reverse_index_widget: Some(PackReverseIndexWidget::new(reverse_index)),
         }
     }
 }

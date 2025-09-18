@@ -1,4 +1,5 @@
 use crate::git::pack::PackIndex;
+use crate::tui::widget::formatters_utils::format_u32_as_hex_bytes;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 
@@ -134,7 +135,7 @@ impl<'a> FanoutFormatter<'a> {
 
                 let bucket_size = count.saturating_sub(prev_count);
                 let byte_pos = self.calculate_fanout_byte_position(i);
-                let hex_value = self.format_hex_value(count);
+                let hex_value = format_u32_as_hex_bytes(count);
 
                 if bucket_size > 0 {
                     // Active row: different colors for different data types
@@ -320,17 +321,6 @@ impl<'a> FanoutFormatter<'a> {
         }
 
         show_entry
-    }
-
-    /// Format a 32-bit value as hex bytes (4 bytes, big-endian)
-    fn format_hex_value(&self, value: u32) -> String {
-        format!(
-            "{:02x} {:02x} {:02x} {:02x}",
-            (value >> 24) & 0xff,
-            (value >> 16) & 0xff,
-            (value >> 8) & 0xff,
-            value & 0xff
-        )
     }
 
     fn add_search_explanation(&self, lines: &mut Vec<Line<'static>>) {

@@ -180,10 +180,18 @@ fn render_regular_preview_layout(
         );
         f.render_widget(details_widget, content_chunks[0]);
 
-        // Bottom block - Educational/Preview content or Pack Index widget
+        // Bottom block - Educational/Preview content or specialized widgets
         if let Some(pack_index_widget) = &mut preview_state.pack_index_widget {
             // Render pack index widget
             pack_index_widget.render(
+                f,
+                content_chunks[1],
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
+        } else if let Some(pack_reverse_index_widget) = &mut preview_state.pack_reverse_index_widget
+        {
+            // Render pack reverse index widget
+            pack_reverse_index_widget.render(
                 f,
                 content_chunks[1],
                 matches!(preview_state.focus, RegularFocus::Preview),
