@@ -52,7 +52,7 @@ impl PackGroup {
             files.push(("index", path));
         }
         if let Some(ref path) = self.rev_file {
-            files.push(("xedni", path)); // reversed index
+            files.push(("rev", path)); // reversed index
         }
         if let Some(ref path) = self.mtimes_file {
             files.push(("mtime", path)); // mtimes

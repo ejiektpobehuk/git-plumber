@@ -354,7 +354,7 @@ impl AppState {
                                         ))),
                                     }
                                 }
-                                "xedni" => {
+                                "rev" => {
                                     let content = self
                                         .educational_content_provider
                                         .get_category_content("Reverse Index");

@@ -52,7 +52,7 @@ pub enum GitObjectType {
         pack_group: crate::git::repository::PackGroup,
     },
     PackFile {
-        file_type: String, // "packfile", "index", "xedni", "mtime"
+        file_type: String, // "packfile", "index", "rev", "mtime"
         path: PathBuf,
         size: Option<u64>,
         modified_time: Option<SystemTime>,
@@ -258,7 +258,7 @@ impl GitObject {
             "packfile" => "packfile",
             "pack" => "pack",
             "index" => "index",
-            "xedni" => "xedni",
+            "rev" => "rev",
             "mtime" => "mtime",
             _ => "unknown",
         }
