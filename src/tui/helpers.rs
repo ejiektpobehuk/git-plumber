@@ -28,7 +28,9 @@ pub fn render_styled_paragraph_with_scrollbar(
     let displayed_content = Text::from(content.lines[start..end].to_vec());
 
     // Create the paragraph widget
-    let paragraph = Paragraph::new(displayed_content).block(if is_focused {
+    let paragraph = Paragraph::new(displayed_content)
+        .wrap(ratatui::widgets::Wrap { trim: false })
+        .block(if is_focused {
         Block::default()
             .title(title)
             .borders(Borders::ALL)
