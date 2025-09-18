@@ -17,8 +17,8 @@ use crate::tui::main_view::MainViewState;
 use crate::tui::pack_details::PackViewState;
 
 // Minimum terminal dimensions required for the app to function properly
-pub const MIN_TERMINAL_WIDTH: u16 = 45; // Left panel (42) + minimal right panel
-pub const MIN_TERMINAL_HEIGHT: u16 = 8; // Header + footer + minimal content
+pub const MIN_TERMINAL_WIDTH: u16 = 80;
+pub const MIN_TERMINAL_HEIGHT: u16 = 20;
 
 // Define a structure for individual pack objects
 #[derive(Debug, Clone)]
