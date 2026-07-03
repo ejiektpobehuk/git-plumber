@@ -38,6 +38,10 @@ impl std::fmt::Display for LooseObjectType {
     }
 }
 
+/// How many leading bytes `is_binary` samples, mirroring git's own
+/// binary-detection window.
+const BINARY_SNIFF_LEN: usize = 8000;
+
 impl std::str::FromStr for LooseObjectType {
     type Err = LooseObjectError;
 
@@ -393,11 +397,23 @@ impl LooseObject {
         String::from_utf8_lossy(&self.content).to_string()
     }
 
-    /// Check if this object is binary (likely a blob)
+    /// Check if this object's content is binary rather than text.
+    ///
+    /// Sniffs the first [`BINARY_SNIFF_LEN`] bytes: a null byte means binary
+    /// (matching git's own heuristic), otherwise the content is binary when
+    /// more than 10% of the sampled bytes are control characters that don't
+    /// appear in text. Bytes >= 0x80 are allowed so UTF-8 stays text.
     #[must_use]
     pub fn is_binary(&self) -> bool {
-        // Simple heuristic: if content contains null bytes, it's likely binary
-        self.content.contains(&0) || matches!(self.object_type, LooseObjectType::Blob)
+        let sample = &self.content[..self.content.len().min(BINARY_SNIFF_LEN)];
+        if sample.contains(&0) {
+            return true;
+        }
+        let non_text = sample
+            .iter()
+            .filter(|&&b| (b < 0x20 && !matches!(b, b'\t' | b'\n' | b'\r' | 0x0C)) || b == 0x7F)
+            .count();
+        non_text * 10 > sample.len()
     }
 
     /// Get parsed content if available
@@ -464,6 +480,47 @@ mod tests {
         assert_eq!(object.size, 13);
         assert_eq!(object.content, content);
         assert_eq!(object.object_id, "abcdef1234567890123456789012345678901234");
+    }
+
+    fn blob_with_content(content: &[u8]) -> LooseObject {
+        let header = format!("blob {}\0", content.len());
+        let mut data = header.into_bytes();
+        data.extend_from_slice(content);
+        LooseObject::parse_object_data(&data, "test".to_string()).unwrap()
+    }
+
+    #[test]
+    fn test_is_binary_text_blob() {
+        assert!(!blob_with_content(b"Hello, World!\nSecond line.\n").is_binary());
+    }
+
+    #[test]
+    fn test_is_binary_utf8_blob() {
+        assert!(!blob_with_content("héllo wörld — ünïcode ✓\n".as_bytes()).is_binary());
+    }
+
+    #[test]
+    fn test_is_binary_empty_blob() {
+        assert!(!blob_with_content(b"").is_binary());
+    }
+
+    #[test]
+    fn test_is_binary_null_byte_blob() {
+        assert!(blob_with_content(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR").is_binary());
+    }
+
+    #[test]
+    fn test_is_binary_control_heavy_blob() {
+        // No null bytes, but well over 10% non-text control characters
+        assert!(blob_with_content(b"\x01\x02\x03\x04abc\x05\x06\x07\x08").is_binary());
+    }
+
+    #[test]
+    fn test_is_binary_null_byte_beyond_sniff_window_is_text() {
+        // Null byte after the first 8000 bytes doesn't affect the verdict
+        let mut content = vec![b'a'; 8100];
+        content[8050] = 0;
+        assert!(!blob_with_content(&content).is_binary());
     }
 
     #[test]
