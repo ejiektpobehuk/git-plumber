@@ -6,7 +6,6 @@ use crate::tui::widget::loose_obj_details::LooseObjectWidget;
 use crate::tui::widget::pack_obj_details::PackObjectWidget;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Text;
-use sha1::Digest;
 use std::fmt::Write;
 
 pub struct CliPackFormatter;
@@ -22,12 +21,15 @@ impl CliPackFormatter {
         Self::format_pack_header(&mut output, header);
         writeln!(&mut output).unwrap();
 
+        // Resolve delta chains so each object shows its real git object ID
+        let resolved = crate::git::pack::resolve_objects(objects);
+
         // Format each object using TUI formatters
         for (i, object) in objects.iter().enumerate() {
             if i > 0 {
                 writeln!(&mut output, "{}", "═".repeat(80)).unwrap();
             }
-            Self::format_pack_object(&mut output, object, i + 1);
+            Self::format_pack_object(&mut output, object, i + 1, resolved[i].as_ref());
         }
 
         output
@@ -48,14 +50,19 @@ impl CliPackFormatter {
     }
 
     /// Format a single pack object using TUI formatters
-    fn format_pack_object(output: &mut String, object: &Object, index: usize) {
+    fn format_pack_object(
+        output: &mut String,
+        object: &Object,
+        index: usize,
+        resolved: Option<&crate::git::pack::ResolvedObject>,
+    ) {
         writeln!(output).unwrap();
         writeln!(output, "\x1b[1mOBJECT #{index}\x1b[0m").unwrap();
         writeln!(output, "{}", "─".repeat(40)).unwrap();
         writeln!(output).unwrap();
 
         // Create a PackObject from the Object (similar to what TUI loaders do)
-        let pack_obj = Self::create_pack_object_from_object(object, index);
+        let pack_obj = Self::create_pack_object_from_object(object, index, resolved);
 
         // Use the TUI formatter to generate rich content
         let mut widget = PackObjectWidget::new(pack_obj);
@@ -179,16 +186,16 @@ impl CliPackFormatter {
     }
 
     /// Create a `PackObject` from an Object (similar to TUI loader logic)
-    fn create_pack_object_from_object(object: &Object, index: usize) -> PackObject {
+    fn create_pack_object_from_object(
+        object: &Object,
+        index: usize,
+        resolved: Option<&crate::git::pack::ResolvedObject>,
+    ) -> PackObject {
         let obj_type = object.header.obj_type();
         let size = object.header.uncompressed_data_size();
 
-        // Calculate SHA-1 hash like the TUI does
-        let mut hasher = sha1::Sha1::new();
-        let header = format!("{obj_type} {size}\0");
-        hasher.update(header.as_bytes());
-        hasher.update(&object.uncompressed_data);
-        let sha1 = Some(format!("{:x}", hasher.finalize()));
+        // Real git object ID from delta resolution; None if unresolvable
+        let sha1 = resolved.map(|r| r.sha1.clone());
 
         // Extract base info for delta objects
         let base_info = match &object.header {

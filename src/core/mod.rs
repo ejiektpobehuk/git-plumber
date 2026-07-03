@@ -457,7 +457,6 @@ impl GitPlumber {
         partial_hash: &str,
     ) -> Result<crate::tui::model::PackObject, String> {
         use crate::git::pack::{Header, Object};
-        use sha1::Digest;
 
         // Get all pack files
         let pack_files = self
@@ -473,31 +472,35 @@ impl GitPlumber {
 
             if let Ok((mut remaining_data, header)) = Header::parse(&pack_data) {
                 // Parse all objects in this pack file
-                for index in 0..header.object_count {
-                    if let Ok((new_remaining_data, object)) = Object::parse(remaining_data) {
-                        // Calculate SHA-1 hash for this object
-                        let obj_type = object.header.obj_type();
-                        let size = object.header.uncompressed_data_size();
-                        let mut hasher = sha1::Sha1::new();
-                        let header_str = format!("{obj_type} {size}\0");
-                        hasher.update(header_str.as_bytes());
-                        hasher.update(&object.uncompressed_data);
-                        let sha1 = format!("{:x}", hasher.finalize());
-
-                        // Check if this hash matches our partial hash
-                        if sha1.starts_with(partial_hash) {
-                            let pack_obj = crate::tui::model::PackObject {
-                                index: index as usize + 1,
-                                obj_type: obj_type.to_string(),
-                                size: u32::try_from(size).unwrap_or(u32::MAX),
-                                sha1: Some(sha1),
-                                base_info: None, // TODO: Add delta info if needed
-                                object_data: Some(object),
-                            };
-                            matches.push(pack_obj);
+                let mut objects = Vec::new();
+                for _ in 0..header.object_count {
+                    match Object::parse(remaining_data) {
+                        Ok((new_remaining_data, object)) => {
+                            objects.push(object);
+                            remaining_data = new_remaining_data;
                         }
+                        Err(_) => break,
+                    }
+                }
 
-                        remaining_data = new_remaining_data;
+                // Resolve delta chains to get real git object IDs, so
+                // deltified objects are findable by their actual hash
+                let resolved = crate::git::pack::resolve_objects(&objects);
+
+                for (index, (object, resolved)) in objects.into_iter().zip(resolved).enumerate() {
+                    let Some(resolved) = resolved else { continue };
+
+                    if resolved.sha1.starts_with(partial_hash) {
+                        let pack_obj = crate::tui::model::PackObject {
+                            index: index + 1,
+                            obj_type: object.header.obj_type().to_string(),
+                            size: u32::try_from(object.header.uncompressed_data_size())
+                                .unwrap_or(u32::MAX),
+                            sha1: Some(resolved.sha1),
+                            base_info: None, // TODO: Add delta info if needed
+                            object_data: Some(object),
+                        };
+                        matches.push(pack_obj);
                     }
                 }
             }
