@@ -68,6 +68,20 @@ pub enum GitObjectType {
     },
 }
 
+impl GitObjectType {
+    // Whether selecting this object should show the pack preview (pack folders
+    // and .pack files; index/rev/mtime files use the regular preview)
+    pub fn is_pack(&self) -> bool {
+        match self {
+            GitObjectType::PackFolder { .. } => true,
+            GitObjectType::PackFile { file_type, .. } => {
+                file_type == "packfile" || file_type == "pack"
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GitObject {
     pub name: String,

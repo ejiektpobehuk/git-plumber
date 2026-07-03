@@ -103,15 +103,11 @@ impl AppState {
                                 let new_index =
                                     (state.tree.selected_index + 1) % state.tree.flat_view.len();
 
-                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
-                                    |row| match &row.object.obj_type {
-                                        GitObjectType::PackFolder { .. } => true,
-                                        GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile" || file_type == "pack"
-                                        }
-                                        _ => false,
-                                    },
-                                );
+                                let is_pack = state
+                                    .tree
+                                    .flat_view
+                                    .get(new_index)
+                                    .is_some_and(|row| row.object.obj_type.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -135,15 +131,11 @@ impl AppState {
                                     state.tree.flat_view.len() - 1
                                 };
 
-                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
-                                    |row| match &row.object.obj_type {
-                                        GitObjectType::PackFolder { .. } => true,
-                                        GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile" || file_type == "pack"
-                                        }
-                                        _ => false,
-                                    },
-                                );
+                                let is_pack = state
+                                    .tree
+                                    .flat_view
+                                    .get(new_index)
+                                    .is_some_and(|row| row.object.obj_type.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -161,15 +153,11 @@ impl AppState {
                             if state.tree.flat_view.is_empty() {
                                 (false, 0, false)
                             } else {
-                                let is_pack = state.tree.flat_view.first().is_some_and(|row| {
-                                    match &row.object.obj_type {
-                                        GitObjectType::PackFolder { .. } => true,
-                                        GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile" || file_type == "pack"
-                                        }
-                                        _ => false,
-                                    }
-                                });
+                                let is_pack = state
+                                    .tree
+                                    .flat_view
+                                    .first()
+                                    .is_some_and(|row| row.object.obj_type.is_pack());
                                 (true, 0, is_pack)
                             }
                         }
@@ -189,15 +177,11 @@ impl AppState {
                             } else {
                                 let new_index = state.tree.flat_view.len() - 1;
 
-                                let is_pack = state.tree.flat_view.get(new_index).is_some_and(
-                                    |row| match &row.object.obj_type {
-                                        GitObjectType::PackFolder { .. } => true,
-                                        GitObjectType::PackFile { file_type, .. } => {
-                                            file_type == "packfile" || file_type == "pack"
-                                        }
-                                        _ => false,
-                                    },
-                                );
+                                let is_pack = state
+                                    .tree
+                                    .flat_view
+                                    .get(new_index)
+                                    .is_some_and(|row| row.object.obj_type.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -217,12 +201,11 @@ impl AppState {
                             // Extract the information we need before calling update to avoid borrow conflicts
                             let has_items = !state.tree.flat_view.is_empty();
                             let selected_index = state.tree.selected_index;
-                            let is_pack =
-                                if let Some(row) = state.tree.flat_view.get(selected_index) {
-                                    matches!(row.object.obj_type, GitObjectType::PackFolder { .. })
-                                } else {
-                                    false
-                                };
+                            let is_pack = state
+                                .tree
+                                .flat_view
+                                .get(selected_index)
+                                .is_some_and(|row| row.object.obj_type.is_pack());
                             (toggle_msg, has_items, selected_index, is_pack)
                         } else {
                             return true; // Not in main view
@@ -254,7 +237,8 @@ impl AppState {
                                         | GitObjectType::FileSystemFolder { .. }
                                         | GitObjectType::PackFolder { .. } => {
                                             // Jump to this parent - let handle_git_object_selection handle both selection and scroll updates
-                                            self.handle_git_object_selection(i, false, plumber);
+                                            let is_pack = parent_row.object.obj_type.is_pack();
+                                            self.handle_git_object_selection(i, is_pack, plumber);
                                             break;
                                         }
                                         _ => {
@@ -431,6 +415,7 @@ impl AppState {
                                         pack_object_list,
                                         pack_object_list_scroll_position,
                                         selected_pack_object,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -441,6 +426,7 @@ impl AppState {
                     {
                         *selected_pack_object = 0;
                         *pack_object_list_scroll_position = 0;
+                        *pack_widget_state = PackObjectWidget::new(pack_object_list[0].clone());
                     }
                 }
                 MainNavigation::SelectLastPackObject => {
@@ -452,6 +438,7 @@ impl AppState {
                                         pack_object_list,
                                         pack_object_list_scroll_position,
                                         selected_pack_object,
+                                        pack_object_widget_state: pack_widget_state,
                                         ..
                                     }),
                                 ..
@@ -461,6 +448,8 @@ impl AppState {
                         && !pack_object_list.is_empty()
                     {
                         *selected_pack_object = pack_object_list.len() - 1;
+                        *pack_widget_state =
+                            PackObjectWidget::new(pack_object_list[*selected_pack_object].clone());
                         // Update scroll position to show the last item
                         let visible_height = self.layout_dimensions.pack_objects_height;
                         if *selected_pack_object >= visible_height {

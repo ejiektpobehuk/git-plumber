@@ -36,15 +36,7 @@ impl AppState {
             };
 
             // Check if current object is a pack object
-            let is_pack_object = match &flat_view[*selected_index].object.obj_type {
-                GitObjectType::PackFolder { .. } => true,
-                GitObjectType::PackFile { file_type, .. } => {
-                    file_type == "packfile" || file_type == "pack"
-                }
-                _ => false,
-            };
-
-            if !is_pack_object {
+            if !flat_view[*selected_index].object.obj_type.is_pack() {
                 return;
             }
 
