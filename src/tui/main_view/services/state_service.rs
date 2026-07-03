@@ -179,7 +179,6 @@ pub struct StateSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::educational_content::EducationalContent;
 
     #[test]
     fn test_state_service_creation() {

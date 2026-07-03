@@ -355,7 +355,6 @@ impl DirectHighlightService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::model::GitObject;
     use std::path::PathBuf;
 
     #[test]
