@@ -176,10 +176,16 @@ impl ObjectHeader {
         // Handle delta objects
         let header = match obj_type {
             ObjectType::OfsDelta => {
-                // Parse variable-length offset encoding (see git packfile format)
-                let mut offset: u64 = 0;
-                let mut c: u8;
-                loop {
+                // Parse variable-length offset encoding (see git packfile
+                // format): base-128 big-endian with a +1 bias per
+                // continuation byte, so e.g. [0x80, 0x00] decodes to 128
+                if i >= input.len() {
+                    return Err(nom::Err::Incomplete(nom::Needed::new(1)));
+                }
+                let mut c = input[i];
+                i += 1;
+                let mut offset = u64::from(c & 0x7F);
+                while c & 0x80 != 0 {
                     if i >= input.len() {
                         return Err(nom::Err::Incomplete(nom::Needed::new(1)));
                     }
@@ -187,16 +193,13 @@ impl ObjectHeader {
                     i += 1;
                     // Guard the shift: a valid offset fits in u64, so losing
                     // high bits here can only mean a corrupt header
-                    if offset > (u64::MAX >> 7) {
+                    if offset >= (u64::MAX >> 7) {
                         return Err(nom::Err::Error(Error::new(
                             original_input,
                             ErrorKind::TooLarge,
                         )));
                     }
-                    offset = (offset << 7) | (u64::from(c) & 0x7F);
-                    if c & 0x80 == 0 {
-                        break;
-                    }
+                    offset = ((offset + 1) << 7) | u64::from(c & 0x7F);
                 }
                 // Calculate header size and store raw data
                 let header_size = i;
@@ -378,6 +381,29 @@ mod tests {
                 assert_eq!(raw_data, vec![0x9e, 0x0e]);
             }
             _ => panic!("Expected Regular header variant"),
+        }
+    }
+
+    #[test]
+    fn parse_ofs_delta_offset_applies_continuation_bias() {
+        // 0x60 = OfsDelta type (6), size 0, no size continuation.
+        // Git's offset encoding biases each continuation byte by +1:
+        // offset = ((offset + 1) << 7) | (c & 0x7F)
+        let cases: [(&[u8], i64); 4] = [
+            (&[0x60, 0x05], 5),               // single byte
+            (&[0x60, 0x80, 0x00], 128),       // smallest 2-byte value
+            (&[0x60, 0xFF, 0x7F], 16511),     // largest 2-byte value
+            (&[0x60, 0x80, 0x80, 0x00], 16512), // smallest 3-byte value
+        ];
+
+        for (data, expected) in cases {
+            let (_, header) = ObjectHeader::parse(data).unwrap();
+            match header {
+                ObjectHeader::OfsDelta { base_offset, .. } => {
+                    assert_eq!(base_offset, expected, "input {data:02x?}");
+                }
+                _ => panic!("Expected OfsDelta header variant"),
+            }
         }
     }
 
