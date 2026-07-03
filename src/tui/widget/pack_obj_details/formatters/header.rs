@@ -29,15 +29,15 @@ impl<'a> HeaderFormatter<'a> {
             return;
         }
 
-        let length_parts = self.format_byte_breakdown(lines, raw_data);
-        self.format_header_summary(lines, raw_data, &length_parts);
+        let (length_parts, colored_hash) = self.format_byte_breakdown(lines, raw_data);
+        self.format_header_summary(lines, raw_data, &length_parts, &colored_hash);
     }
 
     fn format_byte_breakdown(
         &self,
         lines: &mut Vec<Line<'static>>,
         raw_data: &[u8],
-    ) -> Vec<Span<'static>> {
+    ) -> (Vec<Span<'static>>, Vec<Span<'static>>) {
         let mut length_parts = Vec::new();
         let mut colored_hash = Vec::new();
 
@@ -56,7 +56,7 @@ impl<'a> HeaderFormatter<'a> {
             }
         }
 
-        length_parts
+        (length_parts, colored_hash)
     }
 
     fn format_first_byte(
@@ -269,6 +269,7 @@ impl<'a> HeaderFormatter<'a> {
         lines: &mut Vec<Line<'static>>,
         raw_data: &[u8],
         length_parts: &[Span<'static>],
+        colored_hash: &[Span<'static>],
     ) {
         lines.push(Line::from(""));
         lines.push(Line::from("Summary:"));
@@ -282,7 +283,7 @@ impl<'a> HeaderFormatter<'a> {
         self.format_size_reconstruction(lines, raw_data, length_parts);
 
         // Add base reference/offset information
-        self.format_base_info(lines, raw_data);
+        self.format_base_info(lines, raw_data, length_parts, colored_hash);
 
         lines.push(Line::from("Calculated values:"));
         lines.push(Line::from(format!(
@@ -328,45 +329,7 @@ impl<'a> HeaderFormatter<'a> {
             }
         }
 
-        // Split into 8-bit groups (bytes) with separators
-        let mut bit_pos = 0;
-        let mut byte_count = 0;
-        while bit_pos < all_bits.len() {
-            if byte_count > 0 {
-                reconstruction_line.push(Span::styled("|", Style::default().fg(Color::Gray)));
-            }
-
-            // Take up to 8 bits for this byte, but if it's the first group and we have more than 8 bits total,
-            // take only the remaining bits that don't fit evenly into 8-bit groups
-            let remaining_bits = all_bits.len() - bit_pos;
-            let bits_in_this_group = if byte_count == 0 && remaining_bits > 8 {
-                remaining_bits % 8
-            } else {
-                8.min(remaining_bits)
-            };
-
-            // If first group would be 0 bits, take 8 instead
-            let bits_in_this_group = if bits_in_this_group == 0 {
-                8
-            } else {
-                bits_in_this_group
-            };
-
-            let end_pos = bit_pos + bits_in_this_group;
-            let byte_bits = &all_bits[bit_pos..end_pos];
-
-            // Create spans for each bit with its original color
-            for (i, bit_char) in byte_bits.chars().enumerate() {
-                let color = bit_colors[bit_pos + i];
-                reconstruction_line.push(Span::styled(
-                    bit_char.to_string(),
-                    Style::default().fg(color),
-                ));
-            }
-
-            bit_pos = end_pos;
-            byte_count += 1;
-        }
+        push_grouped_bits(&mut reconstruction_line, &all_bits, &bit_colors);
         reconstruction_line.push(Span::from(format!(
             " — 0x{:X}",
             self.header.uncompressed_data_size()
@@ -378,15 +341,180 @@ impl<'a> HeaderFormatter<'a> {
         )));
     }
 
-    fn format_base_info(&self, lines: &mut Vec<Line<'static>>, _raw_data: &[u8]) {
-        let obj_type = self.header.obj_type();
+    fn format_base_info(
+        &self,
+        lines: &mut Vec<Line<'static>>,
+        raw_data: &[u8],
+        length_parts: &[Span<'static>],
+        colored_hash: &[Span<'static>],
+    ) {
+        match self.header {
+            crate::git::pack::ObjectHeader::RefDelta { .. } => {
+                lines.push(Line::from("  - Base object hash (20 bytes):"));
+                let mut hash_line = vec![Span::from("      ")];
+                hash_line.extend(colored_hash.iter().cloned());
+                lines.push(Line::from(hash_line));
+            }
+            crate::git::pack::ObjectHeader::OfsDelta { base_offset, .. } => {
+                lines.push(Line::from("  - Base offset:"));
 
-        if obj_type == crate::git::pack::ObjectType::RefDelta {
-            lines.push(Line::from("  - Base object hash (20 bytes):"));
-            // Add hash formatting logic
-        } else if obj_type == crate::git::pack::ObjectType::OfsDelta {
-            lines.push(Line::from("  - Base offset:"));
-            // Add offset formatting logic
+                // Offset bytes follow the size bytes in length_parts
+                let size_byte_count =
+                    calculate_size_byte_count(self.header.obj_type(), raw_data);
+                let offset_parts = &length_parts[size_byte_count.min(length_parts.len())..];
+
+                // Unlike the size, the offset is big-endian: bytes concatenate
+                // in stream order, no reversal
+                let mut all_bits = String::new();
+                let mut bit_colors = Vec::new();
+                for part in offset_parts {
+                    let color = part.style.fg.unwrap_or(Color::White);
+                    let bits = part.content.as_ref();
+                    all_bits.push_str(bits);
+                    for _ in 0..bits.len() {
+                        bit_colors.push(color);
+                    }
+                }
+
+                let mut reconstruction_line = vec![Span::from("      ")];
+                push_grouped_bits(&mut reconstruction_line, &all_bits, &bit_colors);
+
+                let concatenated = u128::from_str_radix(&all_bits, 2).unwrap_or(0);
+                reconstruction_line.push(Span::from(format!(" — 0x{concatenated:X}")));
+                lines.push(Line::from(reconstruction_line));
+
+                // The concatenated bits alone don't give the offset: the
+                // encoding adds 1 before each continuation shift, which
+                // sums to 2^7 + 2^14 + ... per continuation byte
+                let continuation_bytes = offset_parts.len().saturating_sub(1);
+                if continuation_bytes > 0 {
+                    let bias: u128 = (1..=continuation_bytes as u32).map(|j| 1u128 << (7 * j)).sum();
+                    lines.push(Line::from(format!(
+                        "      + 0x{bias:X} (+1 bias per continuation byte)"
+                    )));
+                }
+                lines.push(Line::from(format!(
+                    "      Result: {base_offset} bytes back from this object's start"
+                )));
+            }
+            crate::git::pack::ObjectHeader::Regular { .. } => {}
         }
+    }
+}
+
+// Split concatenated bits into 8-bit groups with separators, keeping each
+// bit's source-byte color; a short leading group absorbs the remainder
+fn push_grouped_bits(
+    reconstruction_line: &mut Vec<Span<'static>>,
+    all_bits: &str,
+    bit_colors: &[Color],
+) {
+    let mut bit_pos = 0;
+    let mut byte_count = 0;
+    while bit_pos < all_bits.len() {
+        if byte_count > 0 {
+            reconstruction_line.push(Span::styled("|", Style::default().fg(Color::Gray)));
+        }
+
+        // Take up to 8 bits for this byte, but if it's the first group and we have more than 8 bits total,
+        // take only the remaining bits that don't fit evenly into 8-bit groups
+        let remaining_bits = all_bits.len() - bit_pos;
+        let bits_in_this_group = if byte_count == 0 && remaining_bits > 8 {
+            remaining_bits % 8
+        } else {
+            8.min(remaining_bits)
+        };
+
+        // If first group would be 0 bits, take 8 instead
+        let bits_in_this_group = if bits_in_this_group == 0 {
+            8
+        } else {
+            bits_in_this_group
+        };
+
+        let end_pos = bit_pos + bits_in_this_group;
+        let byte_bits = &all_bits[bit_pos..end_pos];
+
+        // Create spans for each bit with its original color
+        for (i, bit_char) in byte_bits.chars().enumerate() {
+            let color = bit_colors[bit_pos + i];
+            reconstruction_line.push(Span::styled(
+                bit_char.to_string(),
+                Style::default().fg(color),
+            ));
+        }
+
+        bit_pos = end_pos;
+        byte_count += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn render(header_bytes: &[u8]) -> Vec<String> {
+        let (_, header) = crate::git::pack::ObjectHeader::parse(header_bytes).unwrap();
+        let mut lines = Vec::new();
+        HeaderFormatter::new(&header).format_header(&mut lines);
+        lines
+            .iter()
+            .map(|line| {
+                line.spans
+                    .iter()
+                    .map(|span| span.content.as_ref())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn ofs_delta_summary_shows_bits_bias_and_result() {
+        // Type 6 (ofs-delta), size 5, offset bytes [0x81, 0x00] -> offset 256
+        let lines = render(&[0x65, 0x81, 0x00]);
+
+        let bits_line = lines
+            .iter()
+            .find(|l| l.contains("000000|10000000"))
+            .expect("offset bit reconstruction line");
+        assert!(bits_line.contains("0x80"), "raw concatenated bits value");
+        assert!(
+            lines.iter().any(|l| l.contains("+ 0x80")),
+            "continuation bias line"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Result: 256 bytes back")),
+            "decoded offset matches parser"
+        );
+    }
+
+    #[test]
+    fn ofs_delta_single_byte_offset_has_no_bias_line() {
+        // Offset fits one byte (0x7F -> 127), so no +1 bias applies
+        let lines = render(&[0x65, 0x7F]);
+
+        assert!(!lines.iter().any(|l| l.contains("bias")));
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("Result: 127 bytes back"))
+        );
+    }
+
+    #[test]
+    fn ref_delta_summary_shows_base_hash() {
+        // Type 7 (ref-delta), size 5, followed by a 20-byte base hash
+        let mut data = vec![0x75];
+        data.extend(1..=20u8);
+        let lines = render(&data);
+
+        let idx = lines
+            .iter()
+            .position(|l| l.contains("Base object hash"))
+            .expect("base hash label");
+        let expected: String = (1..=20u8).map(|b| format!("{b:02X}")).collect();
+        assert_eq!(lines[idx + 1].trim(), expected);
     }
 }
