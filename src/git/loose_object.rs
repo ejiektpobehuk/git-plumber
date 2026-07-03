@@ -77,7 +77,7 @@ pub struct TreeEntry {
     pub object_type: TreeEntryType,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TreeEntryType {
     Blob,
     Tree,
@@ -329,7 +329,9 @@ impl LooseObject {
                 "100755" => TreeEntryType::Executable,
                 "120000" => TreeEntryType::Symlink,
                 "160000" => TreeEntryType::Submodule,
-                "040000" => TreeEntryType::Tree,
+                // Raw tree bytes store "40000"; "040000" is only display padding,
+                // but git tolerates zero-padded modes from old tools, so accept both
+                "40000" | "040000" => TreeEntryType::Tree,
                 _ => TreeEntryType::Blob, // Default fallback for "100644" and others
             };
 
@@ -521,6 +523,23 @@ mod tests {
         let mut content = vec![b'a'; 8100];
         content[8050] = 0;
         assert!(!blob_with_content(&content).is_binary());
+    }
+
+    #[test]
+    fn test_parse_tree_content_directory_mode() {
+        // Raw tree bytes store directory modes as "40000" (no leading zero)
+        let mut content = Vec::new();
+        content.extend_from_slice(b"40000 src\0");
+        content.extend_from_slice(&[0xab; 20]);
+        content.extend_from_slice(b"100644 README.md\0");
+        content.extend_from_slice(&[0xcd; 20]);
+
+        let tree = LooseObject::parse_tree_content(&content);
+        assert_eq!(tree.entries.len(), 2);
+        assert_eq!(tree.entries[0].name, "src");
+        assert_eq!(tree.entries[0].object_type, TreeEntryType::Tree);
+        assert_eq!(tree.entries[1].name, "README.md");
+        assert_eq!(tree.entries[1].object_type, TreeEntryType::Blob);
     }
 
     #[test]
