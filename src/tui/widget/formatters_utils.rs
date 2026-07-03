@@ -5,6 +5,8 @@
 /// # Examples
 ///
 /// ```
+/// use git_plumber::tui::widget::formatters_utils::format_u32_as_hex_bytes;
+///
 /// let formatted = format_u32_as_hex_bytes(0x12345678);
 /// assert_eq!(formatted, "12 34 56 78");
 /// ```
