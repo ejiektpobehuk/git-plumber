@@ -142,7 +142,7 @@ impl ObjectHeader {
 
         // If MSB is set, we have more bytes for the size
         if first_byte & 0x80 != 0 {
-            let mut shift = 4; // We already have 4 bits from the first byte
+            let mut shift = 4u32; // We already have 4 bits from the first byte
 
             // Process additional bytes
             loop {
@@ -152,6 +152,15 @@ impl ObjectHeader {
 
                 let byte = input[i];
                 i += 1;
+
+                // A valid size varint fits in usize; more continuation bytes
+                // than that means the header is corrupt, not just big
+                if shift >= usize::BITS {
+                    return Err(nom::Err::Error(Error::new(
+                        original_input,
+                        ErrorKind::TooLarge,
+                    )));
+                }
 
                 // Add the 7 least significant bits to our size, shifted appropriately
                 size |= ((byte & 0x7F) as usize) << shift;
@@ -176,6 +185,14 @@ impl ObjectHeader {
                     }
                     c = input[i];
                     i += 1;
+                    // Guard the shift: a valid offset fits in u64, so losing
+                    // high bits here can only mean a corrupt header
+                    if offset > (u64::MAX >> 7) {
+                        return Err(nom::Err::Error(Error::new(
+                            original_input,
+                            ErrorKind::TooLarge,
+                        )));
+                    }
                     offset = (offset << 7) | (u64::from(c) & 0x7F);
                     if c & 0x80 == 0 {
                         break;
@@ -271,21 +288,33 @@ impl Object {
     /// Parses the compressed object data.
     /// Returns the decompressed data and the remaining input.
     /// The input should start with a zlib header (0x78).
-    fn parse_data(input: &[u8], max_size: usize) -> IResult<&[u8], Vec<u8>> {
+    /// The decompressed data must be exactly `expected_size` bytes,
+    /// as claimed by the object header.
+    fn parse_data(input: &[u8], expected_size: usize) -> IResult<&[u8], Vec<u8>> {
         // Check for zlib header
         if input.is_empty() || input[0] != 0x78 {
             return Err(nom::Err::Error(Error::new(input, ErrorKind::Tag)));
         }
 
-        // Create a decoder
+        // The size comes from an untrusted header; cap the pre-allocation so
+        // a corrupt header can't demand gigabytes up front. The Vec still
+        // grows to the real size as data actually decompresses.
+        const MAX_PREALLOC: usize = 1 << 20; // 1 MiB
         let mut decoder = ZlibDecoder::new(input);
-        let mut decompressed = Vec::with_capacity(max_size);
+        let mut decompressed = Vec::with_capacity(expected_size.min(MAX_PREALLOC));
 
-        // Read all decompressed data
-        match decoder.read_to_end(&mut decompressed) {
+        // Read one byte past the expected size so an oversized stream is
+        // detected without decompressing it in full
+        let limit = expected_size as u64 + 1;
+        match decoder.by_ref().take(limit).read_to_end(&mut decompressed) {
             Ok(_) => {
+                if decompressed.len() != expected_size {
+                    return Err(nom::Err::Error(Error::new(input, ErrorKind::Verify)));
+                }
                 // Get the number of bytes consumed by the decoder
-                let consumed = usize::try_from(decoder.total_in()).unwrap();
+                let Ok(consumed) = usize::try_from(decoder.total_in()) else {
+                    return Err(nom::Err::Error(Error::new(input, ErrorKind::TooLarge)));
+                };
                 Ok((&input[consumed..], decompressed))
             }
             Err(_) => Err(nom::Err::Error(Error::new(input, ErrorKind::Tag))),
@@ -350,6 +379,60 @@ mod tests {
             }
             _ => panic!("Expected Regular header variant"),
         }
+    }
+
+    #[test]
+    fn parse_object_header_rejects_unbounded_size_varint() {
+        // First byte with continuation bit set, then a run of continuation
+        // bytes long enough to shift past usize::BITS. Must error, not panic.
+        let mut data = vec![0x9e];
+        data.extend_from_slice(&[0xFF; 16]);
+        data.push(0x00);
+
+        assert!(matches!(
+            ObjectHeader::parse(&data),
+            Err(nom::Err::Error(_))
+        ));
+    }
+
+    #[test]
+    fn parse_object_header_rejects_unbounded_ofs_delta_offset() {
+        // OfsDelta type (6), no size continuation, then an offset varint
+        // that overflows u64. Must error, not panic.
+        let mut data = vec![0x60];
+        data.extend_from_slice(&[0xFF; 16]);
+        data.push(0x00);
+
+        assert!(matches!(
+            ObjectHeader::parse(&data),
+            Err(nom::Err::Error(_))
+        ));
+    }
+
+    #[test]
+    fn parse_data_rejects_size_mismatch() {
+        let test_data = b"Hello, World!";
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(test_data).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        // Header claims a different size than the stream actually holds
+        assert!(Object::parse_data(&compressed, test_data.len() + 5).is_err());
+        assert!(Object::parse_data(&compressed, test_data.len() - 5).is_err());
+    }
+
+    #[test]
+    fn parse_data_does_not_prealloc_claimed_size() {
+        let test_data = b"tiny";
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(test_data).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        // A corrupt header claiming an absurd size must fail cleanly instead
+        // of attempting a matching allocation
+        assert!(Object::parse_data(&compressed, usize::MAX / 2).is_err());
     }
 
     #[test]

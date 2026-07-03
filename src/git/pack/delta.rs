@@ -98,9 +98,8 @@ pub fn parse_delta_instructions(input: &[u8]) -> nom::IResult<&[u8], Vec<DeltaIn
 #[must_use]
 pub fn parse_delta_object(data: &[u8]) -> Vec<u8> {
     let mut i = 0;
-    let mut _shift = 0;
 
-    // Parse base object size
+    // Skip base object size varint
     loop {
         if i >= data.len() {
             return data.to_vec(); // fallback: return the data as is
@@ -110,13 +109,9 @@ pub fn parse_delta_object(data: &[u8]) -> Vec<u8> {
         if byte & 0x80 == 0 {
             break;
         }
-        _shift += 7;
     }
 
-    // Reset shift for target size
-    _shift = 0;
-
-    // Parse target object size
+    // Skip target object size varint
     loop {
         if i >= data.len() {
             return data.to_vec(); // fallback: return the data as is
@@ -126,7 +121,6 @@ pub fn parse_delta_object(data: &[u8]) -> Vec<u8> {
         if byte & 0x80 == 0 {
             break;
         }
-        _shift += 7;
     }
 
     // Return just the delta instructions portion

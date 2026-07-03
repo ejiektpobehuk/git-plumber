@@ -55,7 +55,10 @@ impl PackReverseIndex {
         };
 
         let remaining_after_header = original_input.len() - header_size;
-        let data_size = remaining_after_header - 2 * checksum_size;
+        // A truncated file can be shorter than the two trailing checksums
+        let Some(data_size) = remaining_after_header.checked_sub(2 * checksum_size) else {
+            return Err(nom::Err::Error(Error::new(input, ErrorKind::LengthValue)));
+        };
 
         if data_size % 4 != 0 {
             return Err(nom::Err::Error(Error::new(input, ErrorKind::LengthValue)));
@@ -307,6 +310,19 @@ mod tests {
 
         let result = PackReverseIndex::parse_header(&header_data);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_truncated_file_shorter_than_checksums() {
+        // Valid 12-byte header but not enough bytes left for the two
+        // trailing checksums — must error, not underflow
+        let mut data = Vec::new();
+        data.extend_from_slice(&PackReverseIndex::SIGNATURE.to_be_bytes());
+        data.extend_from_slice(&PackReverseIndex::VERSION.to_be_bytes());
+        data.extend_from_slice(&1u32.to_be_bytes()); // SHA-1
+        data.extend_from_slice(&[0xaa; 10]); // truncated tail
+
+        assert!(PackReverseIndex::parse(&data).is_err());
     }
 
     #[test]
