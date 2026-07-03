@@ -121,7 +121,10 @@ impl<'a> ContentFormatter<'a> {
                 "DATA PREVIEW (truncated)",
                 Style::default().add_modifier(Modifier::BOLD),
             ));
-            lines.push(Line::from(content_str[..PREVIEW_SIZE_LIMIT].to_string()));
+            lines.push(Line::from(
+                crate::tui::helpers::truncate_at_char_boundary(&content_str, PREVIEW_SIZE_LIMIT)
+                    .to_string(),
+            ));
             lines.push(Line::from("... (truncated)"));
         }
     }

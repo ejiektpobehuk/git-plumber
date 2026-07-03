@@ -1,5 +1,15 @@
 use crossbeam_channel::{Receiver, select, tick, unbounded};
 pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), String> {
+    // Restore the terminal before the panic message is printed; otherwise it
+    // lands in the alternate screen while the shell is stuck in raw mode.
+    let default_panic_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = io::stdout().execute(LeaveAlternateScreen);
+        let _ = io::stdout().execute(crossterm::cursor::Show);
+        default_panic_hook(info);
+    }));
+
     // Terminal initialization
     enable_raw_mode().map_err(|e| format!("Failed to enable raw mode: {e}"))?;
     let mut stdout = io::stdout();

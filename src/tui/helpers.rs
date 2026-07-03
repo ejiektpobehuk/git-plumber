@@ -7,6 +7,21 @@ use ratatui::widgets::{
     Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
 };
 
+/// Truncate a string to at most `max_bytes` bytes without splitting a UTF-8
+/// character. Direct byte slicing (`&s[..n]`) panics when `n` falls inside a
+/// multibyte character — including the 3-byte U+FFFD replacement characters
+/// that `from_utf8_lossy` inserts for binary content.
+pub fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 // Helper function to render styled text with an integrated scroll bar
 pub fn render_styled_paragraph_with_scrollbar(
     f: &mut ratatui::Frame,
@@ -220,6 +235,43 @@ pub fn render_list_with_scrollbar_indicators<T>(
 
         // Render change indicators on the scrollbar
         render_scrollbar_indicators(f.buffer_mut(), scrollbar_area, indicators);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_at_char_boundary;
+
+    #[test]
+    fn ascii_within_limit_is_unchanged() {
+        assert_eq!(truncate_at_char_boundary("hello", 10), "hello");
+    }
+
+    #[test]
+    fn ascii_truncates_exactly_at_limit() {
+        assert_eq!(truncate_at_char_boundary("hello world", 5), "hello");
+    }
+
+    #[test]
+    fn does_not_split_multibyte_char() {
+        // 'é' is 2 bytes; limit 3 falls mid-character
+        assert_eq!(truncate_at_char_boundary("ééé", 3), "é");
+    }
+
+    #[test]
+    fn handles_replacement_chars_from_lossy_binary() {
+        // Binary data becomes a run of 3-byte U+FFFD chars; a limit of 200
+        // falls inside one (198..201) — the original panic case.
+        let binary = vec![0xFFu8; 300];
+        let s = String::from_utf8_lossy(&binary);
+        let truncated = truncate_at_char_boundary(&s, 200);
+        assert_eq!(truncated.len(), 198);
+        assert!(truncated.chars().all(|c| c == char::REPLACEMENT_CHARACTER));
+    }
+
+    #[test]
+    fn zero_limit_returns_empty() {
+        assert_eq!(truncate_at_char_boundary("é", 0), "");
     }
 }
 

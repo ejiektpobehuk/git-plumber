@@ -143,7 +143,10 @@ impl<'a> LooseObjectFormatter<'a> {
 
         let content_str = String::from_utf8_lossy(&loose_obj.content);
         let preview = if content_str.len() > 200 {
-            format!("{}...", &content_str[..200])
+            format!(
+                "{}...",
+                crate::tui::helpers::truncate_at_char_boundary(&content_str, 200)
+            )
         } else {
             content_str.to_string()
         };

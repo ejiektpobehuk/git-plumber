@@ -535,7 +535,10 @@ impl AppState {
                 } else {
                     let content_str = String::from_utf8_lossy(content);
                     let preview = if content_str.len() > 200 {
-                        format!("{}...", &content_str[..200])
+                        format!(
+                            "{}...",
+                            crate::tui::helpers::truncate_at_char_boundary(&content_str, 200)
+                        )
                     } else {
                         content_str.to_string()
                     };
@@ -670,7 +673,10 @@ impl AppState {
                         lines.push(Line::from("Text content preview:"));
                         let content_str = String::from_utf8_lossy(content);
                         let preview = if content_str.len() > 100 {
-                            format!("{}...", &content_str[..100])
+                            format!(
+                                "{}...",
+                                crate::tui::helpers::truncate_at_char_boundary(&content_str, 100)
+                            )
                         } else {
                             content_str.to_string()
                         };

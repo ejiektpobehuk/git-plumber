@@ -100,7 +100,7 @@ impl<'a> BlobFormatter<'a> {
         let preview_content = if content_str.len() > 1000 {
             format!(
                 "{}...\n\n(Content truncated - showing first 1000 characters)",
-                &content_str[..1000]
+                crate::tui::helpers::truncate_at_char_boundary(&content_str, 1000)
             )
         } else {
             content_str.to_string()
