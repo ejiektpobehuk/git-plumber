@@ -1,4 +1,4 @@
-use config::{Config, ConfigError, File};
+use config::{Config, ConfigError, Environment, File};
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -57,15 +57,22 @@ impl GitPlumberConfig {
                 config_builder.add_source(File::from(user_config_path).required(false));
         }
 
-        // Add environment variables with prefix "GIT_PLUMBER_"
-        config_builder = config_builder.add_source(
-            config::Environment::with_prefix("GIT_PLUMBER")
-                .separator("_")
-                .try_parsing(true),
-        );
+        // Apply environment variables (highest priority after CLI args)
+        config_builder = config_builder.add_source(Self::env_source());
 
         let config = config_builder.build()?;
         config.try_deserialize()
+    }
+
+    /// Environment source using `__` as the nesting separator so that `_`
+    /// stays available inside field names, e.g.
+    /// `GIT_PLUMBER_TUI__ANIMATION_DURATION_SECS` → `tui.animation_duration_secs`.
+    fn env_source() -> Environment {
+        Environment::with_prefix("GIT_PLUMBER")
+            .prefix_separator("_")
+            .separator("__")
+            .ignore_empty(true)
+            .try_parsing(true)
     }
 
     /// Get the path to the user configuration file
@@ -148,9 +155,9 @@ impl GitPlumberConfig {
             }
         }
 
-        println!("\nEnvironment variables:");
-        println!("  GIT_PLUMBER_TUI_ANIMATION_DURATION_SECS");
-        println!("  GIT_PLUMBER_TUI_REDUCED_MOTION");
+        println!("\nEnvironment variables (GIT_PLUMBER_<SECTION>__<FIELD>):");
+        println!("  GIT_PLUMBER_TUI__ANIMATION_DURATION_SECS");
+        println!("  GIT_PLUMBER_TUI__REDUCED_MOTION");
     }
 }
 
@@ -161,6 +168,43 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = GitPlumberConfig::default();
+        assert_eq!(config.tui.animation_duration_secs, 10);
+        assert!(!config.tui.reduced_motion);
+    }
+
+    /// Load config from defaults + the production env source backed by the
+    /// given variables, without touching real config files or the real
+    /// environment.
+    fn load_from_env_vars(vars: &[(&str, &str)]) -> Result<GitPlumberConfig, ConfigError> {
+        let map = vars
+            .iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect();
+        Config::builder()
+            .add_source(Config::try_from(&GitPlumberConfig::default())?)
+            .add_source(GitPlumberConfig::env_source().source(Some(map)))
+            .build()?
+            .try_deserialize()
+    }
+
+    #[test]
+    fn test_env_overrides_apply() {
+        let config = load_from_env_vars(&[
+            ("GIT_PLUMBER_TUI__ANIMATION_DURATION_SECS", "42"),
+            ("GIT_PLUMBER_TUI__REDUCED_MOTION", "true"),
+        ])
+        .unwrap();
+        assert_eq!(config.tui.animation_duration_secs, 42);
+        assert!(config.tui.reduced_motion);
+    }
+
+    #[test]
+    fn test_unknown_and_empty_env_vars_are_ignored() {
+        let config = load_from_env_vars(&[
+            ("GIT_PLUMBER_TUI__REDUCED_MOTION", ""),
+            ("GIT_PLUMBER_NO_SUCH__FIELD", "whatever"),
+        ])
+        .unwrap();
         assert_eq!(config.tui.animation_duration_secs, 10);
         assert!(!config.tui.reduced_motion);
     }
