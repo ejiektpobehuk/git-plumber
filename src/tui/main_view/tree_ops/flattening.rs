@@ -6,32 +6,6 @@ use std::collections::HashMap;
 pub struct TreeFlattener;
 
 impl TreeFlattener {
-    /// Flatten a tree of `GitObjects` into a flat list of `FlatTreeRows` for display
-    /// This is the basic flattening without ghost overlays or complex highlighting
-    pub fn flatten_tree_basic<F, G>(
-        objects: &[GitObject],
-        compute_highlight: F,
-        selection_key: G,
-    ) -> Vec<FlatTreeRow>
-    where
-        F: Fn(&str) -> HighlightInfo,
-        G: Fn(&GitObject) -> String,
-    {
-        let mut flat_view = Vec::with_capacity(16);
-
-        for obj in objects {
-            Self::flatten_node_recursive(
-                obj,
-                0,
-                &mut flat_view,
-                &compute_highlight,
-                &selection_key,
-            );
-        }
-
-        flat_view
-    }
-
     /// Flatten a tree using pre-computed highlights for perfect alignment
     pub fn flatten_tree_with_precomputed_highlights<G>(
         objects: &[GitObject],
@@ -69,28 +43,6 @@ impl TreeFlattener {
         // Start with pre-computed highlighting flattening
         let flat_view =
             Self::flatten_tree_with_precomputed_highlights(objects, highlights, &selection_key);
-
-        // Apply ghost overlay if there are any ghosts
-        if ghosts.is_empty() {
-            flat_view
-        } else {
-            Self::apply_ghost_overlay(flat_view, objects, ghosts, &selection_key)
-        }
-    }
-
-    /// Comprehensive tree flattening with ghost overlay support
-    pub fn flatten_tree_with_ghosts<F, G>(
-        objects: &[GitObject],
-        compute_highlight: F,
-        selection_key: G,
-        ghosts: &HashMap<String, Ghost>,
-    ) -> Vec<FlatTreeRow>
-    where
-        F: Fn(&str) -> HighlightInfo,
-        G: Fn(&GitObject) -> String,
-    {
-        // Start with basic flattening
-        let flat_view = Self::flatten_tree_basic(objects, &compute_highlight, &selection_key);
 
         // Apply ghost overlay if there are any ghosts
         if ghosts.is_empty() {
@@ -336,40 +288,6 @@ impl TreeFlattener {
         None
     }
 
-    /// Recursively flatten a single node and its children
-    fn flatten_node_recursive<F, G>(
-        node: &GitObject,
-        depth: usize,
-        flat_view: &mut Vec<FlatTreeRow>,
-        compute_highlight: &F,
-        selection_key: &G,
-    ) where
-        F: Fn(&str) -> HighlightInfo,
-        G: Fn(&GitObject) -> String,
-    {
-        let key = selection_key(node);
-        let highlight = compute_highlight(&key);
-
-        flat_view.push(FlatTreeRow {
-            depth,
-            object: node.clone(),
-            render_status: RenderStatus::Normal,
-            highlight,
-        });
-
-        if node.expanded {
-            for child in &node.children {
-                Self::flatten_node_recursive(
-                    child,
-                    depth + 1,
-                    flat_view,
-                    compute_highlight,
-                    selection_key,
-                );
-            }
-        }
-    }
-
     /// Recursively flatten a single node using pre-computed highlights
     fn flatten_node_with_precomputed_highlights<G>(
         node: &GitObject,
@@ -401,32 +319,5 @@ impl TreeFlattener {
                 );
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::tui::model::GitObject;
-
-    #[test]
-    fn test_basic_flattening() {
-        // Create a simple test tree
-        let mut root = GitObject::new_category("root");
-        let child = GitObject::new_category("child");
-        root.add_child(child);
-        root.expanded = true;
-
-        let objects = vec![root];
-
-        let flat = TreeFlattener::flatten_tree_basic(
-            &objects,
-            |_| HighlightInfo::default(),
-            |obj| format!("test:{}", obj.name),
-        );
-
-        assert_eq!(flat.len(), 2); // root + child
-        assert_eq!(flat[0].depth, 0);
-        assert_eq!(flat[1].depth, 1);
     }
 }

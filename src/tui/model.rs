@@ -1,11 +1,4 @@
 use std::path::PathBuf;
-impl AppState {
-    pub fn set_tx(&mut self, tx: Sender<crate::tui::message::Message>) {
-        self.tx = Some(tx);
-    }
-}
-
-use crossbeam_channel::Sender;
 
 use std::time::SystemTime;
 
@@ -552,8 +545,6 @@ pub struct AppState {
     // Layout dimensions for accurate scrolling
     pub layout_dimensions: LayoutDimensions,
     pub educational_content_provider: EducationalContent,
-    // Background message sender (for spawning jobs)
-    pub tx: Option<Sender<crate::tui::message::Message>>,
     // Effects produced by update to be executed by the runner
     pub effects: Vec<crate::tui::message::Command>,
     // Keep FS watcher alive for the lifetime of the app
@@ -602,7 +593,6 @@ impl AppState {
             view_stack: Vec::new(),
             layout_dimensions: LayoutDimensions::default(),
             educational_content_provider,
-            tx: None,
             effects: Vec::new(),
             // Overwritten by run_tui
             // TODO: use default values from config

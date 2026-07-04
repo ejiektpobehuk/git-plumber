@@ -1,9 +1,5 @@
-use crate::tui::main_view::PreviewState;
 use crate::tui::message::Message;
 use crate::tui::model::{AppState, AppView, GitObjectType};
-use std::path::Path;
-
-use super::main_view::{MainViewState, PackPreViewState};
 
 impl AppState {
     // Load Git objects from the repository
@@ -372,29 +368,6 @@ impl AppState {
                 }
             }
             _ => Message::LoadEducationalContent(Err("Sent for the wrong View".to_string())),
-        }
-    }
-
-    // Load pack objects from a pack file
-    pub fn load_pack_objects(&mut self, pack_path: &Path) -> Message {
-        match &mut self.view {
-            AppView::Main {
-                state:
-                    MainViewState {
-                        preview_state: PreviewState::Pack(PackPreViewState { pack_file_path, .. }),
-                        ..
-                    },
-            } => {
-                *pack_file_path = pack_path.to_path_buf();
-                Message::LoadPackObjects {
-                    path: pack_path.to_path_buf(),
-                    result: crate::tui::pure_loaders::load_pack_objects_pure(pack_path),
-                }
-            }
-            _ => Message::LoadPackObjects {
-                path: pack_path.to_path_buf(),
-                result: Err("Sent to wrong View".to_string()),
-            },
         }
     }
 

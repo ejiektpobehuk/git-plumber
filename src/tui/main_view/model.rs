@@ -7,7 +7,6 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use super::animations::AnimationManager;
-use super::services::ServiceContainer;
 use super::state_components::{ContentState, SessionState, TreeState};
 
 // ===== Ghost overlay types =====
@@ -158,9 +157,6 @@ pub struct MainViewState {
     // UI and interaction state
     pub preview_state: PreviewState,
     pub animations: AnimationManager,
-
-    // Domain services
-    pub services: ServiceContainer,
 }
 
 #[derive(Debug, Clone)]
@@ -184,7 +180,6 @@ impl MainViewState {
             session: SessionState::new(),
             preview_state: PreviewState::Regular(RegularPreViewState::new()),
             animations: AnimationManager::new(),
-            services: ServiceContainer::new(),
         }
     }
 
@@ -571,12 +566,6 @@ impl MainViewState {
     /// Find a node in the current tree by its selection key
     pub fn find_node_by_key(&self, key: &str) -> Option<&GitObject> {
         super::services::TreeService::find_node_by_key(&self.tree.list, key, Self::selection_key)
-    }
-
-    /// Check if an object has been modified by comparing modification times
-    #[must_use]
-    pub fn is_object_modified(&self, old: &GitObject, new: &GitObject) -> bool {
-        super::services::GitRepositoryService::is_object_modified(old, new)
     }
 
     /// Static version of `is_object_modified` for use in closures

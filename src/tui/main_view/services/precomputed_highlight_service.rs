@@ -4,7 +4,7 @@ use crate::tui::model::{GitObject, GitObjectType};
 use std::collections::HashMap;
 
 /// Pre-computed highlight information for perfect alignment
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PrecomputedHighlights {
     /// Map from selection key to highlight info
     pub highlights: HashMap<String, HighlightInfo>,
@@ -28,18 +28,6 @@ impl PrecomputedHighlights {
     /// Add a highlight for a specific key
     pub fn add_highlight(&mut self, key: String, highlight: HighlightInfo) {
         self.highlights.insert(key, highlight);
-    }
-
-    /// Check if there are any active highlights
-    #[must_use]
-    pub fn has_highlights(&self) -> bool {
-        !self.highlights.is_empty()
-    }
-}
-
-impl Default for PrecomputedHighlights {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -194,69 +182,6 @@ impl PrecomputedHighlightService {
 
         items
     }
-
-    /// Enhanced method that also checks for active highlights for animation detection
-    pub fn has_active_highlights(
-        tree: &[GitObject],
-        animations: &AnimationManager,
-        selection_key_fn: fn(&GitObject) -> String,
-    ) -> bool {
-        // Check regular animations first
-        if animations.has_active_animations() {
-            return true;
-        }
-
-        // Check for any folder highlights
-        Self::has_folder_highlights_recursive(tree, animations, selection_key_fn)
-    }
-
-    /// Recursively check for folder highlights
-    fn has_folder_highlights_recursive(
-        nodes: &[GitObject],
-        animations: &AnimationManager,
-        selection_key_fn: fn(&GitObject) -> String,
-    ) -> bool {
-        for node in nodes {
-            match &node.obj_type {
-                // Check all folder types
-                GitObjectType::FileSystemFolder { .. }
-                | GitObjectType::Category(_)
-                | GitObjectType::PackFolder { .. } => {
-                    if !node.expanded {
-                        let folder_key = selection_key_fn(node);
-                        let files_inside =
-                            Self::collect_all_files_in_folder(node, selection_key_fn);
-
-                        if animations
-                            .compute_folder_highlight(&folder_key, &files_inside)
-                            .is_some()
-                        {
-                            return true;
-                        }
-                    }
-
-                    if Self::has_folder_highlights_recursive(
-                        &node.children,
-                        animations,
-                        selection_key_fn,
-                    ) {
-                        return true;
-                    }
-                }
-                _ => {
-                    if Self::has_folder_highlights_recursive(
-                        &node.children,
-                        animations,
-                        selection_key_fn,
-                    ) {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        false
-    }
 }
 
 #[cfg(test)]
@@ -301,9 +226,6 @@ mod tests {
         // Pre-compute all highlights
         let highlights =
             PrecomputedHighlightService::compute_all_highlights(&tree, &animations, selection_key);
-
-        // Test that we have highlights
-        assert!(highlights.has_highlights());
 
         // Test that the file highlight is present
         let file_highlight = highlights.get_highlight("file:/test/src/main.rs");

@@ -70,12 +70,6 @@ impl Header {
 
 #[derive(Debug, Error)]
 pub enum PackError {
-    #[error("Invalid pack file signature")]
-    InvalidSignature,
-
-    #[error("Unsupported pack version: {0}")]
-    UnsupportedVersion(u32),
-
     #[error("Invalid object type: {0}")]
     InvalidObjectType(u8),
 
@@ -84,28 +78,6 @@ pub enum PackError {
 
     #[error("Decompression error: {0}")]
     DecompressionError(#[from] std::io::Error),
-
-    // Index-specific errors
-    #[error("Invalid index file signature")]
-    InvalidIndexSignature,
-
-    #[error("Unsupported index version: {0}")]
-    UnsupportedIndexVersion(u32),
-
-    #[error("Corrupt fan-out table")]
-    CorruptFanOutTable,
-
-    #[error("Index checksum mismatch")]
-    IndexChecksumMismatch,
-
-    #[error("Pack checksum mismatch")]
-    PackChecksumMismatch,
-
-    #[error("Object not found in index: {0}")]
-    ObjectNotFound(String),
-
-    #[error("Invalid object index: {0}")]
-    InvalidObjectIndex(usize),
 }
 
 // Helper function to create a simple pack file header with the specified number of objects

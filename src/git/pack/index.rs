@@ -7,8 +7,6 @@ use nom::{
 };
 use std::fmt;
 
-use crate::git::pack::PackError;
-
 /// Represents a Git pack index file (.idx)
 ///
 /// Pack index files provide efficient lookup into pack files by mapping
@@ -210,20 +208,6 @@ impl PackIndex {
     #[must_use]
     pub fn get_object_crc32(&self, index: usize) -> Option<u32> {
         self.crc32_checksums.get(index).copied()
-    }
-
-    /// Verify the integrity of the index file
-    ///
-    /// # Errors
-    ///
-    /// Will return a `PackError` if the stored checksum does not match the
-    /// index data. Verification is not yet implemented, so this currently
-    /// always succeeds.
-    pub const fn verify_checksum(&self) -> Result<(), PackError> {
-        // TODO: Implement SHA-1 checksum verification
-        // This would involve calculating SHA-1 of all data except the final 20 bytes
-        // and comparing with self.index_checksum
-        Ok(())
     }
 }
 

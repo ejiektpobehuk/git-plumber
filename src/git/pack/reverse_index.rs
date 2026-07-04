@@ -7,8 +7,6 @@ use nom::{
 };
 use std::fmt;
 
-use crate::git::pack::PackError;
-
 /// Represents a Git pack reverse index file (.rev)
 ///
 /// Reverse index files enable efficient conversion between three key properties:
@@ -154,20 +152,6 @@ impl PackReverseIndex {
             2 => 32, // SHA-256
             _ => 0,
         }
-    }
-
-    /// Verify the integrity of the reverse index file
-    ///
-    /// # Errors
-    ///
-    /// Will return a `PackError` if the stored checksum does not match the
-    /// file data. Verification is not yet implemented, so this currently
-    /// always succeeds.
-    pub const fn verify_checksum(&self) -> Result<(), PackError> {
-        // TODO: Implement checksum verification
-        // This would involve calculating the hash of all data except the final checksum bytes
-        // and comparing with self.file_checksum
-        Ok(())
     }
 }
 

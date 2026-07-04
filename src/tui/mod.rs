@@ -41,7 +41,6 @@ pub fn run_tui(plumber: &crate::GitPlumber, opts: &RunOptions) -> Result<(), Str
 
     // Background channel for worker -> UI messages
     let (tx, rx) = unbounded::<crate::tui::message::Message>();
-    app.set_tx(tx.clone());
 
     // Enqueue initial load as a Command; runner will execute it
     app.effects.push(crate::tui::message::Command::LoadInitial);
