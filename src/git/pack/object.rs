@@ -390,9 +390,9 @@ mod tests {
         // Git's offset encoding biases each continuation byte by +1:
         // offset = ((offset + 1) << 7) | (c & 0x7F)
         let cases: [(&[u8], i64); 4] = [
-            (&[0x60, 0x05], 5),               // single byte
-            (&[0x60, 0x80, 0x00], 128),       // smallest 2-byte value
-            (&[0x60, 0xFF, 0x7F], 16511),     // largest 2-byte value
+            (&[0x60, 0x05], 5),                 // single byte
+            (&[0x60, 0x80, 0x00], 128),         // smallest 2-byte value
+            (&[0x60, 0xFF, 0x7F], 16511),       // largest 2-byte value
             (&[0x60, 0x80, 0x80, 0x00], 16512), // smallest 3-byte value
         ];
 

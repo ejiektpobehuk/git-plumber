@@ -382,6 +382,7 @@ impl<'a> HeaderFormatter<'a> {
 }
 
 // Legacy function for backward compatibility
+#[must_use]
 pub fn format_header(reverse_index: &PackReverseIndex) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let formatter = HeaderFormatter::new(reverse_index);

@@ -34,18 +34,13 @@ pub enum RenderStatus {
     PendingRemoval,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AnimationType {
     /// File animation: shrinking background highlight
+    #[default]
     FileShrink,
     /// Folder animation: blinking indicator
     FolderBlink,
-}
-
-impl Default for AnimationType {
-    fn default() -> Self {
-        Self::FileShrink
-    }
 }
 
 #[derive(Debug, Clone, Default)]

@@ -359,8 +359,7 @@ impl<'a> HeaderFormatter<'a> {
                 lines.push(Line::from("  - Base offset:"));
 
                 // Offset bytes follow the size bytes in length_parts
-                let size_byte_count =
-                    calculate_size_byte_count(self.header.obj_type(), raw_data);
+                let size_byte_count = calculate_size_byte_count(self.header.obj_type(), raw_data);
                 let offset_parts = &length_parts[size_byte_count.min(length_parts.len())..];
 
                 // Unlike the size, the offset is big-endian: bytes concatenate
@@ -388,7 +387,9 @@ impl<'a> HeaderFormatter<'a> {
                 // sums to 2^7 + 2^14 + ... per continuation byte
                 let continuation_bytes = offset_parts.len().saturating_sub(1);
                 if continuation_bytes > 0 {
-                    let bias: u128 = (1..=continuation_bytes as u32).map(|j| 1u128 << (7 * j)).sum();
+                    let bias: u128 = (1..=continuation_bytes as u32)
+                        .map(|j| 1u128 << (7 * j))
+                        .sum();
                     lines.push(Line::from(format!(
                         "      + 0x{bias:X} (+1 bias per continuation byte)"
                     )));
@@ -483,9 +484,7 @@ mod tests {
             "continuation bias line"
         );
         assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("Result: 256 bytes back")),
+            lines.iter().any(|l| l.contains("Result: 256 bytes back")),
             "decoded offset matches parser"
         );
     }
@@ -496,11 +495,7 @@ mod tests {
         let lines = render(&[0x65, 0x7F]);
 
         assert!(!lines.iter().any(|l| l.contains("bias")));
-        assert!(
-            lines
-                .iter()
-                .any(|l| l.contains("Result: 127 bytes back"))
-        );
+        assert!(lines.iter().any(|l| l.contains("Result: 127 bytes back")));
     }
 
     #[test]

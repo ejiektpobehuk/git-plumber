@@ -5,6 +5,7 @@ use ratatui::{
     text::{Line, Span},
 };
 
+#[must_use]
 pub fn format_mappings(reverse_index: &PackReverseIndex) -> Vec<Line<'static>> {
     let mut lines = vec![
         // Section title

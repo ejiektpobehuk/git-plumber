@@ -71,12 +71,11 @@ pub enum GitObjectType {
 impl GitObjectType {
     // Whether selecting this object should show the pack preview (pack folders
     // and .pack files; index/rev/mtime files use the regular preview)
+    #[must_use]
     pub fn is_pack(&self) -> bool {
         match self {
-            GitObjectType::PackFolder { .. } => true,
-            GitObjectType::PackFile { file_type, .. } => {
-                file_type == "packfile" || file_type == "pack"
-            }
+            Self::PackFolder { .. } => true,
+            Self::PackFile { file_type, .. } => file_type == "packfile" || file_type == "pack",
             _ => false,
         }
     }
@@ -86,7 +85,7 @@ impl GitObjectType {
 pub struct GitObject {
     pub name: String,
     pub obj_type: GitObjectType,
-    pub children: Vec<GitObject>,
+    pub children: Vec<Self>,
     pub expanded: bool,
 }
 
@@ -587,7 +586,7 @@ impl AppState {
         let educational_content_provider = EducationalContent::new();
 
         // Compute project name from repo path
-        let project_name = if repo_path == PathBuf::from(".") {
+        let project_name = if repo_path == *"." {
             // For current directory, get the name from the current working directory
             std::env::current_dir()
                 .ok()
@@ -674,7 +673,8 @@ impl AppState {
     }
 
     // Check if terminal size meets minimum requirements
-    pub fn is_terminal_too_small(size: ratatui::layout::Size) -> bool {
+    #[must_use]
+    pub const fn is_terminal_too_small(size: ratatui::layout::Size) -> bool {
         size.width < MIN_TERMINAL_WIDTH || size.height < MIN_TERMINAL_HEIGHT
     }
 
@@ -689,7 +689,13 @@ impl AppState {
             // Check if terminal is too small and switch to appropriate view
             if Self::is_terminal_too_small(current_size) {
                 // Store the previous view if we're not already in TerminalTooSmall view
-                if !matches!(self.view, AppView::TerminalTooSmall { .. }) {
+                if matches!(self.view, AppView::TerminalTooSmall { .. }) {
+                    // Already in TerminalTooSmall view, just update the dimensions
+                    if let AppView::TerminalTooSmall { width, height, .. } = &mut self.view {
+                        *width = current_size.width;
+                        *height = current_size.height;
+                    }
+                } else {
                     // Push current view to stack to restore later
                     let current_view = std::mem::replace(
                         &mut self.view,
@@ -701,12 +707,6 @@ impl AppState {
                         },
                     );
                     self.view_stack.push(current_view);
-                } else {
-                    // Already in TerminalTooSmall view, just update the dimensions
-                    if let AppView::TerminalTooSmall { width, height, .. } = &mut self.view {
-                        *width = current_size.width;
-                        *height = current_size.height;
-                    }
                 }
             } else {
                 // Terminal is large enough, check if we need to restore from TerminalTooSmall view

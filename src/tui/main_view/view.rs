@@ -70,7 +70,9 @@ fn apply_git_tree_highlight_fx(
             if elapsed.as_millis() as u64 <= hold_ms {
                 width
             } else {
-                let after = elapsed - std::time::Duration::from_millis(hold_ms);
+                let after = elapsed
+                    .checked_sub(std::time::Duration::from_millis(hold_ms))
+                    .unwrap();
                 if after.as_millis() as u64 >= shrink_ms {
                     0
                 } else {

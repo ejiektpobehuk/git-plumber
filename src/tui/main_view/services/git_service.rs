@@ -177,14 +177,12 @@ impl GitRepositoryService {
                 }
                 GitObjectType::FileSystemFolder {
                     path: folder_path, ..
-                } => {
-                    if !folder_path.exists() {
-                        issues.push(ValidationIssue {
-                            issue_type: ValidationIssueType::MissingFolder,
-                            path: path.to_string(),
-                            message: format!("Folder does not exist: {folder_path:?}"),
-                        });
-                    }
+                } if !folder_path.exists() => {
+                    issues.push(ValidationIssue {
+                        issue_type: ValidationIssueType::MissingFolder,
+                        path: path.to_string(),
+                        message: format!("Folder does not exist: {folder_path:?}"),
+                    });
                 }
                 _ => {} // Other types don't need filesystem validation
             }

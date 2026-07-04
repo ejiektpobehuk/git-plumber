@@ -119,7 +119,7 @@ impl PackReverseIndex {
 
     /// Get the total number of objects in this reverse index
     #[must_use]
-    pub fn object_count(&self) -> usize {
+    pub const fn object_count(&self) -> usize {
         self.index_positions.len()
     }
 
@@ -132,7 +132,7 @@ impl PackReverseIndex {
 
     /// Get the hash function name as a string
     #[must_use]
-    pub fn hash_function_name(&self) -> &'static str {
+    pub const fn hash_function_name(&self) -> &'static str {
         match self.hash_function_id {
             1 => "SHA-1",
             2 => "SHA-256",
@@ -142,7 +142,7 @@ impl PackReverseIndex {
 
     /// Get the checksum size based on hash function
     #[must_use]
-    pub fn checksum_size(&self) -> usize {
+    pub const fn checksum_size(&self) -> usize {
         match self.hash_function_id {
             1 => 20, // SHA-1
             2 => 32, // SHA-256

@@ -401,8 +401,7 @@ impl AppState {
                     AppView::TerminalTooSmall { .. } => {
                         // In terminal too small view, only allow quitting
                         match key.code {
-                            crossterm::event::KeyCode::Char('q')
-                            | crossterm::event::KeyCode::Char('Q') => {
+                            crossterm::event::KeyCode::Char('q' | 'Q') => {
                                 return false; // Quit the application
                             }
                             crossterm::event::KeyCode::Esc => {
@@ -422,13 +421,13 @@ impl AppState {
             self.needs_selection_reload = false;
 
             // If we have items in the main view, load details and educational content
-            if let AppView::Main { state } = &self.view {
-                if !state.tree.flat_view.is_empty() {
-                    let details_msg = self.load_git_object_details(plumber);
-                    self.update(details_msg, plumber);
-                    let content_msg = self.load_educational_content(plumber);
-                    self.update(content_msg, plumber);
-                }
+            if let AppView::Main { state } = &self.view
+                && !state.tree.flat_view.is_empty()
+            {
+                let details_msg = self.load_git_object_details(plumber);
+                self.update(details_msg, plumber);
+                let content_msg = self.load_educational_content(plumber);
+                self.update(content_msg, plumber);
             }
         }
 

@@ -100,8 +100,8 @@ fn render_terminal_too_small(
                 .add_modifier(ratatui::style::Modifier::BOLD),
         )),
         Line::from(""),
-        Line::from(format!("Current: {}x{}", current_width, current_height)),
-        Line::from(format!("Need: {}x{}", min_width, min_height)),
+        Line::from(format!("Current: {current_width}x{current_height}")),
+        Line::from(format!("Need: {min_width}x{min_height}")),
         Line::from(""),
         Line::from(Span::styled(
             "Press 'q' to quit",

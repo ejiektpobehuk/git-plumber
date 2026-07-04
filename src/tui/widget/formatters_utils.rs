@@ -10,6 +10,7 @@
 /// let formatted = format_u32_as_hex_bytes(0x12345678);
 /// assert_eq!(formatted, "12 34 56 78");
 /// ```
+#[must_use]
 pub fn format_u32_as_hex_bytes(value: u32) -> String {
     format!(
         "{:02x} {:02x} {:02x} {:02x}",
