@@ -37,6 +37,12 @@ pub struct PackIndex {
 
 impl PackIndex {
     /// Parse a pack index file from raw bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns a nom parse error if the input is not a valid version-2 pack
+    /// index: wrong magic number or version, a non-monotonic fan-out table,
+    /// or truncated data (fewer bytes than the fan-out table claims).
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let original_input = input;
 
@@ -59,10 +65,10 @@ impl PackIndex {
         let (input, offsets) = count(be_u32, total_objects).parse(input)?;
 
         // Check if we need large offsets (any offset has MSB set)
-        let needs_large_offsets = offsets.iter().any(|&offset| offset & 0x80000000 != 0);
+        let needs_large_offsets = offsets.iter().any(|&offset| offset & 0x8000_0000 != 0);
         let large_offset_count = offsets
             .iter()
-            .filter(|&&offset| offset & 0x80000000 != 0)
+            .filter(|&&offset| offset & 0x8000_0000 != 0)
             .count();
 
         // Parse large offset table if needed
@@ -171,13 +177,10 @@ impl PackIndex {
         // Binary search within the range
         let search_slice = &self.object_names[start_idx..end_idx];
 
-        match search_slice.binary_search(sha1) {
-            Ok(relative_idx) => {
-                let absolute_idx = start_idx + relative_idx;
-                Some(self.get_object_offset(absolute_idx))
-            }
-            Err(_) => None,
-        }
+        search_slice
+            .binary_search(sha1)
+            .ok()
+            .map(|relative_idx| self.get_object_offset(start_idx + relative_idx))
     }
 
     /// Get the pack file offset for an object at the given index
@@ -190,9 +193,9 @@ impl PackIndex {
         let offset = self.offsets[index];
 
         // Check if this is a large offset (MSB set)
-        if offset & 0x80000000 != 0 {
+        if offset & 0x8000_0000 != 0 {
             // Use large offset table
-            let large_offset_index = (offset & 0x7fffffff) as usize;
+            let large_offset_index = (offset & 0x7fff_ffff) as usize;
             if let Some(ref large_offsets) = self.large_offsets
                 && large_offset_index < large_offsets.len()
             {
@@ -210,6 +213,12 @@ impl PackIndex {
     }
 
     /// Verify the integrity of the index file
+    ///
+    /// # Errors
+    ///
+    /// Will return a `PackError` if the stored checksum does not match the
+    /// index data. Verification is not yet implemented, so this currently
+    /// always succeeds.
     pub const fn verify_checksum(&self) -> Result<(), PackError> {
         // TODO: Implement SHA-1 checksum verification
         // This would involve calculating SHA-1 of all data except the final 20 bytes

@@ -41,7 +41,7 @@ pub fn load_pack_objects_pure(pack_path: &Path) -> Result<Vec<PackObject>, Strin
                 crate::git::pack::ObjectHeader::RefDelta { base_ref, .. } => {
                     Some(format!("Base ref: {}", hex::encode(base_ref)))
                 }
-                _ => None,
+                crate::git::pack::ObjectHeader::Regular { .. } => None,
             };
             PackObject {
                 index: index + 1,

@@ -1,4 +1,4 @@
-/// Shared formatting utilities for widget formatters
+//! Shared formatting utilities for widget formatters
 
 /// Format a 32-bit value as hex bytes (4 bytes, big-endian)
 ///

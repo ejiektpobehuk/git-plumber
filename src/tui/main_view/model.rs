@@ -250,15 +250,10 @@ impl MainViewState {
         let modified_keys: HashSet<String> = new_keys
             .intersection(&old_keys)
             .filter(|key| {
-                if let Some(old_node) = old_nodes.get(*key) {
-                    if let Some(new_node) = self.find_node_by_key(key) {
-                        Self::is_object_modified_static(old_node, new_node)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+                old_nodes.get(*key).is_some_and(|old_node| {
+                    self.find_node_by_key(key)
+                        .is_some_and(|new_node| Self::is_object_modified_static(old_node, new_node))
+                })
             })
             .cloned()
             .collect();
@@ -299,11 +294,9 @@ impl MainViewState {
                 continue;
             }
             if let Some(old_node) = old_nodes.get(k) {
-                let (parent_key, sibling_index) = if let Some(pos) = old_positions.get(k) {
-                    (pos.parent_key.clone(), pos.sibling_index)
-                } else {
-                    (None, 0)
-                };
+                let (parent_key, sibling_index) = old_positions
+                    .get(k)
+                    .map_or((None, 0), |pos| (pos.parent_key.clone(), pos.sibling_index));
                 self.animations.ghosts.insert(
                     k.clone(),
                     Ghost {
@@ -370,8 +363,6 @@ impl MainViewState {
 
             match &selected_obj.obj_type {
                 GitObjectType::Category(category_name) => {
-                    let name_to_find = category_name.clone();
-
                     fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
                         if let GitObjectType::Category(name) = &obj.obj_type
                             && name == target_name
@@ -386,6 +377,8 @@ impl MainViewState {
                         }
                         false
                     }
+
+                    let name_to_find = category_name.clone();
 
                     for obj in &mut self.tree.list {
                         if find_and_toggle_category(obj, &name_to_find) {
@@ -428,8 +421,6 @@ impl MainViewState {
                     }
                 }
                 GitObjectType::FileSystemFolder { path, .. } => {
-                    let path_to_find = path.clone();
-
                     fn find_and_toggle_folder(
                         obj: &mut GitObject,
                         target_path: &std::path::Path,
@@ -454,11 +445,13 @@ impl MainViewState {
                         Ok(false)
                     }
 
+                    let path_to_find = path.clone();
+
                     let mut error_msg = None;
                     for obj in &mut self.tree.list {
                         match find_and_toggle_folder(obj, &path_to_find) {
                             Ok(true) => break,
-                            Ok(false) => continue,
+                            Ok(false) => {}
                             Err(e) => {
                                 error_msg = Some(e);
                                 break;
@@ -507,8 +500,6 @@ impl MainViewState {
                     }
                 }
                 GitObjectType::PackFolder { base_name, .. } => {
-                    let base_name_to_find = base_name.clone();
-
                     fn find_and_toggle_pack_folder(
                         obj: &mut GitObject,
                         target_base_name: &str,
@@ -526,6 +517,8 @@ impl MainViewState {
                         }
                         false
                     }
+
+                    let base_name_to_find = base_name.clone();
 
                     for obj in &mut self.tree.list {
                         if find_and_toggle_pack_folder(obj, &base_name_to_find) {

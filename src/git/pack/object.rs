@@ -124,6 +124,12 @@ impl ObjectHeader {
     ///
     /// After the continuation bit in the first byte there are 3 bits for the type.
     /// Type 5 is reserved for future expansion. Type 0 is invalid.
+    ///
+    /// # Errors
+    ///
+    /// Returns `nom::Err::Incomplete` if the input ends mid-header, or a nom
+    /// parse error if a size or offset varint is too long to fit in its
+    /// integer type (which can only mean a corrupt header).
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let original_input = input;
         let mut i = 0;
@@ -137,7 +143,10 @@ impl ObjectHeader {
         let first_byte = input[i];
         i += 1;
 
-        let obj_type: ObjectType = ((first_byte >> 4) & 0x7).try_into().unwrap();
+        // Infallible: all 3-bit values (0-7) map to an ObjectType variant
+        let Ok(obj_type) = ObjectType::try_from((first_byte >> 4) & 0x7) else {
+            return Err(nom::Err::Error(Error::new(original_input, ErrorKind::Tag)));
+        };
         let mut size = (first_byte & 0x0F) as usize;
 
         // If MSB is set, we have more bytes for the size
@@ -205,10 +214,19 @@ impl ObjectHeader {
                 let header_size = i;
                 let raw_data = original_input[..header_size].to_vec();
 
+                // A backwards distance larger than i64::MAX cannot occur in a
+                // real pack file; treat it as a corrupt header
+                let Ok(base_offset) = i64::try_from(offset) else {
+                    return Err(nom::Err::Error(Error::new(
+                        original_input,
+                        ErrorKind::TooLarge,
+                    )));
+                };
+
                 // The offset is stored as the distance backwards from the current object's header
                 Self::OfsDelta {
                     uncompressed_data_size: size,
-                    base_offset: offset as i64,
+                    base_offset,
                     raw_data,
                 }
             }
@@ -258,6 +276,13 @@ pub struct Object {
 }
 
 impl Object {
+    /// Parse a single pack object (header plus zlib-compressed data)
+    ///
+    /// # Errors
+    ///
+    /// Returns `nom::Err::Incomplete` if the input ends mid-object, or a nom
+    /// parse error if the header is corrupt, the data does not start with a
+    /// zlib stream, or the decompressed size does not match the header.
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let (input, header) = ObjectHeader::parse(input)?;
         let pre_parse_input_size = input.len();
@@ -294,15 +319,16 @@ impl Object {
     /// The decompressed data must be exactly `expected_size` bytes,
     /// as claimed by the object header.
     fn parse_data(input: &[u8], expected_size: usize) -> IResult<&[u8], Vec<u8>> {
+        // The size comes from an untrusted header; cap the pre-allocation so
+        // a corrupt header can't demand gigabytes up front. The Vec still
+        // grows to the real size as data actually decompresses.
+        const MAX_PREALLOC: usize = 1 << 20; // 1 MiB
+
         // Check for zlib header
         if input.is_empty() || input[0] != 0x78 {
             return Err(nom::Err::Error(Error::new(input, ErrorKind::Tag)));
         }
 
-        // The size comes from an untrusted header; cap the pre-allocation so
-        // a corrupt header can't demand gigabytes up front. The Vec still
-        // grows to the real size as data actually decompresses.
-        const MAX_PREALLOC: usize = 1 << 20; // 1 MiB
         let mut decoder = ZlibDecoder::new(input);
         let mut decompressed = Vec::with_capacity(expected_size.min(MAX_PREALLOC));
 

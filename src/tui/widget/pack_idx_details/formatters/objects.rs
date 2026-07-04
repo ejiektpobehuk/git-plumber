@@ -23,7 +23,7 @@ impl<'a> ObjectsFormatter<'a> {
     /// - Large offsets: variable (if any)
     /// - Pack checksum: 20 bytes
     /// - Index checksum: 20 bytes
-    const fn calculate_object_byte_position(&self, object_index: usize) -> u64 {
+    const fn calculate_object_byte_position(object_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_size = 256 * 4u64; // 256 entries * 4 bytes each
         let object_names_start = header_size + fanout_size;
@@ -104,7 +104,7 @@ impl<'a> ObjectsFormatter<'a> {
         for (i, show_entry) in entries_to_show.iter().enumerate() {
             if *show_entry {
                 let hash = hex::encode(self.pack_index.object_names[i]);
-                let byte_pos = self.calculate_object_byte_position(i);
+                let byte_pos = Self::calculate_object_byte_position(i);
 
                 let line_parts = vec![
                     ("│ ".to_string(), Style::default()),
@@ -245,7 +245,7 @@ impl<'a> ObjectsFormatter<'a> {
             .pack_index
             .offsets
             .iter()
-            .filter(|&&offset| offset & 0x80000000 != 0)
+            .filter(|&&offset| offset & 0x8000_0000 != 0)
             .count();
 
         if large_offset_count > 0 {
@@ -285,7 +285,7 @@ impl<'a> ObjectsFormatter<'a> {
                     raw_offset & 0xff
                 );
 
-                let offset_display = if raw_offset & 0x80000000 != 0 {
+                let offset_display = if raw_offset & 0x8000_0000 != 0 {
                     format!("{actual_offset:>8} L") // L for Large offset
                 } else {
                     format!("{actual_offset:>9}")
@@ -299,7 +299,7 @@ impl<'a> ObjectsFormatter<'a> {
                     (" │ ".to_string(), Style::default()),
                     (
                         offset_display,
-                        if raw_offset & 0x80000000 != 0 {
+                        if raw_offset & 0x8000_0000 != 0 {
                             Style::default().fg(Color::Yellow)
                         } else {
                             Style::default().fg(Color::Magenta)
@@ -338,11 +338,11 @@ impl<'a> ObjectsFormatter<'a> {
 
         // Add large offset table info if present
         if let Some(ref large_offsets) = self.pack_index.large_offsets {
-            self.add_large_offsets_info(lines, large_offsets);
+            Self::add_large_offsets_info(lines, large_offsets);
         }
     }
 
-    fn add_large_offsets_info(&self, lines: &mut Vec<Line<'static>>, large_offsets: &[u64]) {
+    fn add_large_offsets_info(lines: &mut Vec<Line<'static>>, large_offsets: &[u64]) {
         lines.push(Line::styled(
             "Large Offset Table (8-byte offsets for pack files > 4GB):",
             Style::default().add_modifier(Modifier::BOLD),

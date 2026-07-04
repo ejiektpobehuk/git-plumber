@@ -144,9 +144,9 @@ impl<'a> HeaderFormatter<'a> {
         let is_section_transition = current_section != prev_section;
 
         if current_section == HeaderSection::Hash {
-            self.format_hash_byte(lines, byte, i, is_section_transition, colored_hash);
+            Self::format_hash_byte(lines, byte, i, is_section_transition, colored_hash);
         } else {
-            self.format_size_or_offset_byte(
+            Self::format_size_or_offset_byte(
                 lines,
                 byte,
                 i,
@@ -158,7 +158,6 @@ impl<'a> HeaderFormatter<'a> {
     }
 
     fn format_hash_byte(
-        &self,
         lines: &mut Vec<Line<'static>>,
         byte: u8,
         i: usize,
@@ -196,7 +195,6 @@ impl<'a> HeaderFormatter<'a> {
     }
 
     fn format_size_or_offset_byte(
-        &self,
         lines: &mut Vec<Line<'static>>,
         byte: u8,
         i: usize,
@@ -387,9 +385,7 @@ impl<'a> HeaderFormatter<'a> {
                 // sums to 2^7 + 2^14 + ... per continuation byte
                 let continuation_bytes = offset_parts.len().saturating_sub(1);
                 if continuation_bytes > 0 {
-                    let bias: u128 = (1..=continuation_bytes as u32)
-                        .map(|j| 1u128 << (7 * j))
-                        .sum();
+                    let bias: u128 = (1..=continuation_bytes).map(|j| 1u128 << (7 * j)).sum();
                     lines.push(Line::from(format!(
                         "      + 0x{bias:X} (+1 bias per continuation byte)"
                     )));

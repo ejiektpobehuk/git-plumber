@@ -30,28 +30,20 @@ fn apply_git_tree_highlight_fx(
         let _key = crate::tui::main_view::MainViewState::selection_key(&row.object);
 
         // Use highlight information from the flattened tree row
-        let (color, start, animation_type) = if let Some(highlight_color) = row.highlight.color {
-            let expires_at = row.highlight.expires_at.unwrap_or(now);
-            if expires_at > now {
-                let start_time = expires_at
-                    .checked_sub(std::time::Duration::from_millis(total))
-                    .unwrap();
-                (
-                    Some(highlight_color),
-                    Some(start_time),
-                    row.highlight.animation_type,
-                )
-            } else {
-                (None, None, row.highlight.animation_type)
-            }
-        } else {
-            (None, None, row.highlight.animation_type)
+        let anim_type = row.highlight.animation_type;
+        let Some(bg) = row.highlight.color else {
+            continue;
         };
-
-        let (bg, start_at, anim_type) = match (color, start) {
-            (Some(c), Some(s)) => (c, s, animation_type),
-            _ => continue,
-        };
+        let expires_at = row.highlight.expires_at.unwrap_or(now);
+        if expires_at <= now {
+            continue;
+        }
+        // The animation window is `total` ms long and ends at `expires_at`; if the
+        // subtraction underflows (process started less than `total` ms ago), treat
+        // the animation as having just started.
+        let start_at = expires_at
+            .checked_sub(std::time::Duration::from_millis(total))
+            .unwrap_or(now);
 
         // Skip folder blink animations - they are handled in the main rendering
         if anim_type == crate::tui::main_view::model::AnimationType::FolderBlink {
@@ -60,24 +52,27 @@ fn apply_git_tree_highlight_fx(
 
         // Handle file shrinking animation only
         let n_cols: u16 = if reduced {
-            if now.duration_since(start_at).as_millis() as u64 <= hold_ms {
+            if now.duration_since(start_at).as_millis() <= u128::from(hold_ms) {
                 width
             } else {
                 0
             }
         } else {
             let elapsed = now.saturating_duration_since(start_at);
-            if elapsed.as_millis() as u64 <= hold_ms {
+            if elapsed.as_millis() <= u128::from(hold_ms) {
                 width
             } else {
-                let after = elapsed
-                    .checked_sub(std::time::Duration::from_millis(hold_ms))
-                    .unwrap();
-                if after.as_millis() as u64 >= shrink_ms {
+                let after = elapsed.saturating_sub(std::time::Duration::from_millis(hold_ms));
+                if after.as_millis() >= u128::from(shrink_ms) {
                     0
                 } else {
+                    // shrink_ms is a small UI constant, exactly representable in f32
+                    #[allow(clippy::cast_precision_loss)]
                     let p = after.as_secs_f32() / (shrink_ms as f32 / 1000.0);
-                    (f32::from(width) * (1.0 - p)).ceil() as u16
+                    // p is in [0, 1), so the result is within [0, width] and fits in u16
+                    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                    let cols = (f32::from(width) * (1.0 - p)).ceil() as u16;
+                    cols
                 }
             }
         };
@@ -108,7 +103,6 @@ use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_wi
 use crate::tui::model::{AppState, AppView, GitObjectType};
 
 pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout::Rect) {
-    let project_name = app.project_name.clone();
     let reduced = app.reduced_motion;
     if let AppView::Main { state } = &mut app.view {
         // Split main content into two blocks
@@ -123,7 +117,7 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
             )
             .split(area);
 
-        render_git_tree(f, state, project_name, content_chunks[0], reduced);
+        render_git_tree(f, state, &app.project_name, content_chunks[0], reduced);
         // Apply cell-based highlight after rendering the tree
         apply_git_tree_highlight_fx(
             f.buffer_mut(),
@@ -134,7 +128,7 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
         );
         match &state.preview_state {
             PreviewState::Regular(_) => {
-                render_regular_preview_layout(f, state, &app.error, content_chunks[1]);
+                render_regular_preview_layout(f, state, app.error.as_deref(), content_chunks[1]);
             }
             PreviewState::Pack(_) => {
                 render_pack_preview_layout(f, state, &app.error, content_chunks[1]);
@@ -146,7 +140,7 @@ pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout:
 fn render_regular_preview_layout(
     f: &mut ratatui::Frame,
     main_view: &mut MainViewState,
-    app_error: &Option<String>,
+    app_error: Option<&str>,
     area: ratatui::layout::Rect,
 ) {
     if let PreviewState::Regular(preview_state) = &mut main_view.preview_state {
@@ -163,8 +157,8 @@ fn render_regular_preview_layout(
             .split(area);
 
         // Top block - Object details
-        let object_info = if app_error.is_some() {
-            app_error.as_ref().unwrap()
+        let object_info = if let Some(error) = app_error {
+            error
         } else if main_view.content.git_object_info.is_empty()
             && !main_view.tree.flat_view.is_empty()
         {
@@ -225,7 +219,7 @@ fn render_regular_preview_layout(
             render_styled_paragraph_with_scrollbar(
                 f,
                 content_chunks[1],
-                main_view.content.educational_content.clone(),
+                &main_view.content.educational_content,
                 preview_state.preview_scroll_position,
                 bottom_title,
                 matches!(preview_state.focus, RegularFocus::Preview),
@@ -251,7 +245,7 @@ pub fn render_pack_preview_layout(
             let object_details_area = horizontal_chunks[1];
 
             // Render main content in the left area
-            render_pack_file_preview(f, main_view, app_error, pack_file_details, true);
+            render_pack_file_preview(f, main_view, app_error.as_deref(), pack_file_details, true);
 
             // Extract the data we need first
             if let PreviewState::Pack(pack_preview_state) = &mut main_view.preview_state {
@@ -276,7 +270,7 @@ pub fn render_pack_preview_layout(
                 }
             }
         } else {
-            render_pack_file_preview(f, main_view, app_error, area, false);
+            render_pack_file_preview(f, main_view, app_error.as_deref(), area, false);
         }
     }
 }
@@ -284,7 +278,7 @@ pub fn render_pack_preview_layout(
 fn render_pack_file_preview(
     f: &mut ratatui::Frame,
     main_view: &MainViewState,
-    app_error: &Option<String>,
+    app_error: Option<&str>,
     area: ratatui::layout::Rect,
     is_widescreen: bool,
 ) {
@@ -303,16 +297,15 @@ fn render_pack_file_preview(
             .split(area);
 
         // Top block - Object details (same as PackPreview)
-        let object_info = if app_error.is_some() {
-            app_error.as_ref().unwrap()
-        } else if main_view.content.git_object_info.is_empty()
-            && !main_view.tree.flat_view.is_empty()
-        {
-            "Select an object to view details"
-        } else if main_view.tree.flat_view.is_empty() {
-            "Loading repository…"
-        } else {
-            &main_view.content.git_object_info
+        let object_info = match app_error {
+            Some(error) => error,
+            None if main_view.content.git_object_info.is_empty()
+                && !main_view.tree.flat_view.is_empty() =>
+            {
+                "Select an object to view details"
+            }
+            None if main_view.tree.flat_view.is_empty() => "Loading repository…",
+            None => &main_view.content.git_object_info,
         };
 
         let details_widget = Paragraph::new(object_info).block(
@@ -327,7 +320,7 @@ fn render_pack_file_preview(
         render_styled_paragraph_with_scrollbar(
             f,
             content_chunks[1],
-            main_view.content.educational_content.clone(),
+            &main_view.content.educational_content,
             preview_state.educational_scroll_position,
             "Pack File Header",
             matches!(preview_state.focus, PackFocus::Educational),
@@ -359,11 +352,10 @@ fn render_pack_file_preview(
                         pack_obj.index,
                         pack_obj.obj_type,
                         pack_obj.size,
-                        if let Some(ref hash) = pack_obj.sha1 {
-                            format!(" | {hash}")
-                        } else {
-                            String::new()
-                        }
+                        pack_obj
+                            .sha1
+                            .as_ref()
+                            .map_or_else(String::new, |hash| format!(" | {hash}"))
                     );
 
                     ListItem::new(display_text).style(
@@ -428,23 +420,10 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
                     if !state.tree.flat_view.is_empty()
                         && state.tree.selected_index < state.tree.flat_view.len()
                     {
-                        match state.tree.flat_view[state.tree.selected_index]
-                            .object
-                            .obj_type
-                        {
-                            GitObjectType::Category(_) => {
-                                hints.append(&mut vec![
-                                    Span::styled("←", Style::default().fg(Color::Green)),
-                                    Span::styled("↕→", Style::default().fg(Color::Blue)),
-                                ]);
-                            }
-                            _ => {
-                                hints.append(&mut vec![
-                                    Span::styled("←", Style::default().fg(Color::Green)),
-                                    Span::styled("↕→", Style::default().fg(Color::Blue)),
-                                ]);
-                            }
-                        }
+                        hints.append(&mut vec![
+                            Span::styled("←", Style::default().fg(Color::Green)),
+                            Span::styled("↕→", Style::default().fg(Color::Blue)),
+                        ]);
                     }
                 }
                 RegularFocus::Preview => {
@@ -468,7 +447,7 @@ pub fn navigation_hints(app: &AppState) -> Vec<Span<'_>> {
 fn render_git_tree(
     f: &mut ratatui::Frame,
     state: &MainViewState,
-    project_name: String,
+    project_name: &str,
     area: ratatui::layout::Rect,
     reduced: bool,
 ) {
@@ -517,7 +496,7 @@ fn render_git_tree(
                         }
 
                         // If we found an ancestor, check if it has siblings after it
-                        if let Some(ancestor_idx) = ancestor_index {
+                        ancestor_index.is_some_and(|ancestor_idx| {
                             let mut has_sibling = false;
                             for j in (ancestor_idx + 1)..state.tree.flat_view.len() {
                                 let next_row = &state.tree.flat_view[j];
@@ -529,9 +508,7 @@ fn render_git_tree(
                                 }
                             }
                             has_sibling
-                        } else {
-                            false
-                        }
+                        })
                     };
 
                     indent.push_str(if needs_vertical_line { "│" } else { " " });

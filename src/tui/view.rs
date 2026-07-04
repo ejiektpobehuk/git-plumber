@@ -39,12 +39,8 @@ pub fn draw_ui(f: &mut ratatui::Frame, app: &mut AppState) {
         .border_type(ratatui::widgets::BorderType::Plain);
     f.render_widget(title, chunks[0]);
 
-    // Determine content area index based on layout
-    let content_area = if matches!(app.view, AppView::TerminalTooSmall { .. }) {
-        chunks[1] // Simple layout: header + content
-    } else {
-        chunks[1] // Normal layout: header + content + footer
-    };
+    // Content sits between the header and (optional) footer in both layouts
+    let content_area = chunks[1];
 
     let mut hints = match &app.view {
         AppView::Main { .. } => {

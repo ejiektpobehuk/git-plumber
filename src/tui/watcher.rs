@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 
 pub fn spawn_git_watcher(
-    repo_path: PathBuf,
+    repo_path: &Path,
     tx_ui: crossbeam_channel::Sender<crate::tui::message::Message>,
 ) -> Result<RecommendedWatcher, notify::Error> {
     // Std mpsc channel for notify callback; we'll bridge to crossbeam
@@ -34,10 +34,9 @@ pub fn spawn_git_watcher(
             let recv_result = if pending {
                 rx_fs.recv_timeout(quiet)
             } else {
-                match rx_fs.recv() {
-                    Ok(ev) => Ok(ev),
-                    Err(_) => Err(std_mpsc::RecvTimeoutError::Disconnected),
-                }
+                rx_fs
+                    .recv()
+                    .map_err(|_| std_mpsc::RecvTimeoutError::Disconnected)
             };
 
             match recv_result {
@@ -67,9 +66,8 @@ pub fn spawn_git_watcher(
 fn is_meaningful(event: &Event) -> bool {
     // Ignore lock files created by git for atomic updates
     let has_lock = event.paths.iter().any(|p| {
-        p.file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n.ends_with(".lock"))
+        p.extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("lock"))
     });
     if has_lock {
         return false;

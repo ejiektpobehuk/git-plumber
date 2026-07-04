@@ -74,7 +74,7 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
             Ok(pack_groups) => {
                 for (_, pack_group) in pack_groups {
                     if pack_group.is_valid() {
-                        pack_folder.add_child(GitObject::new_pack_folder(pack_group));
+                        pack_folder.add_child(GitObject::new_pack_folder(&pack_group));
                     }
                 }
             }

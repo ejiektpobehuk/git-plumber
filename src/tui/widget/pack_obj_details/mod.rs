@@ -119,7 +119,7 @@ impl PackObjectWidget {
         render_styled_paragraph_with_scrollbar(
             f,
             area,
-            content,
+            &content,
             self.scroll_position(),
             title,
             is_focused,

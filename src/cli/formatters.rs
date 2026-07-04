@@ -19,7 +19,7 @@ impl CliPackFormatter {
 
         // Format pack header using educational content system
         Self::format_pack_header(&mut output, header);
-        writeln!(&mut output).unwrap();
+        writeln!(&mut output).expect("writing to String cannot fail");
 
         // Resolve delta chains so each object shows its real git object ID
         let resolved = crate::git::pack::resolve_objects(objects);
@@ -27,7 +27,7 @@ impl CliPackFormatter {
         // Format each object using TUI formatters
         for (i, object) in objects.iter().enumerate() {
             if i > 0 {
-                writeln!(&mut output, "{}", "═".repeat(80)).unwrap();
+                writeln!(&mut output, "{}", "═".repeat(80)).expect("writing to String cannot fail");
             }
             Self::format_pack_object(&mut output, object, i + 1, resolved[i].as_ref());
         }
@@ -43,10 +43,10 @@ impl CliPackFormatter {
 
         // Convert ratatui Text to ANSI colored string
         let colored_text = Self::text_to_ansi_string(&header_preview);
-        writeln!(output, "\x1b[1mPACK FILE HEADER\x1b[0m").unwrap();
-        writeln!(output, "{}", "─".repeat(50)).unwrap();
-        writeln!(output).unwrap();
-        writeln!(output, "{colored_text}").unwrap();
+        writeln!(output, "\x1b[1mPACK FILE HEADER\x1b[0m").expect("writing to String cannot fail");
+        writeln!(output, "{}", "─".repeat(50)).expect("writing to String cannot fail");
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "{colored_text}").expect("writing to String cannot fail");
     }
 
     /// Format a single pack object using TUI formatters
@@ -56,10 +56,10 @@ impl CliPackFormatter {
         index: usize,
         resolved: Option<&crate::git::pack::ResolvedObject>,
     ) {
-        writeln!(output).unwrap();
-        writeln!(output, "\x1b[1mOBJECT #{index}\x1b[0m").unwrap();
-        writeln!(output, "{}", "─".repeat(40)).unwrap();
-        writeln!(output).unwrap();
+        writeln!(output).expect("writing to String cannot fail");
+        writeln!(output, "\x1b[1mOBJECT #{index}\x1b[0m").expect("writing to String cannot fail");
+        writeln!(output, "{}", "─".repeat(40)).expect("writing to String cannot fail");
+        writeln!(output).expect("writing to String cannot fail");
 
         // Create a PackObject from the Object (similar to what TUI loaders do)
         let pack_obj = Self::create_pack_object_from_object(object, index, resolved);
@@ -70,7 +70,7 @@ impl CliPackFormatter {
 
         // Convert ratatui Text to ANSI colored string
         let colored_text = Self::text_to_ansi_string(&formatted_text);
-        writeln!(output, "{colored_text}").unwrap();
+        writeln!(output, "{colored_text}").expect("writing to String cannot fail");
     }
 
     /// Convert ratatui Text to ANSI colored string, preserving styling
@@ -88,7 +88,8 @@ impl CliPackFormatter {
                     "\x1b[0m" // Reset
                 };
 
-                write!(&mut result, "{}{}{}", ansi_start, span.content, ansi_end).unwrap();
+                write!(&mut result, "{}{}{}", ansi_start, span.content, ansi_end)
+                    .expect("writing to String cannot fail");
             }
             result.push('\n');
         }
@@ -226,9 +227,9 @@ impl CliLooseFormatter {
         let mut output = String::new();
 
         // Format loose object header
-        writeln!(&mut output, "\x1b[1mLOOSE OBJECT\x1b[0m").unwrap();
-        writeln!(&mut output, "{}", "─".repeat(40)).unwrap();
-        writeln!(&mut output).unwrap();
+        writeln!(&mut output, "\x1b[1mLOOSE OBJECT\x1b[0m").expect("writing to String cannot fail");
+        writeln!(&mut output, "{}", "─".repeat(40)).expect("writing to String cannot fail");
+        writeln!(&mut output).expect("writing to String cannot fail");
 
         // Use the TUI formatter to generate rich content
         let widget = LooseObjectWidget::new(loose_obj.clone());
@@ -236,7 +237,7 @@ impl CliLooseFormatter {
 
         // Convert ratatui Text to ANSI colored string
         let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
-        writeln!(&mut output, "{colored_text}").unwrap();
+        writeln!(&mut output, "{colored_text}").expect("writing to String cannot fail");
 
         output
     }

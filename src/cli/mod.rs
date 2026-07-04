@@ -9,6 +9,11 @@ pub mod formatters;
 /// When output is piped to commands like `head` that close early,
 /// subsequent writes will fail with a broken pipe error. This is
 /// expected behavior and should not cause the program to panic.
+///
+/// # Errors
+///
+/// Returns an error if writing to or flushing stdout fails for any
+/// reason other than a broken pipe.
 pub fn safe_print(content: &str) -> Result<(), String> {
     match io::stdout().write_all(content.as_bytes()) {
         Ok(()) => {
@@ -25,6 +30,11 @@ pub fn safe_print(content: &str) -> Result<(), String> {
 }
 
 /// Safe println function that handles broken pipe errors gracefully
+///
+/// # Errors
+///
+/// Returns an error if writing to or flushing stdout fails for any
+/// reason other than a broken pipe.
 pub fn safe_println(content: &str) -> Result<(), String> {
     safe_print(&format!("{content}\n"))
 }
@@ -142,8 +152,8 @@ pub fn run() -> Result<(), String> {
                 animation_duration.unwrap_or(config.tui.animation_duration_secs);
 
             crate::tui::run_tui(
-                plumber,
-                crate::tui::RunOptions {
+                &plumber,
+                &crate::tui::RunOptions {
                     reduced_motion: final_reduced_motion,
                     animation_duration_secs: final_animation_duration,
                 },
@@ -325,8 +335,8 @@ pub fn run() -> Result<(), String> {
         None => {
             // Default to TUI mode with configuration values
             crate::tui::run_tui(
-                plumber,
-                crate::tui::RunOptions {
+                &plumber,
+                &crate::tui::RunOptions {
                     reduced_motion: config.tui.reduced_motion,
                     animation_duration_secs: config.tui.animation_duration_secs,
                 },

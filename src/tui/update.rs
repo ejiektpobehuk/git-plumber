@@ -401,11 +401,9 @@ impl AppState {
                     AppView::TerminalTooSmall { .. } => {
                         // In terminal too small view, only allow quitting
                         match key.code {
-                            crossterm::event::KeyCode::Char('q' | 'Q') => {
+                            crossterm::event::KeyCode::Char('q' | 'Q')
+                            | crossterm::event::KeyCode::Esc => {
                                 return false; // Quit the application
-                            }
-                            crossterm::event::KeyCode::Esc => {
-                                return false; // Also quit on Escape
                             }
                             _ => None, // Ignore all other keys
                         }

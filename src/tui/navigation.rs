@@ -26,13 +26,13 @@ impl AppState {
             }
 
             // Check if we're in Pack preview state
-            let (pack_object_list, pack_file_path) = match preview_state {
-                PreviewState::Pack(PackPreViewState {
-                    pack_object_list,
-                    pack_file_path,
-                    ..
-                }) => (pack_object_list, pack_file_path),
-                _ => return, // Not in pack preview state
+            let PreviewState::Pack(PackPreViewState {
+                pack_object_list,
+                pack_file_path,
+                ..
+            }) = preview_state
+            else {
+                return; // Not in pack preview state
             };
 
             // Check if current object is a pack object

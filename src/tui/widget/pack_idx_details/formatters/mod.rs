@@ -26,7 +26,7 @@ impl<'a> PackIndexFormatter<'a> {
     pub fn generate_content(&self) -> Text<'static> {
         let mut lines = Vec::new();
         // Add educational information at the top
-        self.add_educational_info(&mut lines);
+        Self::add_educational_info(&mut lines);
         // Add detailed sections
         self.add_header_section(&mut lines);
         self.add_fanout_section(&mut lines);
@@ -37,7 +37,7 @@ impl<'a> PackIndexFormatter<'a> {
         Text::from(lines)
     }
 
-    fn add_educational_info(&self, lines: &mut Vec<Line<'static>>) {
+    fn add_educational_info(lines: &mut Vec<Line<'static>>) {
         lines.push(Line::from(
             "Index file helps Git to quickly locate objects in the pack file.",
         ));

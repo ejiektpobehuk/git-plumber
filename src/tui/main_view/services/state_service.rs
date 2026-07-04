@@ -39,8 +39,8 @@ impl StateService {
         has_loaded_once: bool,
     ) {
         // Sync tree state
-        tree.list = git_objects.list.clone();
-        tree.flat_view = git_objects.flat_view.clone();
+        tree.list.clone_from(&git_objects.list);
+        tree.flat_view.clone_from(&git_objects.flat_view);
         tree.scroll_position = git_objects.scroll_position;
         tree.selected_index = git_objects.selected_index;
 
@@ -49,8 +49,10 @@ impl StateService {
         content.educational_content = educational_content.clone();
 
         // Sync session state
-        session.last_selection = last_selection.clone();
-        session.last_scroll_positions = last_scroll_positions.clone();
+        session.last_selection.clone_from(last_selection);
+        session
+            .last_scroll_positions
+            .clone_from(last_scroll_positions);
         session.has_loaded_once = has_loaded_once;
     }
 

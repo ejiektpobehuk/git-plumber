@@ -21,7 +21,7 @@ impl<'a> ChecksumsFormatter<'a> {
         lines.push(Line::from(""));
 
         self.add_sha1_checksums_section(lines);
-        self.add_integrity_info(lines);
+        Self::add_integrity_info(lines);
     }
 
     fn add_sha1_checksums_section(&self, lines: &mut Vec<Line<'static>>) {
@@ -68,7 +68,7 @@ impl<'a> ChecksumsFormatter<'a> {
         lines.push(Line::from(""));
     }
 
-    fn add_integrity_info(&self, lines: &mut Vec<Line<'static>>) {
+    fn add_integrity_info(lines: &mut Vec<Line<'static>>) {
         // Verification status (placeholder - could be enhanced with actual verification)
         lines.push(Line::styled(
             "Verification Status:",

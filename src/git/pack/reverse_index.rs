@@ -34,11 +34,17 @@ pub struct PackReverseIndex {
 
 impl PackReverseIndex {
     /// Magic signature for reverse index files: "RIDX"
-    pub const SIGNATURE: u32 = 0x52494458;
+    pub const SIGNATURE: u32 = 0x5249_4458;
     /// Current supported version
     pub const VERSION: u32 = 1;
 
     /// Parse a pack reverse index file from raw bytes
+    ///
+    /// # Errors
+    ///
+    /// Returns a nom parse error if the input is not a valid reverse index:
+    /// wrong "RIDX" signature, unsupported version or hash function ID, or a
+    /// file size inconsistent with the header and trailing checksums.
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let original_input = input;
 
@@ -151,6 +157,12 @@ impl PackReverseIndex {
     }
 
     /// Verify the integrity of the reverse index file
+    ///
+    /// # Errors
+    ///
+    /// Will return a `PackError` if the stored checksum does not match the
+    /// file data. Verification is not yet implemented, so this currently
+    /// always succeeds.
     pub const fn verify_checksum(&self) -> Result<(), PackError> {
         // TODO: Implement checksum verification
         // This would involve calculating the hash of all data except the final checksum bytes

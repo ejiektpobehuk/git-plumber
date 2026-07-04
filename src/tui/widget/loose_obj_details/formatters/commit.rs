@@ -43,7 +43,7 @@ impl<'a> CommitFormatter<'a> {
         lines.push(Line::from(format!("  Name: {}", self.commit.author)));
         lines.push(Line::from(format!(
             "  Date: {}",
-            self.format_timestamp(&self.commit.author_date)
+            Self::format_timestamp(&self.commit.author_date)
         )));
         lines.push(Line::from(""));
 
@@ -55,7 +55,7 @@ impl<'a> CommitFormatter<'a> {
         lines.push(Line::from(format!("  Name: {}", self.commit.committer)));
         lines.push(Line::from(format!(
             "  Date: {}",
-            self.format_timestamp(&self.commit.committer_date)
+            Self::format_timestamp(&self.commit.committer_date)
         )));
         lines.push(Line::from(""));
 
@@ -76,7 +76,7 @@ impl<'a> CommitFormatter<'a> {
         }
     }
 
-    fn format_timestamp(&self, timestamp: &str) -> String {
+    fn format_timestamp(timestamp: &str) -> String {
         // For now, just return the raw timestamp
         // In the future, we could parse Unix timestamps manually
         timestamp.to_string()

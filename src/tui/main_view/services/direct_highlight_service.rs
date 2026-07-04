@@ -219,8 +219,6 @@ impl DirectHighlightService {
         tree: &[GitObject],
         selection_key_fn: fn(&GitObject) -> String,
     ) -> std::collections::HashMap<PathBuf, String> {
-        let mut map = std::collections::HashMap::new();
-
         fn walk_tree(
             node: &GitObject,
             map: &mut std::collections::HashMap<PathBuf, String>,
@@ -228,12 +226,10 @@ impl DirectHighlightService {
         ) {
             // Extract path from the node if possible
             let path_opt = match &node.obj_type {
-                crate::tui::model::GitObjectType::FileSystemFile { path, .. } => Some(path.clone()),
-                crate::tui::model::GitObjectType::FileSystemFolder { path, .. } => {
-                    Some(path.clone())
-                }
-                crate::tui::model::GitObjectType::PackFile { path, .. } => Some(path.clone()),
-                crate::tui::model::GitObjectType::Ref { path, .. } => Some(path.clone()),
+                crate::tui::model::GitObjectType::FileSystemFile { path, .. }
+                | crate::tui::model::GitObjectType::FileSystemFolder { path, .. }
+                | crate::tui::model::GitObjectType::PackFile { path, .. }
+                | crate::tui::model::GitObjectType::Ref { path, .. } => Some(path.clone()),
                 _ => None,
             };
 
@@ -247,6 +243,8 @@ impl DirectHighlightService {
                 walk_tree(child, map, selection_key_fn);
             }
         }
+
+        let mut map = std::collections::HashMap::new();
 
         for obj in tree {
             walk_tree(obj, &mut map, selection_key_fn);

@@ -140,29 +140,23 @@ impl TreeFlattener {
                     .filter(|(_, row)| row.depth == 0)
                     .map(|(i, _)| i)
                     .next_back();
-                match last_top_idx {
-                    Some(i) => {
-                        let mut j = i + 1;
-                        while j < output.len() {
-                            if output[j].depth == 0 {
-                                break;
-                            }
-                            j += 1;
+                last_top_idx.map_or(0, |i| {
+                    let mut j = i + 1;
+                    while j < output.len() {
+                        if output[j].depth == 0 {
+                            break;
                         }
-                        j
+                        j += 1;
                     }
-                    None => 0,
-                }
+                    j
+                })
             };
 
             for (sibling_index, ghost_key) in top_list.iter().rev() {
                 if let Some(g) = ghosts.get(ghost_key) {
                     let insert_at = if *sibling_index < top_keys.len() {
-                        if let Some(idx) = find_top_flat_index(&top_keys[*sibling_index], &output) {
-                            idx
-                        } else {
-                            end_of_top_level
-                        }
+                        find_top_flat_index(&top_keys[*sibling_index], &output)
+                            .unwrap_or(end_of_top_level)
                     } else {
                         end_of_top_level
                     };
@@ -186,11 +180,9 @@ impl TreeFlattener {
 
         // Handle nested ghosts - smart visibility with ancestor propagation
         for (parent_key_opt, ghost_list) in &by_parent {
-            if parent_key_opt.is_none() {
+            let Some(parent_key) = parent_key_opt else {
                 continue; // Already handled top-level ghosts above
-            }
-
-            let parent_key = parent_key_opt.as_ref().unwrap();
+            };
 
             // Find all ancestor folders by parsing the parent key path
             let ancestor_folders = Self::find_ancestor_folders_from_key(parent_key);
@@ -287,7 +279,7 @@ impl TreeFlattener {
     }
 
     /// Find ancestor folders by parsing the parent key path
-    /// For example: "<folder:/path/.git/refs/tags>" -> ["refs", "<folder:/path/.git/refs>"]
+    /// For example: `folder:/path/.git/refs/tags` -> `["refs", "folder:/path/.git/refs"]`
     fn find_ancestor_folders_from_key(parent_key: &str) -> Vec<String> {
         let mut ancestors = Vec::new();
 
@@ -307,11 +299,10 @@ impl TreeFlattener {
                         // First level after .git could be either a Category or a FileSystemFolder
                         // Add both possible keys since we can't know which format it uses
                         ancestors.push(format!("category:{component}")); // Try Category first
-                        ancestors.push(format!("folder:{current_path}")); // Also try FileSystemFolder
-                    } else {
-                        // Deeper levels are always folders
-                        ancestors.push(format!("folder:{current_path}"));
                     }
+                    // Deeper levels are always folders; the first level also gets a
+                    // folder key in case it is a FileSystemFolder rather than a Category
+                    ancestors.push(format!("folder:{current_path}"));
                 }
             }
         }

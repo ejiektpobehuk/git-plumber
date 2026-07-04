@@ -1,7 +1,7 @@
 use crate::tui::main_view::PreviewState;
 use crate::tui::message::Message;
 use crate::tui::model::{AppState, AppView, GitObjectType};
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::main_view::{MainViewState, PackPreViewState};
 
@@ -111,23 +111,22 @@ impl AppState {
 
                         } => {
                             // Use cached loose object data if available, otherwise show basic info
-                            let size_str = match size {
-                                Some(size) => format!("{size} bytes"),
-                                None => "Unknown size".to_string(),
-                            };
+                            let size_str = size
+                                .map_or_else(|| "Unknown size".to_string(), |size| format!("{size} bytes"));
                             let obj_id = object_id.as_deref().unwrap_or("Unknown object ID");
 
-                            let detailed_info = if let Some(parsed_obj) = parsed_object {
-                                format!(
-                                    "Type: {} (Loose Object)\nObject ID: {}\nSize: {}\n\n{}",
-                                    parsed_obj.object_type,
-                                    obj_id,
-                                    size_str,
-                                    Self::format_parsed_object_details(parsed_obj)
-                                )
-                            } else {
-                                format!("Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}")
-                            };
+                            let detailed_info = parsed_object.as_ref().map_or_else(
+                                || format!("Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}"),
+                                |parsed_obj| {
+                                    format!(
+                                        "Type: {} (Loose Object)\nObject ID: {}\nSize: {}\n\n{}",
+                                        parsed_obj.object_type,
+                                        obj_id,
+                                        size_str,
+                                        Self::format_parsed_object_details(parsed_obj)
+                                    )
+                                },
+                            );
 
                             Message::LoadGitObjectInfo(Ok(detailed_info))
                         }
@@ -157,18 +156,8 @@ impl AppState {
                         }
                         GitObjectType::FileSystemFile { path, size, modified_time } => {
                             // For filesystem files, show file details
-                            let size_str = match size {
-                                Some(size) => {
-                                    if size < &1024 {
-                                        format!("{size} bytes")
-                                    } else if size < &(1024 * 1024) {
-                                        format!("{:.2} KB", *size as f64 / 1024.0)
-                                    } else {
-                                        format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
-                                    }
-                                }
-                                None => "Unknown size".to_string(),
-                            };
+                            let size_str = size
+                                .map_or_else(|| "Unknown size".to_string(), Self::format_file_size);
 
                             let modified = modified_time
                                 .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
@@ -191,18 +180,8 @@ impl AppState {
                             Message::LoadGitObjectInfo(Ok(info))
                         }
                         GitObjectType::PackFile { file_type, path, size, modified_time } => {
-                            let size_str = match size {
-                                Some(size) => {
-                                    if size < &1024 {
-                                        format!("{size} bytes")
-                                    } else if size < &(1024 * 1024) {
-                                        format!("{:.2} KB", *size as f64 / 1024.0)
-                                    } else {
-                                        format!("{:.2} MB", *size as f64 / (1024.0 * 1024.0))
-                                    }
-                                }
-                                None => "Unknown size".to_string(),
-                            };
+                            let size_str = size
+                                .map_or_else(|| "Unknown size".to_string(), Self::format_file_size);
 
                             let modified = modified_time
                                 .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
@@ -291,17 +270,16 @@ impl AppState {
                             ..
                         } => {
                             // Generate custom preview showing the compressed file structure
-                            if let Some(parsed_obj) = parsed_object {
-                                let preview = Self::generate_loose_object_preview(parsed_obj);
-                                Message::LoadEducationalContent(Ok(preview))
-                            } else {
-                                // Fallback to generic preview if no parsed object
-                                let obj_id = object_id.as_deref().unwrap_or("Unknown");
-                                let preview = self
-                                    .educational_content_provider
-                                    .get_loose_object_preview(obj_id);
-                                Message::LoadEducationalContent(Ok(preview))
-                            }
+                            let preview = parsed_object.as_ref().map_or_else(
+                                || {
+                                    // Fallback to generic preview if no parsed object
+                                    let obj_id = object_id.as_deref().unwrap_or("Unknown");
+                                    self.educational_content_provider
+                                        .get_loose_object_preview(obj_id)
+                                },
+                                Self::generate_loose_object_preview,
+                            );
+                            Message::LoadEducationalContent(Ok(preview))
                         }
                         GitObjectType::PackFolder { .. } => {
                             let content = self
@@ -398,7 +376,7 @@ impl AppState {
     }
 
     // Load pack objects from a pack file
-    pub fn load_pack_objects(&mut self, pack_path: &PathBuf) -> Message {
+    pub fn load_pack_objects(&mut self, pack_path: &Path) -> Message {
         match &mut self.view {
             AppView::Main {
                 state:
@@ -407,22 +385,36 @@ impl AppState {
                         ..
                     },
             } => {
-                *pack_file_path = pack_path.clone();
+                *pack_file_path = pack_path.to_path_buf();
                 Message::LoadPackObjects {
-                    path: pack_path.clone(),
+                    path: pack_path.to_path_buf(),
                     result: crate::tui::pure_loaders::load_pack_objects_pure(pack_path),
                 }
             }
             _ => Message::LoadPackObjects {
-                path: pack_path.clone(),
+                path: pack_path.to_path_buf(),
                 result: Err("Sent to wrong View".to_string()),
             },
+        }
+    }
+
+    /// Format a byte count for display (bytes / KB / MB)
+    // Display-only formatting: sizes here are far below f64's exact-integer limit
+    #[allow(clippy::cast_precision_loss)]
+    fn format_file_size(size: u64) -> String {
+        if size < 1024 {
+            format!("{size} bytes")
+        } else if size < 1024 * 1024 {
+            format!("{:.2} KB", size as f64 / 1024.0)
+        } else {
+            format!("{:.2} MB", size as f64 / (1024.0 * 1024.0))
         }
     }
 
     /// Format detailed information for parsed loose objects
     fn format_parsed_object_details(parsed_obj: &crate::git::loose_object::LooseObject) -> String {
         use crate::git::loose_object::ParsedContent;
+        use std::fmt::Write as _;
 
         match parsed_obj.get_parsed_content() {
             Some(ParsedContent::Commit(commit)) => {
@@ -444,18 +436,17 @@ impl AppState {
                 for (i, entry) in tree.entries.iter().enumerate() {
                     if i >= 5 {
                         // Limit to first 5 entries
-                        details.push_str(&format!(
-                            "  ... and {} more entries",
-                            tree.entries.len() - 5
-                        ));
+                        let _ =
+                            write!(details, "  ... and {} more entries", tree.entries.len() - 5);
                         break;
                     }
-                    details.push_str(&format!(
-                        "    {} {} {}\n",
+                    let _ = writeln!(
+                        details,
+                        "    {} {} {}",
                         entry.mode,
                         &entry.sha1[..8],
                         entry.name
-                    ));
+                    );
                 }
                 details
             }

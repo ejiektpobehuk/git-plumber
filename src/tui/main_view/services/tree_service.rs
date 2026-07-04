@@ -86,8 +86,6 @@ impl TreeService {
         tree: &[GitObject],
         selection_key_fn: fn(&GitObject) -> String,
     ) -> std::collections::HashSet<String> {
-        let mut keys = std::collections::HashSet::new();
-
         fn collect_recursive(
             node: &GitObject,
             keys: &mut std::collections::HashSet<String>,
@@ -98,6 +96,8 @@ impl TreeService {
                 collect_recursive(child, keys, selection_key_fn);
             }
         }
+
+        let mut keys = std::collections::HashSet::new();
 
         for obj in tree {
             collect_recursive(obj, &mut keys, selection_key_fn);

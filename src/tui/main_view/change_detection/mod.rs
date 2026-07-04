@@ -29,7 +29,7 @@ impl ChangeDetectionService {
             out_pos: &mut HashMap<String, OldPosition>,
             out_nodes: &mut HashMap<String, GitObject>,
             children: &[GitObject],
-            parent_key: Option<String>,
+            parent_key: Option<&str>,
             selection_key: &impl Fn(&GitObject) -> String,
         ) {
             for (idx, child) in children.iter().enumerate() {
@@ -37,7 +37,7 @@ impl ChangeDetectionService {
                 out_pos.insert(
                     key.clone(),
                     OldPosition {
-                        parent_key: parent_key.clone(),
+                        parent_key: parent_key.map(str::to_owned),
                         sibling_index: idx,
                     },
                 );
@@ -49,7 +49,7 @@ impl ChangeDetectionService {
                             out_pos,
                             out_nodes,
                             &child.children,
-                            Some(key),
+                            Some(key.as_str()),
                             selection_key,
                         );
                     }

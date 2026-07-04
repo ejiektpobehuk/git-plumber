@@ -37,6 +37,11 @@ impl Header {
     ///    4-byte version number (network byte order):
     /// Git currently accepts version number 2 or 3 but
     ///       generates version 2 only.
+    ///
+    /// # Errors
+    ///
+    /// Returns a nom parse error if the input does not start with the "PACK"
+    /// signature, the version is not 2 or 3, or the input is too short.
     pub fn parse(input: &[u8]) -> IResult<&[u8], Self> {
         let original_input = input;
         let (input, ()) = Self::parse_signature(input)?;

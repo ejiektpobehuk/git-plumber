@@ -24,6 +24,13 @@ impl fmt::Display for DeltaInstruction {
     }
 }
 
+/// Parse the copy/insert instruction stream of a delta object
+///
+/// # Errors
+///
+/// Returns `nom::Err::Incomplete` if the input ends in the middle of an
+/// instruction (missing offset/size bytes of a copy, or fewer data bytes
+/// than an insert instruction declares).
 pub fn parse_delta_instructions(input: &[u8]) -> nom::IResult<&[u8], Vec<DeltaInstruction>> {
     let mut instructions = Vec::new();
     let mut i = 0;

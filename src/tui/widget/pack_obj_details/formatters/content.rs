@@ -17,14 +17,14 @@ impl<'a> ContentFormatter<'a> {
     }
 
     pub fn format_object_content(&self, lines: &mut Vec<Line<'static>>) {
-        self.format_compression_header(lines);
+        Self::format_compression_header(lines);
         self.format_zlib_header(lines);
         self.format_deflate_block(lines);
         self.format_adler32_checksum(lines);
         self.format_data_preview(lines);
     }
 
-    fn format_compression_header(&self, lines: &mut Vec<Line<'static>>) {
+    fn format_compression_header(lines: &mut Vec<Line<'static>>) {
         lines.push(Line::from(""));
         lines.push(Line::styled(
             "OBJECT DATA",
@@ -100,11 +100,13 @@ impl<'a> ContentFormatter<'a> {
             "  - Compressed data size: {} bytes",
             self.object_data.compressed_size
         )));
+        // Display-only ratio; object sizes are far below f64's exact-integer limit
+        #[allow(clippy::cast_precision_loss)]
+        let compression_ratio = (self.object_data.compressed_size as f64
+            / self.object_data.uncompressed_data.len() as f64)
+            * 100.0;
         lines.push(Line::from(format!(
-            "  - Compression ratio: {:.1}%",
-            (self.object_data.compressed_size as f64
-                / self.object_data.uncompressed_data.len() as f64)
-                * 100.0
+            "  - Compression ratio: {compression_ratio:.1}%"
         )));
 
         lines.push(Line::from(""));

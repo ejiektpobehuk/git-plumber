@@ -62,9 +62,15 @@ impl PackGroup {
     }
 
     /// Load and parse the index file if available
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PackError` if the index file exists but cannot be read or
+    /// is not a valid pack index. Returns `Ok(None)` if there is no index file.
     pub fn load_index(&self) -> Result<Option<PackIndex>, PackError> {
-        if let Some(ref idx_path) = self.idx_file {
-            match std::fs::read(idx_path) {
+        self.idx_file
+            .as_ref()
+            .map_or(Ok(None), |idx_path| match std::fs::read(idx_path) {
                 Ok(data) => match PackIndex::parse(&data) {
                     Ok((_, index)) => Ok(Some(index)),
                     Err(e) => Err(PackError::ParseError(format!(
@@ -72,22 +78,28 @@ impl PackGroup {
                     ))),
                 },
                 Err(e) => Err(PackError::DecompressionError(e)),
-            }
-        } else {
-            Ok(None)
-        }
+            })
     }
 
     /// Look up an object by SHA-1 hash using the index file
     /// Returns the byte offset in the pack file if found
+    ///
+    /// # Errors
+    ///
+    /// Returns a `PackError` if the index file exists but cannot be read or
+    /// parsed.
     pub fn lookup_object_offset(&self, sha1: &[u8; 20]) -> Result<Option<u64>, PackError> {
-        match self.load_index()? {
-            Some(index) => Ok(index.lookup_object(sha1)),
-            None => Ok(None),
-        }
+        Ok(self
+            .load_index()?
+            .and_then(|index| index.lookup_object(sha1)))
     }
 
     /// Get basic statistics about the pack group
+    ///
+    /// # Errors
+    ///
+    /// Currently always succeeds: missing or unreadable files simply leave
+    /// the corresponding statistics unset.
     pub fn get_stats(&self) -> Result<PackGroupStats, PackError> {
         let mut stats = PackGroupStats {
             base_name: self.base_name.clone(),

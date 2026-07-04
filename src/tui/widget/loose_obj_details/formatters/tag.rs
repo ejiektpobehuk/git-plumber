@@ -37,7 +37,7 @@ impl<'a> TagFormatter<'a> {
             if let Some(ref tagger_date) = self.tag.tagger_date {
                 lines.push(Line::from(format!(
                     "  Date: {}",
-                    self.format_timestamp(tagger_date)
+                    Self::format_timestamp(tagger_date)
                 )));
             }
         } else {
@@ -92,7 +92,7 @@ impl<'a> TagFormatter<'a> {
         }
     }
 
-    fn format_timestamp(&self, timestamp: &str) -> String {
+    fn format_timestamp(timestamp: &str) -> String {
         // For now, just return the raw timestamp
         // In the future, we could parse Unix timestamps manually
         timestamp.to_string()

@@ -295,8 +295,8 @@ impl<'a> Adler32Formatter<'a> {
             checksum_bytes[3],
         ]);
 
-        let colored_spans = self.format_checksum_bytes(lines, checksum_bytes, len);
-        self.format_checksum_verification(
+        let colored_spans = Self::format_checksum_bytes(lines, checksum_bytes, len);
+        Self::format_checksum_verification(
             lines,
             stored_checksum,
             calculated_checksum,
@@ -305,7 +305,6 @@ impl<'a> Adler32Formatter<'a> {
     }
 
     fn format_checksum_bytes(
-        &self,
         lines: &mut Vec<Line<'static>>,
         checksum_bytes: &[u8],
         len: usize,
@@ -349,7 +348,6 @@ impl<'a> Adler32Formatter<'a> {
     }
 
     fn format_checksum_verification(
-        &self,
         lines: &mut Vec<Line<'static>>,
         stored_checksum: u32,
         calculated_checksum: u32,

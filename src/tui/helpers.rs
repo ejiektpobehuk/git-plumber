@@ -26,7 +26,7 @@ pub fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
 pub fn render_styled_paragraph_with_scrollbar(
     f: &mut ratatui::Frame,
     area: Rect,
-    content: Text,
+    content: &Text,
     scroll_position: usize,
     title: &str,
     is_focused: bool,
@@ -292,6 +292,8 @@ fn render_scrollbar_indicators(
 
     for indicator in indicators {
         // Calculate the Y position for this indicator
+        // relative_position is in [0, 1], so the product fits comfortably in u16
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         let indicator_y =
             scrollbar_start_y + (indicator.relative_position * scrollbar_height) as u16;
 

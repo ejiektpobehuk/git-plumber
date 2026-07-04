@@ -14,7 +14,7 @@ impl<'a> FanoutFormatter<'a> {
     }
 
     /// Calculate the 1-based byte position in the .idx file for a fanout entry
-    const fn calculate_fanout_byte_position(&self, fanout_index: usize) -> u64 {
+    const fn calculate_fanout_byte_position(fanout_index: usize) -> u64 {
         let header_size = 8u64; // magic (4) + version (4)
         let fanout_start = header_size; // Fan-out table starts at byte 8 (0-based)
 
@@ -134,7 +134,7 @@ impl<'a> FanoutFormatter<'a> {
                 }
 
                 let bucket_size = count.saturating_sub(prev_count);
-                let byte_pos = self.calculate_fanout_byte_position(i);
+                let byte_pos = Self::calculate_fanout_byte_position(i);
                 let hex_value = format_u32_as_hex_bytes(count);
 
                 if bucket_size > 0 {
@@ -193,10 +193,10 @@ impl<'a> FanoutFormatter<'a> {
         lines.push(Line::from(""));
 
         // Add legend
-        self.add_table_legend(lines);
+        Self::add_table_legend(lines);
     }
 
-    fn add_table_legend(&self, lines: &mut Vec<Line<'static>>) {
+    fn add_table_legend(lines: &mut Vec<Line<'static>>) {
         lines.push(Line::styled(
             "Column Legend:",
             Style::default().add_modifier(Modifier::BOLD),
@@ -362,6 +362,8 @@ impl<'a> FanoutFormatter<'a> {
         lines.push(Line::from(""));
 
         let total_objects = self.pack_index.object_count();
+        // Display-only percentage; object counts are far below f64's exact-integer limit
+        #[allow(clippy::cast_precision_loss)]
         let search_reduction = if total_objects > 0 {
             (f64::from(range_size) / total_objects as f64) * 100.0
         } else {

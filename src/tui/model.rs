@@ -132,10 +132,9 @@ impl GitObject {
         {
             // Only compute cache if not loaded and not already cached
             if !*is_loaded && is_empty_cached.is_none() {
-                *is_empty_cached = match std::fs::read_dir(path) {
-                    Ok(mut entries) => Some(entries.next().is_none()),
-                    Err(_) => Some(false), // If we can't read it, assume not empty
-                };
+                // If we can't read it, assume not empty
+                *is_empty_cached =
+                    Some(std::fs::read_dir(path).is_ok_and(|mut entries| entries.next().is_none()));
             }
         }
     }
@@ -152,10 +151,9 @@ impl GitObject {
         {
             // For collapsed folders (not loaded), always refresh the cache
             if !*is_loaded {
-                *is_empty_cached = match std::fs::read_dir(path) {
-                    Ok(mut entries) => Some(entries.next().is_none()),
-                    Err(_) => Some(false), // If we can't read it, assume not empty
-                };
+                // If we can't read it, assume not empty
+                *is_empty_cached =
+                    Some(std::fs::read_dir(path).is_ok_and(|mut entries| entries.next().is_none()));
             }
         }
     }
@@ -216,14 +214,9 @@ impl GitObject {
             .to_string();
 
         // Load file metadata
-        let (size, modified_time) = match std::fs::metadata(&path) {
-            Ok(metadata) => {
-                let file_size = metadata.len();
-                let mod_time = metadata.modified().ok();
-                (Some(file_size), mod_time)
-            }
-            Err(_) => (None, None),
-        };
+        let (size, modified_time) = std::fs::metadata(&path).map_or((None, None), |metadata| {
+            (Some(metadata.len()), metadata.modified().ok())
+        });
 
         Self {
             name,
@@ -238,7 +231,7 @@ impl GitObject {
     }
 
     #[must_use]
-    pub fn new_pack_folder(pack_group: crate::git::repository::PackGroup) -> Self {
+    pub fn new_pack_folder(pack_group: &crate::git::repository::PackGroup) -> Self {
         let mut pack_folder = Self {
             name: pack_group.base_name.clone(),
             obj_type: GitObjectType::PackFolder {
@@ -278,14 +271,9 @@ impl GitObject {
         .to_string();
 
         // Load file details
-        let (size, modified_time) = match std::fs::metadata(&path) {
-            Ok(metadata) => {
-                let file_size = metadata.len();
-                let mod_time = metadata.modified().ok();
-                (Some(file_size), mod_time)
-            }
-            Err(_) => (None, None),
-        };
+        let (size, modified_time) = std::fs::metadata(&path).map_or((None, None), |metadata| {
+            (Some(metadata.len()), metadata.modified().ok())
+        });
 
         Self {
             name,
@@ -373,56 +361,51 @@ impl GitObject {
             // Always restore expansion state for all object types
             self.expanded = old_obj.expanded;
 
-            match (&mut self.obj_type, &old_obj.obj_type) {
-                // FileSystemFolder: restore loading state and children if loaded
-                (
-                    GitObjectType::FileSystemFolder {
-                        is_loaded,
-                        is_educational,
-                        is_empty_cached,
-                        ..
-                    },
-                    GitObjectType::FileSystemFolder {
-                        is_loaded: old_is_loaded,
-                        is_empty_cached: old_is_empty_cached,
-                        ..
-                    },
-                ) => {
-                    // For educational folders, keep is_loaded state (they're pre-populated)
-                    // For regular folders, always reload to detect file changes
-                    if *is_educational {
-                        *is_loaded = *old_is_loaded;
-                        *is_empty_cached = *old_is_empty_cached; // Keep cache for educational folders
+            // FileSystemFolder: restore loading state and children if loaded
+            //
+            // Category: only restore expansion state, NOT children
+            // Categories like "Loose Objects" should always use fresh children from tree rebuild
+            //
+            // Pack, Ref, LooseObject: these are leaf nodes, just restore expansion state
+            // (expansion state already restored above)
+            if let (
+                GitObjectType::FileSystemFolder {
+                    is_loaded,
+                    is_educational,
+                    is_empty_cached,
+                    ..
+                },
+                GitObjectType::FileSystemFolder {
+                    is_loaded: old_is_loaded,
+                    is_empty_cached: old_is_empty_cached,
+                    ..
+                },
+            ) = (&mut self.obj_type, &old_obj.obj_type)
+            {
+                // For educational folders, keep is_loaded state (they're pre-populated)
+                // For regular folders, always reload to detect file changes
+                if *is_educational {
+                    *is_loaded = *old_is_loaded;
+                    *is_empty_cached = *old_is_empty_cached; // Keep cache for educational folders
+                } else {
+                    // Regular folders: with full tree loading, they should already be loaded
+                    // Check if contents are already loaded by the new full tree system
+                    if *is_loaded && !self.children.is_empty() {
+                        // Already loaded by full tree system, keep the state
+                        *is_empty_cached = *old_is_empty_cached;
+                    } else if old_obj.expanded {
+                        // Old behavior for backwards compatibility (shouldn't happen with full tree)
+                        *is_loaded = false; // Mark as not loaded to trigger reload
+                        *is_empty_cached = *old_is_empty_cached;
+                        let _ = self.load_folder_contents(); // Load fresh contents immediately
                     } else {
-                        // Regular folders: with full tree loading, they should already be loaded
-                        // Check if contents are already loaded by the new full tree system
-                        if *is_loaded && !self.children.is_empty() {
-                            // Already loaded by full tree system, keep the state
-                            *is_empty_cached = *old_is_empty_cached;
-                        } else if old_obj.expanded {
-                            // Old behavior for backwards compatibility (shouldn't happen with full tree)
-                            *is_loaded = false; // Mark as not loaded to trigger reload
-                            *is_empty_cached = *old_is_empty_cached;
-                            let _ = self.load_folder_contents(); // Load fresh contents immediately
-                        } else {
-                            *is_loaded = false; // Will load on-demand when expanded
-                            *is_empty_cached = *old_is_empty_cached;
-                        }
+                        *is_loaded = false; // Will load on-demand when expanded
+                        *is_empty_cached = *old_is_empty_cached;
                     }
-
-                    // Never restore children - always use fresh children from tree rebuild or reload
-                    // This ensures new/modified/deleted files are detected properly
                 }
 
-                // Category: only restore expansion state, NOT children
-                // Categories like "Loose Objects" should always use fresh children from tree rebuild
-                (GitObjectType::Category(_), GitObjectType::Category(_)) => {
-                    // expansion state already restored above, don't restore children
-                }
-
-                // Pack, Ref, LooseObject: these are leaf nodes, just restore expansion state
-                // (expansion state already restored above)
-                _ => {}
+                // Never restore children - always use fresh children from tree rebuild or reload
+                // This ensures new/modified/deleted files are detected properly
             }
         }
 
@@ -433,6 +416,11 @@ impl GitObject {
     }
 
     /// Load the contents of a filesystem folder on demand
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if this object is not a filesystem folder, or if the
+    /// folder's directory cannot be read.
     pub fn load_folder_contents(&mut self) -> Result<(), String> {
         match &mut self.obj_type {
             GitObjectType::FileSystemFolder {
@@ -491,8 +479,9 @@ impl GitObject {
     // Utility method to format SystemTime as "time ago" string
     #[must_use]
     pub fn format_time_ago(time: &SystemTime) -> String {
-        match time.elapsed() {
-            Ok(elapsed) => {
+        time.elapsed().map_or_else(
+            |_| "Unknown time".to_string(),
+            |elapsed| {
                 let seconds = elapsed.as_secs();
                 if seconds < 60 {
                     format!("{seconds} seconds ago")
@@ -503,9 +492,8 @@ impl GitObject {
                 } else {
                     format!("{} days ago", seconds / 86400)
                 }
-            }
-            Err(_) => "Unknown time".to_string(),
-        }
+            },
+        )
     }
 }
 

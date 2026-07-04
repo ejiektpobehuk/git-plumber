@@ -17,9 +17,9 @@ impl<'a> DeltaFormatter<'a> {
     pub fn format_delta_instructions(&self, lines: &mut Vec<Line<'static>>) {
         match crate::git::pack::parse_delta_instructions(self.uncompressed_data) {
             Ok((_, instructions)) => {
-                self.format_instructions_header(lines, &instructions);
-                self.format_individual_instructions(lines, &instructions);
-                self.format_reconstruction_explanation(lines);
+                Self::format_instructions_header(lines, &instructions);
+                Self::format_individual_instructions(lines, &instructions);
+                Self::format_reconstruction_explanation(lines);
             }
             Err(e) => {
                 lines.push(Line::from(format!(
@@ -30,7 +30,6 @@ impl<'a> DeltaFormatter<'a> {
     }
 
     fn format_instructions_header(
-        &self,
         lines: &mut Vec<Line<'static>>,
         instructions: &[crate::git::pack::DeltaInstruction],
     ) {
@@ -48,17 +47,16 @@ impl<'a> DeltaFormatter<'a> {
     }
 
     fn format_individual_instructions(
-        &self,
         lines: &mut Vec<Line<'static>>,
         instructions: &[crate::git::pack::DeltaInstruction],
     ) {
         for (i, instruction) in instructions.iter().enumerate() {
             match instruction {
                 crate::git::pack::DeltaInstruction::Copy { offset, size } => {
-                    self.format_copy_instruction(lines, i + 1, *offset, *size);
+                    Self::format_copy_instruction(lines, i + 1, *offset, *size);
                 }
                 crate::git::pack::DeltaInstruction::Insert { data } => {
-                    self.format_insert_instruction(lines, i + 1, data);
+                    Self::format_insert_instruction(lines, i + 1, data);
                 }
             }
             lines.push(Line::from(""));
@@ -66,7 +64,6 @@ impl<'a> DeltaFormatter<'a> {
     }
 
     fn format_copy_instruction(
-        &self,
         lines: &mut Vec<Line<'static>>,
         index: usize,
         offset: usize,
@@ -80,7 +77,7 @@ impl<'a> DeltaFormatter<'a> {
         )));
     }
 
-    fn format_insert_instruction(&self, lines: &mut Vec<Line<'static>>, index: usize, data: &[u8]) {
+    fn format_insert_instruction(lines: &mut Vec<Line<'static>>, index: usize, data: &[u8]) {
         lines.push(Line::from(format!(
             "  {}. INSERT: {} bytes",
             index,
@@ -88,13 +85,13 @@ impl<'a> DeltaFormatter<'a> {
         )));
 
         if data.len() <= 64 {
-            self.format_small_insert_data(lines, data);
+            Self::format_small_insert_data(lines, data);
         } else {
-            self.format_large_insert_data(lines, data);
+            Self::format_large_insert_data(lines, data);
         }
     }
 
-    fn format_small_insert_data(&self, lines: &mut Vec<Line<'static>>, data: &[u8]) {
+    fn format_small_insert_data(lines: &mut Vec<Line<'static>>, data: &[u8]) {
         let data_str = String::from_utf8_lossy(data);
         if data_str
             .chars()
@@ -106,7 +103,7 @@ impl<'a> DeltaFormatter<'a> {
         }
     }
 
-    fn format_large_insert_data(&self, lines: &mut Vec<Line<'static>>, data: &[u8]) {
+    fn format_large_insert_data(lines: &mut Vec<Line<'static>>, data: &[u8]) {
         lines.push(Line::from(format!(
             "      └─ Hex (first 32 bytes): {}",
             hex::encode(&data[..HEX_PREVIEW_LIMIT])
@@ -117,7 +114,7 @@ impl<'a> DeltaFormatter<'a> {
         )));
     }
 
-    fn format_reconstruction_explanation(&self, lines: &mut Vec<Line<'static>>) {
+    fn format_reconstruction_explanation(lines: &mut Vec<Line<'static>>) {
         lines.push(Line::from("DELTA RECONSTRUCTION PROCESS"));
         lines.push(Line::from("─".repeat(35)));
         lines.push(Line::from(""));

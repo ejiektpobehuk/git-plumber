@@ -12,6 +12,11 @@ impl GitRepositoryService {
     }
 
     /// Load git objects from the repository
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the repository's `.git` directory cannot be read
+    /// while building the file tree.
     pub fn load_git_objects(plumber: &crate::GitPlumber) -> Result<Vec<GitObject>, String> {
         crate::tui::git_tree::build_git_file_tree(plumber)
     }
@@ -36,17 +41,11 @@ impl GitRepositoryService {
                     ..
                 },
             ) => old_name != new_name, // Pack folders are different if base names differ
-            (GitObjectType::LooseObject { .. }, GitObjectType::LooseObject { .. }) => {
-                // Loose objects are content-addressable and immutable
-                // Same object_id = same content, different object_id = different object
-                // There's no concept of "modification" for loose objects
-                false
-            }
             (
                 GitObjectType::Ref { path: old_path, .. },
                 GitObjectType::Ref { path: new_path, .. },
-            ) => Self::compare_file_mtime_paths(old_path, new_path),
-            (
+            )
+            | (
                 GitObjectType::FileSystemFile { path: old_path, .. },
                 GitObjectType::FileSystemFile { path: new_path, .. },
             ) => Self::compare_file_mtime_paths(old_path, new_path),
@@ -54,13 +53,13 @@ impl GitRepositoryService {
                 GitObjectType::FileSystemFolder { path: old_path, .. },
                 GitObjectType::FileSystemFolder { path: new_path, .. },
             ) => {
-                if old_path != new_path {
-                    return true;
-                }
                 // For folders, we don't consider them "modified" in the traditional sense
                 // Content changes (files added/removed) are handled by the change detection system
-                false
+                old_path != new_path
             }
+            // Loose objects are content-addressable and immutable: same object_id = same
+            // content, so there's no concept of "modification" for them. Other type
+            // combinations are never considered modified either.
             _ => false,
         }
     }
@@ -85,6 +84,11 @@ impl GitRepositoryService {
     }
 
     /// Expand or collapse a folder in the tree
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the folder's contents need to be loaded before
+    /// expanding and reading them from disk fails.
     pub fn toggle_folder_expansion(
         tree: &mut [GitObject],
         target_path: &PathBuf,
@@ -124,8 +128,6 @@ impl GitRepositoryService {
     /// Get repository statistics
     #[must_use]
     pub fn get_repository_stats(tree: &[GitObject]) -> RepositoryStats {
-        let mut stats = RepositoryStats::default();
-
         fn collect_stats(node: &GitObject, stats: &mut RepositoryStats, depth: usize) {
             stats.total_objects += 1;
             stats.max_depth = stats.max_depth.max(depth);
@@ -138,17 +140,19 @@ impl GitRepositoryService {
                         stats.expanded_folders += 1;
                     }
                 }
-                GitObjectType::PackFolder { .. } => stats.pack_folders += 1,
-                GitObjectType::PackFile { .. } => stats.pack_folders += 1,
+                GitObjectType::PackFolder { .. } | GitObjectType::PackFile { .. } => {
+                    stats.pack_folders += 1;
+                }
                 GitObjectType::LooseObject { .. } => stats.loose_objects += 1,
-                GitObjectType::Category(_) => stats.categories += 1,
-                GitObjectType::Ref { .. } => stats.categories += 1,
+                GitObjectType::Category(_) | GitObjectType::Ref { .. } => stats.categories += 1,
             }
 
             for child in &node.children {
                 collect_stats(child, stats, depth + 1);
             }
         }
+
+        let mut stats = RepositoryStats::default();
 
         for obj in tree {
             collect_stats(obj, &mut stats, 0);
@@ -160,8 +164,6 @@ impl GitRepositoryService {
     /// Validate repository structure
     #[must_use]
     pub fn validate_repository_structure(tree: &[GitObject]) -> Vec<ValidationIssue> {
-        let mut issues = Vec::new();
-
         fn validate_node(node: &GitObject, issues: &mut Vec<ValidationIssue>, path: &str) {
             match &node.obj_type {
                 GitObjectType::FileSystemFile {
@@ -171,7 +173,7 @@ impl GitRepositoryService {
                         issues.push(ValidationIssue {
                             issue_type: ValidationIssueType::MissingFile,
                             path: path.to_string(),
-                            message: format!("File does not exist: {file_path:?}"),
+                            message: format!("File does not exist: {}", file_path.display()),
                         });
                     }
                 }
@@ -181,7 +183,7 @@ impl GitRepositoryService {
                     issues.push(ValidationIssue {
                         issue_type: ValidationIssueType::MissingFolder,
                         path: path.to_string(),
-                        message: format!("Folder does not exist: {folder_path:?}"),
+                        message: format!("Folder does not exist: {}", folder_path.display()),
                     });
                 }
                 _ => {} // Other types don't need filesystem validation
@@ -191,6 +193,8 @@ impl GitRepositoryService {
                 validate_node(child, issues, &format!("{path}/[{i}]"));
             }
         }
+
+        let mut issues = Vec::new();
 
         for (i, obj) in tree.iter().enumerate() {
             validate_node(obj, &mut issues, &format!("[{i}]"));

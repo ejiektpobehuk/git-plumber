@@ -175,30 +175,18 @@ impl PrecomputedHighlightService {
         for child in &folder.children {
             match &child.obj_type {
                 // Direct file types
-                GitObjectType::FileSystemFile { .. } => {
-                    items.push(selection_key_fn(child));
-                }
-                GitObjectType::Ref { .. } => {
-                    items.push(selection_key_fn(child));
-                }
-                GitObjectType::LooseObject { .. } => {
-                    items.push(selection_key_fn(child));
-                }
-                GitObjectType::PackFile { .. } => {
+                GitObjectType::FileSystemFile { .. }
+                | GitObjectType::Ref { .. }
+                | GitObjectType::LooseObject { .. }
+                | GitObjectType::PackFile { .. } => {
                     items.push(selection_key_fn(child));
                 }
 
-                // Folder types - include the folder itself AND recurse into it
-                GitObjectType::FileSystemFolder { .. } => {
-                    items.push(selection_key_fn(child)); // Include the folder as highlightable
-                    items.extend(Self::collect_all_files_in_folder(child, selection_key_fn));
-                }
-                GitObjectType::Category(_) => {
-                    items.push(selection_key_fn(child)); // Include the category as highlightable
-                    items.extend(Self::collect_all_files_in_folder(child, selection_key_fn));
-                }
-                GitObjectType::PackFolder { .. } => {
-                    items.push(selection_key_fn(child)); // Include the pack folder as highlightable
+                // Folder types - include the folder itself as highlightable AND recurse into it
+                GitObjectType::FileSystemFolder { .. }
+                | GitObjectType::Category(_)
+                | GitObjectType::PackFolder { .. } => {
+                    items.push(selection_key_fn(child));
                     items.extend(Self::collect_all_files_in_folder(child, selection_key_fn));
                 }
             }

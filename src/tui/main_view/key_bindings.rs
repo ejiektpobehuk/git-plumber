@@ -70,21 +70,22 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                 PreviewState::Regular(preview_state) => match preview_state.focus {
                     RegularFocus::GitObjects => {
                         // Check if the selected object is a loose object
-                        if let Some(row) = state.tree.flat_view.get(state.tree.selected_index) {
-                            if matches!(row.object.obj_type, GitObjectType::LooseObject { .. }) {
-                                Some(Message::OpenLooseObjectView)
-                            } else {
-                                Some(Message::MainNavigation(
-                                    MainNavigation::FocusEducationalOrList,
-                                ))
-                            }
+                        if state
+                            .tree
+                            .flat_view
+                            .get(state.tree.selected_index)
+                            .is_some_and(|row| {
+                                matches!(row.object.obj_type, GitObjectType::LooseObject { .. })
+                            })
+                        {
+                            Some(Message::OpenLooseObjectView)
                         } else {
                             Some(Message::MainNavigation(
                                 MainNavigation::FocusEducationalOrList,
                             ))
                         }
                     }
-                    _ => None,
+                    RegularFocus::Preview => None,
                 },
                 PreviewState::Pack(state) => match state.focus {
                     PackFocus::GitObjects => Some(Message::MainNavigation(
@@ -107,7 +108,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                     RegularFocus::GitObjects => Some(Message::MainNavigation(
                         MainNavigation::FocusEducationalOrList,
                     )),
-                    _ => None,
+                    RegularFocus::Preview => None,
                 },
                 PreviewState::Pack(state) => match state.focus {
                     PackFocus::GitObjects => Some(Message::MainNavigation(

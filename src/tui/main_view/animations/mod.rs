@@ -145,7 +145,7 @@ impl AnimationManager {
     ) -> Option<DynamicFolderHighlight> {
         let now = Instant::now();
         let mut active_colors = Vec::new();
-        let mut earliest_expiration = None;
+        let mut earliest_expiration: Option<Instant> = None;
 
         // Check each file inside the folder for active highlights
         for file_key in files_inside {
@@ -154,44 +154,33 @@ impl AnimationManager {
                 && until > now
             {
                 active_colors.push(ratatui::style::Color::Green);
-                earliest_expiration = Some(match earliest_expiration {
-                    None => until,
-                    Some(existing) => std::cmp::min(existing, until),
-                });
+                earliest_expiration =
+                    Some(earliest_expiration.map_or(until, |existing| existing.min(until)));
             }
 
             if let Some(until) = self.modified_keys.get(file_key).copied()
                 && until > now
             {
                 active_colors.push(ratatui::style::Color::Rgb(255, 165, 0)); // Orange
-                earliest_expiration = Some(match earliest_expiration {
-                    None => until,
-                    Some(existing) => std::cmp::min(existing, until),
-                });
+                earliest_expiration =
+                    Some(earliest_expiration.map_or(until, |existing| existing.min(until)));
             }
 
             if let Some(ghost) = self.ghosts.get(file_key)
                 && ghost.until > now
             {
                 active_colors.push(ratatui::style::Color::Red);
-                earliest_expiration = Some(match earliest_expiration {
-                    None => ghost.until,
-                    Some(existing) => std::cmp::min(existing, ghost.until),
-                });
+                earliest_expiration = Some(
+                    earliest_expiration.map_or(ghost.until, |existing| existing.min(ghost.until)),
+                );
             }
         }
 
-        // If no active highlights found, no folder highlight
-        if active_colors.is_empty() {
-            return None;
-        }
-
-        // Compute folder color based on active file highlights
-        let folder_color = Self::compute_mixed_color(&active_colors);
-
-        Some(DynamicFolderHighlight {
-            color: folder_color,
-            expires_at: earliest_expiration.unwrap(),
+        // No expiration means no active highlights were found, so no folder highlight.
+        // Otherwise compute the folder color based on the active file highlights.
+        earliest_expiration.map(|expires_at| DynamicFolderHighlight {
+            color: Self::compute_mixed_color(&active_colors),
+            expires_at,
         })
     }
 
@@ -252,7 +241,9 @@ impl AnimationManager {
                 && let Some(expires_at) = row.highlight.expires_at
                 && expires_at > now
             {
-                // Calculate relative position on the scrollbar (0.0 = top, 1.0 = bottom)
+                // Calculate relative position on the scrollbar (0.0 = top, 1.0 = bottom).
+                // Precision loss is acceptable: this is display math for a scrollbar position.
+                #[allow(clippy::cast_precision_loss)]
                 let relative_position = if total_items > 1 {
                     index as f32 / (total_items - 1) as f32
                 } else {

@@ -35,6 +35,12 @@ impl GitPlumberConfig {
     /// 3. User config file (~/.config/git-plumber/config.toml)
     /// 4. System config file (/etc/git-plumber/config.toml)
     /// 5. Default values
+    ///
+    /// # Errors
+    ///
+    /// Returns a `ConfigError` if a config file exists but cannot be read or
+    /// parsed, or if the merged configuration cannot be deserialized into
+    /// `GitPlumberConfig` (e.g. a field has the wrong type).
     pub fn load() -> Result<Self, ConfigError> {
         let mut config_builder = Config::builder();
 
@@ -113,6 +119,12 @@ impl GitPlumberConfig {
     }
 
     /// Create a default configuration file at the user config location
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the user config directory cannot be determined,
+    /// if the config directory or file cannot be created/written, or if the
+    /// default configuration fails to serialize to TOML.
     pub fn create_default_config_file() -> Result<PathBuf, Box<dyn std::error::Error>> {
         if let Some(config_path) = Self::get_user_config_path() {
             // Create the parent directory if it doesn't exist

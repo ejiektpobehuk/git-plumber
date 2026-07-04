@@ -1,5 +1,12 @@
 use crossbeam_channel::{Receiver, select, tick, unbounded};
-pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), String> {
+
+/// Run the TUI event loop until the user quits.
+///
+/// # Errors
+///
+/// Returns an error if the terminal cannot be switched into (or restored
+/// from) raw mode / the alternate screen, or if drawing a frame fails.
+pub fn run_tui(plumber: &crate::GitPlumber, opts: &RunOptions) -> Result<(), String> {
     // Restore the terminal before the panic message is printed; otherwise it
     // lands in the alternate screen while the shell is stuck in raw mode.
     let default_panic_hook = std::panic::take_hook();
@@ -40,15 +47,14 @@ pub fn run_tui(plumber: crate::GitPlumber, opts: RunOptions) -> Result<(), Strin
     app.effects.push(crate::tui::message::Command::LoadInitial);
 
     // Start filesystem watcher for live updates
-    if let Ok(w) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone()) {
+    if let Ok(w) = crate::tui::watcher::spawn_git_watcher(&app.repo_path, tx.clone()) {
         app.fs_watcher = Some(w);
-    } else if let Err(e) = crate::tui::watcher::spawn_git_watcher(app.repo_path.clone(), tx.clone())
-    {
+    } else if let Err(e) = crate::tui::watcher::spawn_git_watcher(&app.repo_path, tx.clone()) {
         eprintln!("Watcher error: {e}");
     }
 
     // Main event loop
-    let result = run_app(&mut terminal, &mut app, &plumber, rx, tx);
+    let result = run_app(&mut terminal, &mut app, plumber, &rx, &tx);
 
     // Clean up
     disable_raw_mode().map_err(|e| format!("Failed to disable raw mode: {e}"))?;
@@ -109,8 +115,8 @@ fn run_app<B: ratatui::backend::Backend>(
     terminal: &mut Terminal<B>,
     app: &mut AppState,
     plumber: &crate::GitPlumber,
-    rx: Receiver<crate::tui::message::Message>,
-    tx: crossbeam_channel::Sender<crate::tui::message::Message>,
+    rx: &Receiver<crate::tui::message::Message>,
+    tx: &crossbeam_channel::Sender<crate::tui::message::Message>,
 ) -> Result<(), String> {
     // Dynamic timer thread - only active when animations are running
     let mut timer_handle: Option<std::thread::JoinHandle<()>> = None;
@@ -174,7 +180,6 @@ fn run_app<B: ratatui::backend::Backend>(
                 }
                 Ok(_) => {
                     // Ignore other events (mouse, focus, etc.)
-                    continue;
                 }
                 Err(_) => {
                     // Error reading events, exit thread
