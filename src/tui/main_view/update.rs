@@ -107,7 +107,7 @@ impl AppState {
                                     .tree
                                     .flat_view
                                     .get(new_index)
-                                    .is_some_and(|row| row.object.obj_type.is_pack());
+                                    .is_some_and(|row| row.kind.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -135,7 +135,7 @@ impl AppState {
                                     .tree
                                     .flat_view
                                     .get(new_index)
-                                    .is_some_and(|row| row.object.obj_type.is_pack());
+                                    .is_some_and(|row| row.kind.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -157,7 +157,7 @@ impl AppState {
                                     .tree
                                     .flat_view
                                     .first()
-                                    .is_some_and(|row| row.object.obj_type.is_pack());
+                                    .is_some_and(|row| row.kind.is_pack());
                                 (true, 0, is_pack)
                             }
                         }
@@ -181,7 +181,7 @@ impl AppState {
                                     .tree
                                     .flat_view
                                     .get(new_index)
-                                    .is_some_and(|row| row.object.obj_type.is_pack());
+                                    .is_some_and(|row| row.kind.is_pack());
                                 (true, new_index, is_pack)
                             }
                         }
@@ -205,7 +205,7 @@ impl AppState {
                                 .tree
                                 .flat_view
                                 .get(selected_index)
-                                .is_some_and(|row| row.object.obj_type.is_pack());
+                                .is_some_and(|row| row.kind.is_pack());
                             (toggle_msg, has_items, selected_index, is_pack)
                         } else {
                             return true; // Not in main view
@@ -227,24 +227,16 @@ impl AppState {
                         let current_depth = state.tree.flat_view[state.tree.selected_index].depth;
 
                         if current_depth > 0 {
-                            // Find parent by looking backwards for an object at depth - 1
-                            // Accept Category, FileSystemFolder, or PackFolder as valid parents
+                            // Find parent by looking backwards for a folder-kind row at depth - 1
                             for i in (0..state.tree.selected_index).rev() {
                                 let parent_row = &state.tree.flat_view[i];
-                                if parent_row.depth == current_depth - 1 {
-                                    match &parent_row.object.obj_type {
-                                        GitObjectType::Category(_)
-                                        | GitObjectType::FileSystemFolder { .. }
-                                        | GitObjectType::PackFolder { .. } => {
-                                            // Jump to this parent - let handle_git_object_selection handle both selection and scroll updates
-                                            let is_pack = parent_row.object.obj_type.is_pack();
-                                            self.handle_git_object_selection(i, is_pack, plumber);
-                                            break;
-                                        }
-                                        _ => {
-                                            // Not a valid parent type, continue searching
-                                        }
-                                    }
+                                if parent_row.depth == current_depth - 1
+                                    && parent_row.kind.is_folder()
+                                {
+                                    // Jump to this parent - let handle_git_object_selection handle both selection and scroll updates
+                                    let is_pack = parent_row.kind.is_pack();
+                                    self.handle_git_object_selection(i, is_pack, plumber);
+                                    break;
                                 }
                             }
                         }
@@ -738,12 +730,12 @@ impl AppState {
             }
             Message::OpenLooseObjectView => {
                 if let AppView::Main { state } = &self.view {
-                    // Get the currently selected loose object
-                    if let Some(row) = state.tree.flat_view.get(state.tree.selected_index)
+                    // Get the currently selected loose object from the tree
+                    if let Some(node) = state.selected_node()
                         && let GitObjectType::LooseObject {
                             parsed_object: Some(loose_obj),
                             ..
-                        } = &row.object.obj_type
+                        } = &node.obj_type
                     {
                         // Create the new loose object view
                         let loose_view = AppView::LooseObjectDetail {
@@ -785,15 +777,20 @@ impl AppState {
             if is_pack {
                 // Ensure we have a Pack preview state
                 if let Some(row) = state.tree.flat_view.get(selected_index) {
-                    let path = match &row.object.obj_type {
-                        GitObjectType::PackFolder { pack_group, .. } => {
+                    let node = super::services::TreeService::find_node_by_key(
+                        &state.tree.list,
+                        &row.key,
+                        MainViewState::selection_key,
+                    );
+                    let path = match node.map(|n| &n.obj_type) {
+                        Some(GitObjectType::PackFolder { pack_group, .. }) => {
                             if let Some(pack_path) = &pack_group.pack_file {
                                 pack_path
                             } else {
                                 return; // No pack file in this group
                             }
                         }
-                        GitObjectType::PackFile { path, .. } => path,
+                        Some(GitObjectType::PackFile { path, .. }) => path,
                         _ => return, // Not a pack-related object
                     };
                     match &state.preview_state {

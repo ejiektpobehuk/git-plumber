@@ -92,10 +92,11 @@ impl AppState {
 
                     // Try to restore previous selection
                     if let Some(sel) = state.session.last_selection.take() {
-                        if let Some(idx) =
-                            state.tree.flat_view.iter().position(|row| {
-                                MainViewState::selection_key(&row.object) == sel.key
-                            })
+                        if let Some(idx) = state
+                            .tree
+                            .flat_view
+                            .iter()
+                            .position(|row| row.key == sel.key)
                         {
                             state.tree.selected_index = idx;
                         } else if state.tree.selected_index >= state.tree.flat_view.len() {

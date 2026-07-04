@@ -710,13 +710,12 @@ impl AppState {
         }
     }
 
-    // Check if animations are currently active (including folder highlights)
+    // Check if animations are currently active (folder highlights derive
+    // from the same animation maps, so no tree walk is needed)
+    #[must_use]
     pub fn has_active_animations(&self) -> bool {
         if let AppView::Main { state } = &self.view {
-            state.animations.has_active_animations_with_tree(
-                &state.tree.list,
-                crate::tui::main_view::MainViewState::selection_key,
-            )
+            state.animations.has_active_animations()
         } else {
             false
         }

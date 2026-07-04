@@ -51,4 +51,23 @@ impl TreeService {
         }
         search_in_children(tree, key, selection_key_fn)
     }
+
+    /// Find a node in the tree by its selection key, mutably
+    pub fn find_node_by_key_mut<'a>(
+        tree: &'a mut [GitObject],
+        key: &str,
+        selection_key_fn: fn(&GitObject) -> String,
+    ) -> Option<&'a mut GitObject> {
+        for child in tree {
+            if selection_key_fn(child) == key {
+                return Some(child);
+            }
+            if let Some(found) =
+                Self::find_node_by_key_mut(&mut child.children, key, selection_key_fn)
+            {
+                return Some(found);
+            }
+        }
+        None
+    }
 }

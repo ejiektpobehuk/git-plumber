@@ -49,12 +49,100 @@ pub struct HighlightInfo {
     pub animation_type: AnimationType,
 }
 
+/// Coarse classification of a tree node for rendering and navigation.
+///
+/// Carries only what those decisions need; the full `GitObject` stays in
+/// `TreeState::list` and is looked up by `key` when detail data is required.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowKind {
+    Category,
+    Folder { is_educational: bool },
+    PackFolder,
+    File,
+    PackFile { is_pack: bool },
+    Ref,
+    LooseObject,
+}
+
+impl RowKind {
+    #[must_use]
+    pub const fn is_folder(self) -> bool {
+        matches!(
+            self,
+            Self::Category | Self::Folder { .. } | Self::PackFolder
+        )
+    }
+
+    // Whether selecting this row should show the pack preview (mirrors
+    // `GitObjectType::is_pack`)
+    #[must_use]
+    pub const fn is_pack(self) -> bool {
+        matches!(self, Self::PackFolder | Self::PackFile { is_pack: true })
+    }
+}
+
+/// A single visible row of the tree: a lightweight view-model built during
+/// flattening.
+///
+/// It deliberately does NOT own a `GitObject` — cloning nodes (with their
+/// recursive children and parsed payloads) per row made every re-flatten
+/// O(nodes × depth) deep clones.
 #[derive(Debug, Clone)]
 pub struct FlatTreeRow {
     pub depth: usize,
-    pub object: GitObject,
+    /// Stable selection key of the underlying node (`MainViewState::selection_key`)
+    pub key: String,
+    pub name: String,
+    pub kind: RowKind,
+    pub expanded: bool,
+    pub is_empty: bool,
+    /// True when no later sibling exists at this depth; drives └ vs ├
+    pub is_last_child: bool,
+    /// Bit `d` set means indent level `d` needs a │ guide (the ancestor at
+    /// depth `d + 1` has later siblings)
+    pub guides: u64,
     pub render_status: RenderStatus,
     pub highlight: HighlightInfo,
+}
+
+impl FlatTreeRow {
+    /// Build a row from a tree node. `is_last_child` and `guides` are filled
+    /// afterwards by `TreeFlattener::compute_row_relationships` once the full
+    /// row list (including ghost rows) is known.
+    #[must_use]
+    pub fn from_node(
+        node: &GitObject,
+        depth: usize,
+        key: String,
+        render_status: RenderStatus,
+        highlight: HighlightInfo,
+    ) -> Self {
+        let kind = match &node.obj_type {
+            GitObjectType::Category(_) => RowKind::Category,
+            GitObjectType::FileSystemFolder { is_educational, .. } => RowKind::Folder {
+                is_educational: *is_educational,
+            },
+            GitObjectType::PackFolder { .. } => RowKind::PackFolder,
+            GitObjectType::FileSystemFile { .. } => RowKind::File,
+            GitObjectType::PackFile { file_type, .. } => RowKind::PackFile {
+                is_pack: file_type == "packfile" || file_type == "pack",
+            },
+            GitObjectType::Ref { .. } => RowKind::Ref,
+            GitObjectType::LooseObject { .. } => RowKind::LooseObject,
+        };
+        Self {
+            depth,
+            key,
+            name: node.name.clone(),
+            kind,
+            expanded: node.expanded,
+            is_empty: node.is_empty(),
+            is_last_child: false,
+            guides: 0,
+            render_status,
+            highlight,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -142,7 +230,7 @@ impl RegularPreViewState {
 }
 
 impl MainViewState {
-    /// Cleanup timers; returns true if anything changed
+    /// Cleanup timers; returns true when the flattened tree needs a rebuild
     pub fn prune_timeouts(&mut self) -> bool {
         self.animations.prune_timeouts()
     }
@@ -205,12 +293,10 @@ impl MainViewState {
 
     #[must_use]
     pub fn current_selection_key(&self) -> Option<String> {
-        if self.tree.selected_index < self.tree.flat_view.len() {
-            let row = &self.tree.flat_view[self.tree.selected_index];
-            Some(Self::selection_key(&row.object))
-        } else {
-            None
-        }
+        self.tree
+            .flat_view
+            .get(self.tree.selected_index)
+            .map(|row| row.key.clone())
     }
 
     // ===== Change detection (snapshot/compare) =====
@@ -351,212 +437,66 @@ impl MainViewState {
             );
     }
 
-    // Toggle expansion for categories and filesystem folders
+    // Toggle expansion for categories, filesystem folders and pack folders
     pub fn toggle_expand(&mut self, visible_height: usize) -> Message {
-        if self.tree.selected_index < self.tree.flat_view.len() {
-            let selected_obj = &self.tree.flat_view[self.tree.selected_index].object.clone();
+        let Some(row) = self.tree.flat_view.get(self.tree.selected_index) else {
+            return Message::LoadGitObjects(Ok(()));
+        };
+        if !row.kind.is_folder() {
+            return Message::LoadGitObjects(Ok(())); // Other object types are not expandable
+        }
+        let key = row.key.clone();
 
-            match &selected_obj.obj_type {
-                GitObjectType::Category(category_name) => {
-                    fn find_and_toggle_category(obj: &mut GitObject, target_name: &str) -> bool {
-                        if let GitObjectType::Category(name) = &obj.obj_type
-                            && name == target_name
-                        {
-                            obj.expanded = !obj.expanded;
-                            return true;
-                        }
-                        for child in &mut obj.children {
-                            if find_and_toggle_category(child, target_name) {
-                                return true;
-                            }
-                        }
-                        false
-                    }
-
-                    let name_to_find = category_name.clone();
-
-                    for obj in &mut self.tree.list {
-                        if find_and_toggle_category(obj, &name_to_find) {
-                            break;
-                        }
-                    }
-
-                    // Remember the visual position of the toggled category before flattening
-                    let old_visual_position = self
-                        .tree
-                        .selected_index
-                        .saturating_sub(self.tree.scroll_position);
-
-                    self.flatten_tree();
-
-                    // Keep the selected category visible
-                    let mut new_index = 0;
-                    for (i, row) in self.tree.flat_view.iter().enumerate() {
-                        if let GitObjectType::Category(name) = &row.object.obj_type
-                            && *name == name_to_find
-                        {
-                            new_index = i;
-                            break;
-                        }
-                    }
-                    if self.tree.flat_view.is_empty() {
-                        self.tree.selected_index = 0;
-                        self.tree.scroll_position = 0;
-                    } else {
-                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
-
-                        // Preserve visual position: try to keep the toggled item at the same visual offset
-                        let desired_scroll = new_index.saturating_sub(old_visual_position);
-                        self.tree.scroll_position =
-                            super::services::UIService::clamp_scroll_position(
-                                &self.tree.flat_view,
-                                desired_scroll,
-                                visible_height,
-                            );
-                    }
+        let Some(node) = super::services::TreeService::find_node_by_key_mut(
+            &mut self.tree.list,
+            &key,
+            Self::selection_key,
+        ) else {
+            // Ghost rows have no backing node; nothing to toggle
+            return Message::LoadGitObjects(Ok(()));
+        };
+        if !node.expanded
+            && matches!(
+                node.obj_type,
+                GitObjectType::FileSystemFolder {
+                    is_loaded: false,
+                    ..
                 }
-                GitObjectType::FileSystemFolder { path, .. } => {
-                    fn find_and_toggle_folder(
-                        obj: &mut GitObject,
-                        target_path: &std::path::Path,
-                    ) -> Result<bool, String> {
-                        if let GitObjectType::FileSystemFolder {
-                            path, is_loaded, ..
-                        } = &mut obj.obj_type
-                            && path == target_path
-                        {
-                            if !obj.expanded && !*is_loaded {
-                                // Load folder contents before expanding
-                                obj.load_folder_contents()?;
-                            }
-                            obj.expanded = !obj.expanded;
-                            return Ok(true);
-                        }
-                        for child in &mut obj.children {
-                            if find_and_toggle_folder(child, target_path)? {
-                                return Ok(true);
-                            }
-                        }
-                        Ok(false)
-                    }
+            )
+            && let Err(e) = node.load_folder_contents()
+        {
+            return Message::LoadGitObjects(Err(format!("Failed to expand folder: {e}")));
+        }
+        node.expanded = !node.expanded;
 
-                    let path_to_find = path.clone();
+        // Remember the visual position of the toggled node before flattening
+        let old_visual_position = self
+            .tree
+            .selected_index
+            .saturating_sub(self.tree.scroll_position);
 
-                    let mut error_msg = None;
-                    for obj in &mut self.tree.list {
-                        match find_and_toggle_folder(obj, &path_to_find) {
-                            Ok(true) => break,
-                            Ok(false) => {}
-                            Err(e) => {
-                                error_msg = Some(e);
-                                break;
-                            }
-                        }
-                    }
+        self.flatten_tree();
 
-                    if let Some(error) = error_msg {
-                        return Message::LoadGitObjects(Err(format!(
-                            "Failed to expand folder: {error}"
-                        )));
-                    }
+        if self.tree.flat_view.is_empty() {
+            self.tree.selected_index = 0;
+            self.tree.scroll_position = 0;
+        } else {
+            // Keep the toggled node selected
+            let new_index = self
+                .tree
+                .flat_view
+                .iter()
+                .position(|r| r.key == key)
+                .unwrap_or(0);
+            self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
 
-                    // Remember the visual position of the toggled folder before flattening
-                    let old_visual_position = self
-                        .tree
-                        .selected_index
-                        .saturating_sub(self.tree.scroll_position);
-
-                    self.flatten_tree();
-
-                    // Keep the selected folder visible
-                    let mut new_index = 0;
-                    for (i, row) in self.tree.flat_view.iter().enumerate() {
-                        if let GitObjectType::FileSystemFolder { path, .. } = &row.object.obj_type
-                            && *path == path_to_find
-                        {
-                            new_index = i;
-                            break;
-                        }
-                    }
-                    if self.tree.flat_view.is_empty() {
-                        self.tree.selected_index = 0;
-                        self.tree.scroll_position = 0;
-                    } else {
-                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
-
-                        // Preserve visual position: try to keep the toggled item at the same visual offset
-                        let desired_scroll = new_index.saturating_sub(old_visual_position);
-                        self.tree.scroll_position =
-                            super::services::UIService::clamp_scroll_position(
-                                &self.tree.flat_view,
-                                desired_scroll,
-                                visible_height,
-                            );
-                    }
-                }
-                GitObjectType::PackFolder { base_name, .. } => {
-                    fn find_and_toggle_pack_folder(
-                        obj: &mut GitObject,
-                        target_base_name: &str,
-                    ) -> bool {
-                        if let GitObjectType::PackFolder { base_name, .. } = &obj.obj_type
-                            && base_name == target_base_name
-                        {
-                            obj.expanded = !obj.expanded;
-                            return true;
-                        }
-                        for child in &mut obj.children {
-                            if find_and_toggle_pack_folder(child, target_base_name) {
-                                return true;
-                            }
-                        }
-                        false
-                    }
-
-                    let base_name_to_find = base_name.clone();
-
-                    for obj in &mut self.tree.list {
-                        if find_and_toggle_pack_folder(obj, &base_name_to_find) {
-                            break;
-                        }
-                    }
-
-                    // Remember the visual position of the toggled pack folder before flattening
-                    let old_visual_position = self
-                        .tree
-                        .selected_index
-                        .saturating_sub(self.tree.scroll_position);
-
-                    self.flatten_tree();
-
-                    // Keep the selected pack folder visible
-                    let mut new_index = 0;
-                    for (i, row) in self.tree.flat_view.iter().enumerate() {
-                        if let GitObjectType::PackFolder { base_name, .. } = &row.object.obj_type
-                            && *base_name == base_name_to_find
-                        {
-                            new_index = i;
-                            break;
-                        }
-                    }
-                    if self.tree.flat_view.is_empty() {
-                        self.tree.selected_index = 0;
-                        self.tree.scroll_position = 0;
-                    } else {
-                        self.tree.selected_index = new_index.min(self.tree.flat_view.len() - 1);
-
-                        // Preserve visual position: try to keep the toggled item at the same visual offset
-                        let desired_scroll = new_index.saturating_sub(old_visual_position);
-                        self.tree.scroll_position =
-                            super::services::UIService::clamp_scroll_position(
-                                &self.tree.flat_view,
-                                desired_scroll,
-                                visible_height,
-                            );
-                    }
-                }
-                _ => {} // Other object types are not expandable
-            }
+            // Preserve visual position: try to keep the toggled item at the same visual offset
+            let desired_scroll = new_index.saturating_sub(old_visual_position);
+            self.tree.scroll_position = super::services::UIService::clamp_scroll_position(
+                &self.tree.flat_view,
+                desired_scroll,
+                visible_height,
+            );
         }
         Message::LoadGitObjects(Ok(()))
     }
@@ -566,6 +506,14 @@ impl MainViewState {
     /// Find a node in the current tree by its selection key
     pub fn find_node_by_key(&self, key: &str) -> Option<&GitObject> {
         super::services::TreeService::find_node_by_key(&self.tree.list, key, Self::selection_key)
+    }
+
+    /// Resolve the currently selected row back to its tree node.
+    /// Returns None for ghost rows (pending removal), which have no backing node.
+    #[must_use]
+    pub fn selected_node(&self) -> Option<&GitObject> {
+        let row = self.tree.flat_view.get(self.tree.selected_index)?;
+        self.find_node_by_key(&row.key)
     }
 
     /// Static version of `is_object_modified` for use in closures

@@ -1,6 +1,8 @@
-use crate::tui::main_view::{PackFocus, PackPreViewState, PreviewState, RegularPreViewState};
+use crate::tui::main_view::{
+    PackFocus, PackPreViewState, PreviewState, RegularPreViewState, RowKind,
+};
 use crate::tui::message::{MainNavigation, Message};
-use crate::tui::model::{AppState, AppView, GitObjectType};
+use crate::tui::model::{AppState, AppView};
 use crossterm::event::{KeyCode, KeyEvent};
 
 use super::RegularFocus;
@@ -23,32 +25,22 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                         focus: PackFocus::GitObjects,
                         ..
                     }) => {
-                        if !state.tree.flat_view.is_empty()
-                            && state.tree.selected_index < state.tree.flat_view.len()
-                        {
-                            let row = &state.tree.flat_view[state.tree.selected_index];
-                            let current_depth = row.depth;
-                            let selected_obj = &row.object;
-                            match &selected_obj.obj_type {
-                                GitObjectType::Category(_)
-                                | GitObjectType::FileSystemFolder { .. }
-                                | GitObjectType::PackFolder { .. } => {
+                        state
+                            .tree
+                            .flat_view
+                            .get(state.tree.selected_index)
+                            .and_then(|row| {
+                                if row.kind.is_folder() {
                                     Some(Message::MainNavigation(MainNavigation::ToggleExpand))
+                                } else if row.depth > 0 {
+                                    // Jump to parent category
+                                    Some(Message::MainNavigation(
+                                        MainNavigation::JumpToParentCategory,
+                                    ))
+                                } else {
+                                    None
                                 }
-                                _ => {
-                                    if current_depth > 0 {
-                                        // Jump to parent category
-                                        Some(Message::MainNavigation(
-                                            MainNavigation::JumpToParentCategory,
-                                        ))
-                                    } else {
-                                        None
-                                    }
-                                }
-                            }
-                        } else {
-                            None
-                        }
+                            })
                     }
                     PreviewState::Pack(pack_state) => match pack_state.focus {
                         PackFocus::PackObjectsList | PackFocus::Educational => {
@@ -74,9 +66,7 @@ pub fn handle_key_event(key: KeyEvent, app: &AppState) -> Option<Message> {
                             .tree
                             .flat_view
                             .get(state.tree.selected_index)
-                            .is_some_and(|row| {
-                                matches!(row.object.obj_type, GitObjectType::LooseObject { .. })
-                            })
+                            .is_some_and(|row| row.kind == RowKind::LooseObject)
                         {
                             Some(Message::OpenLooseObjectView)
                         } else {

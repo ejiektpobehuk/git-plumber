@@ -27,7 +27,6 @@ fn apply_git_tree_highlight_fx(
             continue;
         }
         let row = &state.tree.flat_view[idx];
-        let _key = crate::tui::main_view::MainViewState::selection_key(&row.object);
 
         // Use highlight information from the flattened tree row
         let anim_type = row.highlight.animation_type;
@@ -97,10 +96,10 @@ use ratatui::text::Span;
 use ratatui::widgets::{Block, Borders, ListItem, Paragraph};
 use std::time::Instant;
 
-use super::model::{MainViewState, PackFocus, RegularFocus};
+use super::model::{MainViewState, PackFocus, RegularFocus, RowKind};
 use super::{PackPreViewState, PreviewState, RegularPreViewState};
 use crate::tui::helpers::{render_list_with_scrollbar, render_styled_paragraph_with_scrollbar};
-use crate::tui::model::{AppState, AppView, GitObjectType};
+use crate::tui::model::{AppState, AppView};
 
 pub fn render(f: &mut ratatui::Frame, app: &mut AppState, area: ratatui::layout::Rect) {
     let reduced = app.reduced_motion;
@@ -197,19 +196,17 @@ fn render_regular_preview_layout(
             let bottom_title = if !main_view.tree.flat_view.is_empty()
                 && main_view.tree.selected_index < main_view.tree.flat_view.len()
             {
-                let selected_object =
-                    &main_view.tree.flat_view[main_view.tree.selected_index].object;
-                match &selected_object.obj_type {
-                    GitObjectType::Category(_) => "Educational Content",
-                    GitObjectType::FileSystemFolder { is_educational, .. } => {
-                        if *is_educational {
+                match main_view.tree.flat_view[main_view.tree.selected_index].kind {
+                    RowKind::Category => "Educational Content",
+                    RowKind::Folder { is_educational } => {
+                        if is_educational {
                             "Educational Content"
                         } else {
                             "Directory Info"
                         }
                     }
-                    GitObjectType::FileSystemFile { .. } => "File Info",
-                    GitObjectType::PackFolder { .. } => "Pack Preview",
+                    RowKind::File => "File Info",
+                    RowKind::PackFolder => "Pack Preview",
                     _ => "Object Preview",
                 }
             } else {
@@ -470,170 +467,46 @@ fn render_git_tree(
         &format!("{project_name}/.git"),
         state.are_git_objects_focused(),
         &indicators,
-        |i, row, is_selected| {
-            let depth = &row.depth;
-            let obj = &row.object;
+        |_absolute_index, row, is_selected| {
+            let depth = row.depth;
             let _ = reduced;
-            // Create indentation based on depth
-            let indent = if *depth > 0 {
-                let mut indent = String::new();
-
-                // For each level from 0 to depth-1, determine if we need a vertical line
-                for d in 0..(*depth - 1) {
-                    // We need a vertical line at depth d if there are more siblings
-                    // at depth d that will come after the current branch
-                    let needs_vertical_line = {
-                        // Find the ancestor of the current item at depth d+1
-                        let mut ancestor_index = None;
-                        for k in (0..i).rev() {
-                            let ancestor_row = &state.tree.flat_view[k];
-                            if ancestor_row.depth == d + 1 {
-                                ancestor_index = Some(k);
-                                break;
-                            } else if ancestor_row.depth <= d {
-                                break;
-                            }
-                        }
-
-                        // If we found an ancestor, check if it has siblings after it
-                        ancestor_index.is_some_and(|ancestor_idx| {
-                            let mut has_sibling = false;
-                            for j in (ancestor_idx + 1)..state.tree.flat_view.len() {
-                                let next_row = &state.tree.flat_view[j];
-                                if next_row.depth == d + 1 {
-                                    has_sibling = true;
-                                    break;
-                                } else if next_row.depth <= d {
-                                    break;
-                                }
-                            }
-                            has_sibling
-                        })
-                    };
-
-                    indent.push_str(if needs_vertical_line { "│" } else { " " });
-                }
-
-                indent
-            } else {
-                String::new()
-            };
+            // Guides for ancestor levels are precomputed during flattening
+            let mut indent = String::new();
+            for level in 0..depth.saturating_sub(1) {
+                let has_guide = level < u64::BITS as usize && row.guides & (1_u64 << level) != 0;
+                indent.push(if has_guide { '│' } else { ' ' });
+            }
 
             // Add expansion indicator for categories and folders
-            let prefix = match &obj.obj_type {
-                // Handle all folder types with unified empty-state detection
-                GitObjectType::Category(_)
-                | GitObjectType::FileSystemFolder { .. }
-                | GitObjectType::PackFolder { .. } => {
-                    // Helper function to determine if this is the last item at this depth
-                    let is_last_at_depth = || {
-                        let mut is_last = true;
-                        for j in (i + 1)..state.tree.flat_view.len() {
-                            let next_row = &state.tree.flat_view[j];
-                            if next_row.depth == *depth {
-                                is_last = false;
-                                break;
-                            } else if next_row.depth < *depth {
-                                break;
-                            }
-                        }
-                        is_last
-                    };
-
-                    // Determine symbols based on empty state
-                    let (expanded_symbol, collapsed_symbol) = if obj.is_empty() {
-                        // Empty folder symbols
-                        ("▽", "▷")
-                    } else {
-                        // Non-empty folder symbols
-                        ("▼", "▶")
-                    };
-
-                    if obj.expanded {
-                        if *depth == 0 {
-                            if expanded_symbol == "▽" {
-                                "▽ "
-                            } else {
-                                "▼ "
-                            }
-                        } else {
-                            let is_last = is_last_at_depth();
-                            if expanded_symbol == "▽" {
-                                if is_last { "└▽ " } else { "├▽ " }
-                            } else if is_last {
-                                "└▼ "
-                            } else {
-                                "├▼ "
-                            }
-                        }
-                    } else if *depth == 0 {
-                        if collapsed_symbol == "▷" {
-                            "▷ "
-                        } else {
-                            "▶ "
-                        }
-                    } else {
-                        let is_last = is_last_at_depth();
-                        if collapsed_symbol == "▷" {
-                            if is_last { "└▷ " } else { "├▷ " }
-                        } else if is_last {
-                            "└▶ "
-                        } else {
-                            "├▶ "
-                        }
-                    }
+            let prefix = if row.kind.is_folder() {
+                let symbol = match (row.expanded, row.is_empty) {
+                    (true, true) => '▽',
+                    (true, false) => '▼',
+                    (false, true) => '▷',
+                    (false, false) => '▶',
+                };
+                match (depth == 0, row.is_last_child) {
+                    (true, _) => format!("{symbol} "),
+                    (false, true) => format!("└{symbol} "),
+                    (false, false) => format!("├{symbol} "),
                 }
-                _ => {
-                    // Find if this is the last item in its group
-                    let is_last = if *depth > 0 {
-                        // Look ahead to find the next item at the same depth
-                        let mut is_last = true;
-                        for j in (i + 1)..state.tree.flat_view.len() {
-                            let next_row = &state.tree.flat_view[j];
-                            if next_row.depth == *depth {
-                                is_last = false;
-                                break;
-                            } else if next_row.depth < *depth {
-                                break;
-                            }
-                        }
-                        is_last
-                    } else {
-                        false
-                    };
-
-                    match *depth {
-                        0 => "",
-                        _ => {
-                            if is_last {
-                                "└─ "
-                            } else {
-                                "├─ "
-                            }
-                        }
-                    }
-                }
+            } else if depth == 0 {
+                String::new()
+            } else if row.is_last_child {
+                "└─ ".to_string()
+            } else {
+                "├─ ".to_string()
             };
 
-            let _key = MainViewState::selection_key(obj);
-
             // Check if this folder should have blinking indicator
-            let should_blink_folder = match &obj.obj_type {
-                GitObjectType::Category(_)
-                | GitObjectType::FileSystemFolder { .. }
-                | GitObjectType::PackFolder { .. } => {
-                    // Check if folder has blink animation
-                    if let Some(highlight_color) = row.highlight.color
-                        && row.highlight.animation_type
-                            == crate::tui::main_view::model::AnimationType::FolderBlink
-                        && state.animations.folder_blink_state
-                    {
-                        Some(highlight_color)
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
+            let should_blink_folder = if row.kind.is_folder()
+                && row.highlight.animation_type
+                    == crate::tui::main_view::model::AnimationType::FolderBlink
+                && state.animations.folder_blink_state
+            {
+                row.highlight.color
+            } else {
+                None
             };
 
             // Create styled content for the row
@@ -643,13 +516,13 @@ fn render_git_tree(
                     Span::raw(indent),
                     // Style the prefix (folder indicator) with background color
                     Span::styled(prefix, Style::default().bg(blink_color)),
-                    Span::raw(obj.name.clone()),
+                    Span::raw(row.name.clone()),
                 ];
 
                 ratatui::text::Line::from(spans)
             } else {
                 // For regular items, use plain text
-                ratatui::text::Line::from(format!("{}{}{}", indent, prefix, obj.name))
+                ratatui::text::Line::from(format!("{}{}{}", indent, prefix, row.name))
             };
 
             // Simple item rendering; highlight is applied in a post-render cell pass for files

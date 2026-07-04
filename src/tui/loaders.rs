@@ -84,114 +84,142 @@ impl AppState {
                 if state.tree.flat_view.is_empty() {
                     Message::LoadGitObjectInfo(Ok("No object selected".to_string()))
                 } else {
-                    let row = &state.tree.flat_view[state.tree.selected_index];
-                    let obj = &row.object;
-                    match &obj.obj_type {
-
-                        GitObjectType::Ref { content, .. } => {
-                            // Use cached reference content
-                            let ref_content =
-                                content.as_deref().unwrap_or("Unable to read reference");
-                            let info = format!(
-                                "Type: Git Reference\nName: {}\nPoints to: {}",
-                                obj.name, ref_content
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                        GitObjectType::LooseObject {
-                            size,
-                            object_id,
-                            parsed_object,
-                            ..
-                    // tuple now contains (depth, object, status)
-
-                        } => {
-                            // Use cached loose object data if available, otherwise show basic info
-                            let size_str = size
-                                .map_or_else(|| "Unknown size".to_string(), |size| format!("{size} bytes"));
-                            let obj_id = object_id.as_deref().unwrap_or("Unknown object ID");
-
-                            let detailed_info = parsed_object.as_ref().map_or_else(
-                                || format!("Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}"),
-                                |parsed_obj| {
-                                    format!(
-                                        "Type: {} (Loose Object)\nObject ID: {}\nSize: {}\n\n{}",
-                                        parsed_obj.object_type,
-                                        obj_id,
-                                        size_str,
-                                        Self::format_parsed_object_details(parsed_obj)
-                                    )
-                                },
-                            );
-
-                            Message::LoadGitObjectInfo(Ok(detailed_info))
-                        }
-                        GitObjectType::Category(name) => {
-                            // For categories, show number of children
-                            let info = format!(
-                                "Type: Category\nName: {}\nContains: {} items",
-                                name,
-                                obj.children.len()
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                        GitObjectType::FileSystemFolder { path, is_educational, .. } => {
-                            // For filesystem folders, show path and contents
-                            let folder_type = if *is_educational {
-                                "Educational Folder"
-                            } else {
-                                "Directory"
-                            };
-                            let info = format!(
-                                "Type: {}\nPath: {}\nContains: {} items",
-                                folder_type,
-                                path.display(),
-                                obj.children.len()
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                        GitObjectType::FileSystemFile { path, size, modified_time } => {
-                            // For filesystem files, show file details
-                            let size_str = size
-                                .map_or_else(|| "Unknown size".to_string(), Self::format_file_size);
-
-                            let modified = modified_time
-                                .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
-
-                            let info = format!(
-                                "Type: File\nPath: {}\nSize: {}\nLast modified: {}",
-                                path.display(), size_str, modified
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                        GitObjectType::PackFolder { base_name, pack_group } => {
-                            let mut files = Vec::new();
-                            for (file_type, _) in pack_group.get_all_files() {
-                                files.push(file_type);
-                            }
-                            let info = format!(
-                                "Type: Pack Group\nBase name: {}\nFiles: {}",
-                                base_name, files.join(", ")
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                        GitObjectType::PackFile { file_type, path, size, modified_time } => {
-                            let size_str = size
-                                .map_or_else(|| "Unknown size".to_string(), Self::format_file_size);
-
-                            let modified = modified_time
-                                .as_ref().map_or_else(|| "Unknown time".to_string(), crate::tui::model::GitObject::format_time_ago);
-
-                            let info = format!(
-                                "Type: Pack {}\nPath: {}\nSize: {}\nLast modified: {}",
-                                file_type, path.display(), size_str, modified
-                            );
-                            Message::LoadGitObjectInfo(Ok(info))
-                        }
-                    }
+                    // Rows are lightweight views; resolve back to the tree node for details
+                    let info = state.selected_node().map_or_else(
+                        || {
+                            // Ghost rows (pending-removal overlay) have no backing node
+                            let row = &state.tree.flat_view[state.tree.selected_index];
+                            format!("Deleted: {}", row.name)
+                        },
+                        Self::describe_git_object,
+                    );
+                    Message::LoadGitObjectInfo(Ok(info))
                 }
             }
             _ => Message::LoadGitObjectInfo(Err("Sent to the wrong View".to_string())),
+        }
+    }
+
+    // Format the size and modification-time strings shared by file-like entries
+    fn describe_file_meta(
+        size: Option<u64>,
+        modified_time: Option<&std::time::SystemTime>,
+    ) -> (String, String) {
+        (
+            size.map_or_else(|| "Unknown size".to_string(), Self::format_file_size),
+            modified_time.map_or_else(
+                || "Unknown time".to_string(),
+                crate::tui::model::GitObject::format_time_ago,
+            ),
+        )
+    }
+
+    // Build the details text shown in the "Object Details" pane
+    fn describe_git_object(obj: &crate::tui::model::GitObject) -> String {
+        match &obj.obj_type {
+            GitObjectType::Ref { content, .. } => {
+                // Use cached reference content
+                let ref_content = content.as_deref().unwrap_or("Unable to read reference");
+                format!(
+                    "Type: Git Reference\nName: {}\nPoints to: {}",
+                    obj.name, ref_content
+                )
+            }
+            GitObjectType::LooseObject {
+                size,
+                object_id,
+                parsed_object,
+                ..
+            } => {
+                // Use cached loose object data if available, otherwise show basic info
+                let size_str = size.map_or_else(
+                    || "Unknown size".to_string(),
+                    |size| format!("{size} bytes"),
+                );
+                let obj_id = object_id.as_deref().unwrap_or("Unknown object ID");
+
+                parsed_object.as_ref().map_or_else(
+                    || format!("Type: Loose Object\nObject ID: {obj_id}\nSize: {size_str}"),
+                    |parsed_obj| {
+                        format!(
+                            "Type: {} (Loose Object)\nObject ID: {}\nSize: {}\n\n{}",
+                            parsed_obj.object_type,
+                            obj_id,
+                            size_str,
+                            Self::format_parsed_object_details(parsed_obj)
+                        )
+                    },
+                )
+            }
+            GitObjectType::Category(name) => {
+                // For categories, show number of children
+                format!(
+                    "Type: Category\nName: {}\nContains: {} items",
+                    name,
+                    obj.children.len()
+                )
+            }
+            GitObjectType::FileSystemFolder {
+                path,
+                is_educational,
+                ..
+            } => {
+                // For filesystem folders, show path and contents
+                let folder_type = if *is_educational {
+                    "Educational Folder"
+                } else {
+                    "Directory"
+                };
+                format!(
+                    "Type: {}\nPath: {}\nContains: {} items",
+                    folder_type,
+                    path.display(),
+                    obj.children.len()
+                )
+            }
+            GitObjectType::FileSystemFile {
+                path,
+                size,
+                modified_time,
+            } => {
+                // For filesystem files, show file details
+                let (size_str, modified) = Self::describe_file_meta(*size, modified_time.as_ref());
+                format!(
+                    "Type: File\nPath: {}\nSize: {}\nLast modified: {}",
+                    path.display(),
+                    size_str,
+                    modified
+                )
+            }
+            GitObjectType::PackFolder {
+                base_name,
+                pack_group,
+            } => {
+                let mut files = Vec::new();
+                for (file_type, _) in pack_group.get_all_files() {
+                    files.push(file_type);
+                }
+                format!(
+                    "Type: Pack Group\nBase name: {}\nFiles: {}",
+                    base_name,
+                    files.join(", ")
+                )
+            }
+            GitObjectType::PackFile {
+                file_type,
+                path,
+                size,
+                modified_time,
+            } => {
+                let (size_str, modified) = Self::describe_file_meta(*size, modified_time.as_ref());
+                format!(
+                    "Type: Pack {}\nPath: {}\nSize: {}\nLast modified: {}",
+                    file_type,
+                    path.display(),
+                    size_str,
+                    modified
+                )
+            }
         }
     }
 
@@ -204,8 +232,13 @@ impl AppState {
                     let content = self.educational_content_provider.get_default_content();
                     Message::LoadEducationalContent(Ok(content))
                 } else {
-                    let row = &state.tree.flat_view[state.tree.selected_index];
-                    let obj = &row.object;
+                    // Rows are lightweight views; resolve back to the tree node for details
+                    let Some(obj) = state.selected_node() else {
+                        // Ghost rows (pending-removal overlay) have no backing node
+                        return Message::LoadEducationalContent(Ok(self
+                            .educational_content_provider
+                            .get_default_content()));
+                    };
                     match &obj.obj_type {
                         GitObjectType::Category(name) => {
                             let content =

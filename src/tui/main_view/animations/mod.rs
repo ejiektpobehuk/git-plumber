@@ -49,7 +49,12 @@ impl AnimationManager {
         }
     }
 
-    /// Cleanup expired timers and return true if anything changed
+    /// Cleanup expired timers and advance the folder-blink clock.
+    ///
+    /// Returns true only when highlight/ghost content changed, i.e. when the
+    /// flattened tree needs a rebuild. Blink flips are excluded on purpose:
+    /// `folder_blink_state` is read directly at render time and a redraw
+    /// already happens after every timer tick.
     pub fn prune_timeouts(&mut self) -> bool {
         let now = Instant::now();
         let before_ghosts = self.ghosts.len();
@@ -65,15 +70,12 @@ impl AnimationManager {
         let modified_changed = before_modified != self.modified_keys.len();
 
         // Update blink state every 500ms (twice per second)
-        let blink_changed = if now.duration_since(self.last_blink_toggle).as_millis() >= 500 {
+        if now.duration_since(self.last_blink_toggle).as_millis() >= 500 {
             self.folder_blink_state = !self.folder_blink_state;
             self.last_blink_toggle = now;
-            true
-        } else {
-            false
-        };
+        }
 
-        ghosts_changed || changed_changed || modified_changed || blink_changed
+        ghosts_changed || changed_changed || modified_changed
     }
 
     /// Compute highlight information for a given key
@@ -184,29 +186,12 @@ impl AnimationManager {
         })
     }
 
-    /// Check if there are any active animations (must be called with tree context for folder highlights)
+    /// Check if there are any active animations. Dynamic folder highlights
+    /// are derived from these same maps, so no tree walk is needed: when all
+    /// maps are empty there can be no folder highlight either.
     #[must_use]
     pub fn has_active_animations(&self) -> bool {
         !self.changed_keys.is_empty() || !self.ghosts.is_empty() || !self.modified_keys.is_empty()
-    }
-
-    /// Check if there are any active animations including dynamic folder highlights
-    pub fn has_active_animations_with_tree(
-        &self,
-        tree: &[crate::tui::model::GitObject],
-        selection_key_fn: fn(&crate::tui::model::GitObject) -> String,
-    ) -> bool {
-        // Check regular animations first
-        if self.has_active_animations() {
-            return true;
-        }
-
-        // Check for dynamic folder highlights
-        crate::tui::main_view::services::DynamicFolderService::has_active_folder_highlights(
-            self,
-            tree,
-            selection_key_fn,
-        )
     }
 
     /// Get scrollbar indicators for out-of-view changes
