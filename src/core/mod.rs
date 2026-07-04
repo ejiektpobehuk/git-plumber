@@ -346,11 +346,15 @@ impl GitPlumber {
                     // Format pack object using existing formatter - create single object "pack file"
                     if let Some(ref object_data) = pack_obj.object_data {
                         let mut output = String::new();
-                        writeln!(&mut output, "\x1b[1mPACK OBJECT (found by hash)\x1b[0m")
-                            .expect("writing to String cannot fail");
-                        writeln!(&mut output, "{}", "─".repeat(50))
-                            .expect("writing to String cannot fail");
-                        writeln!(&mut output).expect("writing to String cannot fail");
+                        writeln!(&mut output, "\x1b[1mPACK OBJECT (found by hash)\x1b[0m").expect(
+                            "fmt::Write for String should not fail for in-memory formatting",
+                        );
+                        writeln!(&mut output, "{}", "─".repeat(50)).expect(
+                            "fmt::Write for String should not fail for in-memory formatting",
+                        );
+                        writeln!(&mut output).expect(
+                            "fmt::Write for String should not fail for in-memory formatting",
+                        );
 
                         // Create a PackObject from the found object and format it
                         let formatted_pack_obj = crate::tui::model::PackObject {
