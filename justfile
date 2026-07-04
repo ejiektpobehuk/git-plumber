@@ -7,9 +7,9 @@ wrap     := if env("IN_NIX_SHELL", "") != "" { "" } else if have_nix == "true" {
 default:
     @just --list
 
-# Compile the project
-build:
-    {{wrap}}cargo build
+# Compile the project, optimized by default; `just build dev` for a debug build
+build profile="release":
+    {{wrap}}cargo build --profile {{profile}}
 
 # Type-check without producing a binary
 check:

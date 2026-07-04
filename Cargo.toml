@@ -26,6 +26,11 @@ directories = "6.0.0"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
 [build-dependencies]
 built = { version = "0.8", features = ["git2"] }
 
