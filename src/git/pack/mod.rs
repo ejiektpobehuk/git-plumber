@@ -8,12 +8,14 @@ use nom::{
 
 pub mod delta;
 pub mod index;
+pub mod mtimes;
 pub mod object;
 pub mod resolver;
 pub mod reverse_index;
 
 pub use delta::{DeltaInstruction, parse_delta_instructions};
 pub use index::PackIndex;
+pub use mtimes::PackMtimes;
 pub use object::{Object, ObjectHeader, ObjectType};
 pub use resolver::{ResolvedObject, resolve_objects};
 pub use reverse_index::PackReverseIndex;

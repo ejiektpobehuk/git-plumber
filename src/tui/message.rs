@@ -1,4 +1,4 @@
-use crate::git::pack::{PackIndex, PackReverseIndex};
+use crate::git::pack::{PackIndex, PackMtimes, PackReverseIndex};
 use crate::tui::model::PackObject;
 #[derive(Debug, Clone)]
 pub enum Command {
@@ -28,6 +28,7 @@ pub enum Message {
     },
     LoadPackIndexDetails(Box<Result<PackIndex, String>>),
     LoadPackReverseIndexDetails(Box<Result<PackReverseIndex, String>>),
+    LoadPackMtimesDetails(Box<Result<PackMtimes, String>>),
     MainNavigation(MainNavigation),
     PackNavigation(PackNavigation),
     LooseObjectNavigation(LooseObjectNavigation),

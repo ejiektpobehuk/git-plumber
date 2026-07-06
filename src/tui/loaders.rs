@@ -384,10 +384,25 @@ impl AppState {
                                     }
                                 }
                                 "mtime" => {
-                                    let content = self
-                                        .educational_content_provider
-                                        .get_category_content("Pack Mtimes");
-                                    Message::LoadEducationalContent(Ok(content))
+                                    // Try to parse mtimes file for detailed preview
+                                    match std::fs::read(path) {
+                                        Ok(mtimes_data) => {
+                                            match crate::git::pack::PackMtimes::parse(&mtimes_data)
+                                            {
+                                                Ok((_, mtimes)) => Message::LoadPackMtimesDetails(
+                                                    Box::new(Ok(mtimes)),
+                                                ),
+                                                Err(e) => {
+                                                    Message::LoadPackMtimesDetails(Box::new(Err(
+                                                        format!("Error parsing pack mtimes: {e:?}"),
+                                                    )))
+                                                }
+                                            }
+                                        }
+                                        Err(e) => Message::LoadPackMtimesDetails(Box::new(Err(
+                                            format!("Error reading mtimes file: {e}"),
+                                        ))),
+                                    }
                                 }
                                 _ => {
                                     let content = self

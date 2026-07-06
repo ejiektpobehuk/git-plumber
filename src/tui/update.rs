@@ -120,10 +120,11 @@ impl AppState {
                             PreviewState::Regular(r) => {
                                 if r.pack_index_widget.is_none()
                                     && r.pack_reverse_index_widget.is_none()
+                                    && r.pack_mtimes_widget.is_none()
                                 {
                                     r.preview_scroll_position = snap.preview_scroll;
                                 }
-                                // PackIndex and PackReverseIndex widgets manage their own scrolling, no restoration needed
+                                // PackIndex, PackReverseIndex and PackMtimes widgets manage their own scrolling, no restoration needed
                             }
                             PreviewState::Pack(p) => {
                                 p.educational_scroll_position = snap.preview_scroll;
@@ -204,6 +205,7 @@ impl AppState {
                                 // Clear specialized widgets for regular state
                                 regular_state.pack_index_widget = None;
                                 regular_state.pack_reverse_index_widget = None;
+                                regular_state.pack_mtimes_widget = None;
                             }
                             PreviewState::Pack(_) => {
                                 // Preserve pack preview state - don't reset it!
@@ -241,6 +243,23 @@ impl AppState {
                         state.preview_state = PreviewState::Regular(
                             crate::tui::main_view::RegularPreViewState::new_with_pack_reverse_index(
                                 reverse_index,
+                            ),
+                        );
+                        self.error = None;
+                    }
+                }
+                Err(e) => {
+                    self.error = Some(e);
+                }
+            },
+
+            Message::LoadPackMtimesDetails(result) => match *result {
+                Ok(mtimes) => {
+                    if let AppView::Main { state } = &mut self.view {
+                        // Switch to Regular preview state with pack mtimes widget
+                        state.preview_state = PreviewState::Regular(
+                            crate::tui::main_view::RegularPreViewState::new_with_pack_mtimes(
+                                mtimes,
                             ),
                         );
                         self.error = None;
@@ -302,8 +321,9 @@ impl AppState {
                         PreviewState::Regular(r) => {
                             if r.pack_index_widget.is_some()
                                 || r.pack_reverse_index_widget.is_some()
+                                || r.pack_mtimes_widget.is_some()
                             {
-                                0 // PackIndex and PackReverseIndex widgets manage their own scrolling
+                                0 // PackIndex, PackReverseIndex and PackMtimes widgets manage their own scrolling
                             } else {
                                 r.preview_scroll_position
                             }
@@ -347,6 +367,7 @@ impl AppState {
             | Message::LoadEducationalContent(_)
             | Message::LoadPackIndexDetails(_)
             | Message::LoadPackReverseIndexDetails(_)
+            | Message::LoadPackMtimesDetails(_)
             | Message::LoadPackObjects { .. }
             | Message::GitObjectsLoaded(_) => {
                 return self.handle_load_result_message(msg, plumber);

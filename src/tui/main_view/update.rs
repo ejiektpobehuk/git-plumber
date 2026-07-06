@@ -565,11 +565,14 @@ impl AppState {
                                 preview_scroll_position,
                                 pack_index_widget,
                                 pack_reverse_index_widget,
+                                pack_mtimes_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_up();
                                 } else if let Some(widget) = pack_reverse_index_widget {
+                                    widget.scroll_up();
+                                } else if let Some(widget) = pack_mtimes_widget {
                                     widget.scroll_up();
                                 } else if *preview_scroll_position > 0 {
                                     *preview_scroll_position -= 1;
@@ -600,11 +603,14 @@ impl AppState {
                                 preview_scroll_position,
                                 pack_index_widget,
                                 pack_reverse_index_widget,
+                                pack_mtimes_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_down();
                                 } else if let Some(widget) = pack_reverse_index_widget {
+                                    widget.scroll_down();
+                                } else if let Some(widget) = pack_mtimes_widget {
                                     widget.scroll_down();
                                 } else {
                                     let content_lines = content.educational_content.lines.len();
@@ -644,11 +650,14 @@ impl AppState {
                                 preview_scroll_position,
                                 pack_index_widget,
                                 pack_reverse_index_widget,
+                                pack_mtimes_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_to_top();
                                 } else if let Some(widget) = pack_reverse_index_widget {
+                                    widget.scroll_to_top();
+                                } else if let Some(widget) = pack_mtimes_widget {
                                     widget.scroll_to_top();
                                 } else {
                                     *preview_scroll_position = 0;
@@ -679,11 +688,14 @@ impl AppState {
                                 preview_scroll_position,
                                 pack_index_widget,
                                 pack_reverse_index_widget,
+                                pack_mtimes_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
                                     widget.scroll_to_bottom();
                                 } else if let Some(widget) = pack_reverse_index_widget {
+                                    widget.scroll_to_bottom();
+                                } else if let Some(widget) = pack_mtimes_widget {
                                     widget.scroll_to_bottom();
                                 } else {
                                     let content_lines = content.educational_content.lines.len();
@@ -816,12 +828,7 @@ impl AppState {
             } else {
                 // Ensure we have a Regular preview state
                 if !matches!(state.preview_state, PreviewState::Regular(_)) {
-                    let new_regular_state = RegularPreViewState {
-                        focus: RegularFocus::GitObjects,
-                        preview_scroll_position: 0,
-                        pack_index_widget: None,
-                        pack_reverse_index_widget: None,
-                    };
+                    let new_regular_state = RegularPreViewState::new();
                     state.preview_state = PreviewState::Regular(new_regular_state);
                 }
             }

@@ -81,6 +81,41 @@ impl EducationalContent {
             ),
         );
 
+        // Pack Mtimes files educational content
+        content_map.insert(
+            "Pack Mtimes".to_string(),
+            Text::from(
+                "PACK MTIMES FILES (.mtimes)\n\nMtimes files accompany cruft packs.\n\
+             A cruft pack stores objects that are unreachable but not yet old\n\
+             enough to be deleted. Normally such objects stay loose so each\n\
+             file's own modification time tells `git gc` when the grace period\n\
+             (e.g. gc.pruneExpire = 2.weeks.ago) has passed. Packing them\n\
+             together would reset that clock — so the cruft pack records a\n\
+             per-object mtime in a sidecar .mtimes file instead.\n\
+             \n\
+             Mtimes file structure:\n\
+             \n\
+             ┌─────────────────┐\n\
+             │ Magic + Version │ 8 bytes (\"MTME\" + version 1)\n\
+             ├─────────────────┤\n\
+             │ Hash Func. ID   │ 4 bytes (1 = SHA-1, 2 = SHA-256)\n\
+             ├─────────────────┤\n\
+             │ Mtimes Table    │ N × 4 bytes (epoch seconds, network byte order)\n\
+             ├─────────────────┤\n\
+             │ Pack Checksum   │ 20/32 bytes (checksum of corresponding pack)\n\
+             ├─────────────────┤\n\
+             │ File Checksum   │ 20/32 bytes (checksum of all mtimes data)\n\
+             └─────────────────┘\n\
+             \n\
+             The i-th table entry is the mtime of the i-th object in the\n\
+             pack's .idx (sorted object ID) order, so the .pack, .idx and\n\
+             .mtimes files work as a triple: .idx maps an object ID to its\n\
+             position, .mtimes maps that position to a timestamp.\n\
+             \n\
+             Create one with `git repack --cruft -d` or `gc.cruftPacks = true`.",
+            ),
+        );
+
         // References educational content
         content_map.insert(
             "Refs".to_string(),

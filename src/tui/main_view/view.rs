@@ -191,6 +191,13 @@ fn render_regular_preview_layout(
                 content_chunks[1],
                 matches!(preview_state.focus, RegularFocus::Preview),
             );
+        } else if let Some(pack_mtimes_widget) = &mut preview_state.pack_mtimes_widget {
+            // Render pack mtimes widget
+            pack_mtimes_widget.render(
+                f,
+                content_chunks[1],
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
         } else {
             // Render regular educational content
             let bottom_title = if !main_view.tree.flat_view.is_empty()

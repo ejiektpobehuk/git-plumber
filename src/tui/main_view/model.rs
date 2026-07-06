@@ -1,7 +1,9 @@
 use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
-use crate::tui::widget::{PackIndexWidget, PackObjectWidget, PackReverseIndexWidget};
+use crate::tui::widget::{
+    PackIndexWidget, PackMtimesWidget, PackObjectWidget, PackReverseIndexWidget,
+};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -189,6 +191,7 @@ pub struct RegularPreViewState {
     pub preview_scroll_position: usize,
     pub pack_index_widget: Option<PackIndexWidget>,
     pub pack_reverse_index_widget: Option<PackReverseIndexWidget>,
+    pub pack_mtimes_widget: Option<PackMtimesWidget>,
 }
 
 impl Default for RegularPreViewState {
@@ -205,26 +208,31 @@ impl RegularPreViewState {
             preview_scroll_position: 0,
             pack_index_widget: None,
             pack_reverse_index_widget: None,
+            pack_mtimes_widget: None,
         }
     }
 
     #[must_use]
     pub fn new_with_pack_index(pack_index: crate::git::pack::PackIndex) -> Self {
         Self {
-            focus: RegularFocus::GitObjects,
-            preview_scroll_position: 0,
             pack_index_widget: Some(PackIndexWidget::new(pack_index)),
-            pack_reverse_index_widget: None,
+            ..Self::new()
         }
     }
 
     #[must_use]
     pub fn new_with_pack_reverse_index(reverse_index: crate::git::pack::PackReverseIndex) -> Self {
         Self {
-            focus: RegularFocus::GitObjects,
-            preview_scroll_position: 0,
-            pack_index_widget: None,
             pack_reverse_index_widget: Some(PackReverseIndexWidget::new(reverse_index)),
+            ..Self::new()
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_pack_mtimes(mtimes: crate::git::pack::PackMtimes) -> Self {
+        Self {
+            pack_mtimes_widget: Some(PackMtimesWidget::new(mtimes)),
+            ..Self::new()
         }
     }
 }
