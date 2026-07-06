@@ -404,6 +404,28 @@ impl AppState {
                                         ))),
                                     }
                                 }
+                                "multi-pack-index" => {
+                                    // Try to parse multi-pack-index file for detailed preview
+                                    match std::fs::read(path) {
+                                        Ok(midx_data) => {
+                                            match crate::git::pack::MultiPackIndex::parse(
+                                                &midx_data,
+                                            ) {
+                                                Ok((_, midx)) => Message::LoadMultiPackIndexDetails(
+                                                    Box::new(Ok(midx)),
+                                                ),
+                                                Err(e) => Message::LoadMultiPackIndexDetails(
+                                                    Box::new(Err(format!(
+                                                        "Error parsing multi-pack-index: {e:?}"
+                                                    ))),
+                                                ),
+                                            }
+                                        }
+                                        Err(e) => Message::LoadMultiPackIndexDetails(Box::new(
+                                            Err(format!("Error reading multi-pack-index file: {e}")),
+                                        )),
+                                    }
+                                }
                                 _ => {
                                     let content = self
                                         .educational_content_provider

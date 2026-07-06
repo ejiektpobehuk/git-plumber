@@ -121,10 +121,11 @@ impl AppState {
                                 if r.pack_index_widget.is_none()
                                     && r.pack_reverse_index_widget.is_none()
                                     && r.pack_mtimes_widget.is_none()
+                                    && r.multi_pack_index_widget.is_none()
                                 {
                                     r.preview_scroll_position = snap.preview_scroll;
                                 }
-                                // PackIndex, PackReverseIndex and PackMtimes widgets manage their own scrolling, no restoration needed
+                                // PackIndex, PackReverseIndex, PackMtimes and MultiPackIndex widgets manage their own scrolling, no restoration needed
                             }
                             PreviewState::Pack(p) => {
                                 p.educational_scroll_position = snap.preview_scroll;
@@ -206,6 +207,7 @@ impl AppState {
                                 regular_state.pack_index_widget = None;
                                 regular_state.pack_reverse_index_widget = None;
                                 regular_state.pack_mtimes_widget = None;
+                                regular_state.multi_pack_index_widget = None;
                             }
                             PreviewState::Pack(_) => {
                                 // Preserve pack preview state - don't reset it!
@@ -270,6 +272,23 @@ impl AppState {
                 }
             },
 
+            Message::LoadMultiPackIndexDetails(result) => match *result {
+                Ok(multi_pack_index) => {
+                    if let AppView::Main { state } = &mut self.view {
+                        // Switch to Regular preview state with multi-pack-index widget
+                        state.preview_state = PreviewState::Regular(
+                            crate::tui::main_view::RegularPreViewState::new_with_multi_pack_index(
+                                multi_pack_index,
+                            ),
+                        );
+                        self.error = None;
+                    }
+                }
+                Err(e) => {
+                    self.error = Some(e);
+                }
+            },
+
             Message::LoadPackObjects { path, result } => match result {
                 Ok(objects) => {
                     if let AppView::Main {
@@ -322,6 +341,7 @@ impl AppState {
                             if r.pack_index_widget.is_some()
                                 || r.pack_reverse_index_widget.is_some()
                                 || r.pack_mtimes_widget.is_some()
+                                || r.multi_pack_index_widget.is_some()
                             {
                                 0 // PackIndex, PackReverseIndex and PackMtimes widgets manage their own scrolling
                             } else {
@@ -368,6 +388,7 @@ impl AppState {
             | Message::LoadPackIndexDetails(_)
             | Message::LoadPackReverseIndexDetails(_)
             | Message::LoadPackMtimesDetails(_)
+            | Message::LoadMultiPackIndexDetails(_)
             | Message::LoadPackObjects { .. }
             | Message::GitObjectsLoaded(_) => {
                 return self.handle_load_result_message(msg, plumber);

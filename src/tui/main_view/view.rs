@@ -198,6 +198,13 @@ fn render_regular_preview_layout(
                 content_chunks[1],
                 matches!(preview_state.focus, RegularFocus::Preview),
             );
+        } else if let Some(multi_pack_index_widget) = &mut preview_state.multi_pack_index_widget {
+            // Render multi-pack-index widget
+            multi_pack_index_widget.render(
+                f,
+                content_chunks[1],
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
         } else {
             // Render regular educational content
             let bottom_title = if !main_view.tree.flat_view.is_empty()

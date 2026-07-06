@@ -2,7 +2,8 @@ use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
 use crate::tui::widget::{
-    PackIndexWidget, PackMtimesWidget, PackObjectWidget, PackReverseIndexWidget,
+    MultiPackIndexWidget, PackIndexWidget, PackMtimesWidget, PackObjectWidget,
+    PackReverseIndexWidget,
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -192,6 +193,7 @@ pub struct RegularPreViewState {
     pub pack_index_widget: Option<PackIndexWidget>,
     pub pack_reverse_index_widget: Option<PackReverseIndexWidget>,
     pub pack_mtimes_widget: Option<PackMtimesWidget>,
+    pub multi_pack_index_widget: Option<MultiPackIndexWidget>,
 }
 
 impl Default for RegularPreViewState {
@@ -209,6 +211,7 @@ impl RegularPreViewState {
             pack_index_widget: None,
             pack_reverse_index_widget: None,
             pack_mtimes_widget: None,
+            multi_pack_index_widget: None,
         }
     }
 
@@ -232,6 +235,14 @@ impl RegularPreViewState {
     pub fn new_with_pack_mtimes(mtimes: crate::git::pack::PackMtimes) -> Self {
         Self {
             pack_mtimes_widget: Some(PackMtimesWidget::new(mtimes)),
+            ..Self::new()
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_multi_pack_index(multi_pack_index: crate::git::pack::MultiPackIndex) -> Self {
+        Self {
+            multi_pack_index_widget: Some(MultiPackIndexWidget::new(multi_pack_index)),
             ..Self::new()
         }
     }

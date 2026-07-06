@@ -566,6 +566,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                multi_pack_index_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
@@ -573,6 +574,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_up();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_up();
+                                } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_up();
                                 } else if *preview_scroll_position > 0 {
                                     *preview_scroll_position -= 1;
@@ -604,6 +607,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                multi_pack_index_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
@@ -611,6 +615,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_down();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_down();
+                                } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_down();
                                 } else {
                                     let content_lines = content.educational_content.lines.len();
@@ -651,6 +657,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                multi_pack_index_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
@@ -658,6 +665,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_to_top();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_to_top();
+                                } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_to_top();
                                 } else {
                                     *preview_scroll_position = 0;
@@ -689,6 +698,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                multi_pack_index_widget,
                                 ..
                             }) => {
                                 if let Some(widget) = pack_index_widget {
@@ -696,6 +706,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_to_bottom();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_to_bottom();
+                                } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_to_bottom();
                                 } else {
                                     let content_lines = content.educational_content.lines.len();
