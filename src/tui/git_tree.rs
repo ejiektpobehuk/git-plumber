@@ -80,6 +80,16 @@ fn build_objects_folder(plumber: &crate::GitPlumber) -> Result<GitObject, String
             }
             Err(e) => return Err(format!("Error loading pack groups: {e}")),
         }
+
+        // The multi-pack-index spans all packs, so it sits next to the pack
+        // group folders rather than inside one
+        if let Some(midx_path) = plumber.get_multi_pack_index() {
+            pack_folder.add_child(GitObject::new_pack_file(
+                "multi-pack-index".to_string(),
+                midx_path,
+            ));
+        }
+
         // Mark pack folder as loaded since we populated it with pack files
         if let GitObjectType::FileSystemFolder { is_loaded, .. } = &mut pack_folder.obj_type {
             *is_loaded = true;

@@ -72,6 +72,17 @@ impl GitPlumber {
         )
     }
 
+    /// Get the path to the multi-pack-index file, if the repository has one
+    ///
+    /// Returns None both when there is no multi-pack-index and when the path
+    /// is not a git repository — absence is normal either way.
+    #[must_use]
+    pub fn get_multi_pack_index(&self) -> Option<PathBuf> {
+        self.repository
+            .as_ref()
+            .and_then(Repository::get_multi_pack_index)
+    }
+
     /// List all head refs (local branches) in the repository
     ///
     /// # Errors

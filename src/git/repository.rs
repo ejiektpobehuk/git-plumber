@@ -314,6 +314,16 @@ impl Repository {
         Ok(pack_groups)
     }
 
+    /// Returns the path to the multi-pack-index file if the repository has one
+    ///
+    /// The multi-pack-index lives directly in .git/objects/pack/ without a
+    /// per-pack stem, so it is not part of any [`PackGroup`].
+    #[must_use]
+    pub fn get_multi_pack_index(&self) -> Option<PathBuf> {
+        let midx_path = self.path.join(".git/objects/pack/multi-pack-index");
+        midx_path.is_file().then_some(midx_path)
+    }
+
     /// Lists all head refs (local branches) in the repository
     ///
     /// # Errors

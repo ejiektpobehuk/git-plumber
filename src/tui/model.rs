@@ -45,7 +45,7 @@ pub enum GitObjectType {
         pack_group: crate::git::repository::PackGroup,
     },
     PackFile {
-        file_type: String, // "packfile", "index", "rev", "mtime"
+        file_type: String, // "packfile", "index", "rev", "mtime", "multi-pack-index"
         path: PathBuf,
         size: Option<u64>,
         modified_time: Option<SystemTime>,
@@ -259,6 +259,7 @@ impl GitObject {
             "index" => "index",
             "rev" => "rev",
             "mtime" => "mtime",
+            "multi-pack-index" => "multi-pack-index",
             _ => "unknown",
         }
         .to_string();
