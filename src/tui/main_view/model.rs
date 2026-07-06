@@ -2,7 +2,7 @@ use crate::educational_content::EducationalContent;
 use crate::tui::message::Message;
 use crate::tui::model::{GitObject, GitObjectType, PackObject};
 use crate::tui::widget::{
-    MultiPackIndexWidget, PackIndexWidget, PackMtimesWidget, PackObjectWidget,
+    MultiPackIndexWidget, PackBitmapWidget, PackIndexWidget, PackMtimesWidget, PackObjectWidget,
     PackReverseIndexWidget,
 };
 use std::collections::{HashMap, HashSet};
@@ -193,6 +193,7 @@ pub struct RegularPreViewState {
     pub pack_index_widget: Option<PackIndexWidget>,
     pub pack_reverse_index_widget: Option<PackReverseIndexWidget>,
     pub pack_mtimes_widget: Option<PackMtimesWidget>,
+    pub pack_bitmap_widget: Option<PackBitmapWidget>,
     pub multi_pack_index_widget: Option<MultiPackIndexWidget>,
 }
 
@@ -211,6 +212,7 @@ impl RegularPreViewState {
             pack_index_widget: None,
             pack_reverse_index_widget: None,
             pack_mtimes_widget: None,
+            pack_bitmap_widget: None,
             multi_pack_index_widget: None,
         }
     }
@@ -235,6 +237,14 @@ impl RegularPreViewState {
     pub fn new_with_pack_mtimes(mtimes: crate::git::pack::PackMtimes) -> Self {
         Self {
             pack_mtimes_widget: Some(PackMtimesWidget::new(mtimes)),
+            ..Self::new()
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_pack_bitmap(bitmap: crate::git::pack::PackBitmap) -> Self {
+        Self {
+            pack_bitmap_widget: Some(PackBitmapWidget::new(bitmap)),
             ..Self::new()
         }
     }

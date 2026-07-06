@@ -13,6 +13,7 @@ pub struct PackGroup {
     pub idx_file: Option<PathBuf>,
     pub rev_file: Option<PathBuf>,
     pub mtimes_file: Option<PathBuf>,
+    pub bitmap_file: Option<PathBuf>,
 }
 
 impl PackGroup {
@@ -25,6 +26,7 @@ impl PackGroup {
             idx_file: None,
             rev_file: None,
             mtimes_file: None,
+            bitmap_file: None,
         }
     }
 
@@ -56,6 +58,9 @@ impl PackGroup {
         }
         if let Some(ref path) = self.mtimes_file {
             files.push(("mtime", path)); // mtimes
+        }
+        if let Some(ref path) = self.bitmap_file {
+            files.push(("bitmap", path)); // reachability bitmap
         }
 
         files
@@ -107,6 +112,7 @@ impl PackGroup {
             has_index: self.idx_file.is_some(),
             has_rev: self.rev_file.is_some(),
             has_mtimes: self.mtimes_file.is_some(),
+            has_bitmap: self.bitmap_file.is_some(),
             object_count: None,
             pack_size: None,
             index_size: None,
@@ -143,6 +149,7 @@ pub struct PackGroupStats {
     pub has_index: bool,
     pub has_rev: bool,
     pub has_mtimes: bool,
+    pub has_bitmap: bool,
     pub object_count: Option<usize>,
     pub pack_size: Option<u64>,
     pub index_size: Option<u64>,
@@ -169,6 +176,7 @@ impl std::fmt::Display for PackGroupStats {
         writeln!(f, "  Index: {}", if self.has_index { "✓" } else { "✗" })?;
         writeln!(f, "  Rev: {}", if self.has_rev { "✓" } else { "✗" })?;
         writeln!(f, "  Mtimes: {}", if self.has_mtimes { "✓" } else { "✗" })?;
+        writeln!(f, "  Bitmap: {}", if self.has_bitmap { "✓" } else { "✗" })?;
 
         Ok(())
     }
@@ -306,6 +314,7 @@ impl Repository {
                     "idx" => group.idx_file = Some(path),
                     "rev" => group.rev_file = Some(path),
                     "mtimes" => group.mtimes_file = Some(path),
+                    "bitmap" => group.bitmap_file = Some(path),
                     _ => {} // Ignore other extensions
                 }
             }
@@ -322,6 +331,23 @@ impl Repository {
     pub fn get_multi_pack_index(&self) -> Option<PathBuf> {
         let midx_path = self.path.join(".git/objects/pack/multi-pack-index");
         midx_path.is_file().then_some(midx_path)
+    }
+
+    /// Returns the path to the multi-pack-index bitmap if the repository has one
+    ///
+    /// A MIDX-owned bitmap is named `multi-pack-index-<midx-checksum>.bitmap`,
+    /// so like the MIDX itself it has no per-pack stem and is not part of any
+    /// [`PackGroup`].
+    #[must_use]
+    pub fn get_multi_pack_index_bitmap(&self) -> Option<PathBuf> {
+        let pack_dir = self.path.join(".git/objects/pack");
+        fs::read_dir(pack_dir).ok()?.flatten().find_map(|entry| {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            (name.starts_with("multi-pack-index-") && name.ends_with(".bitmap") && path.is_file())
+                .then_some(path)
+        })
     }
 
     /// Lists all head refs (local branches) in the repository

@@ -404,6 +404,27 @@ impl AppState {
                                         ))),
                                     }
                                 }
+                                "bitmap" => {
+                                    // Try to parse bitmap file for detailed preview
+                                    match std::fs::read(path) {
+                                        Ok(bitmap_data) => {
+                                            match crate::git::pack::PackBitmap::parse(&bitmap_data)
+                                            {
+                                                Ok((_, bitmap)) => Message::LoadPackBitmapDetails(
+                                                    Box::new(Ok(bitmap)),
+                                                ),
+                                                Err(e) => {
+                                                    Message::LoadPackBitmapDetails(Box::new(Err(
+                                                        format!("Error parsing pack bitmap: {e:?}"),
+                                                    )))
+                                                }
+                                            }
+                                        }
+                                        Err(e) => Message::LoadPackBitmapDetails(Box::new(Err(
+                                            format!("Error reading bitmap file: {e}"),
+                                        ))),
+                                    }
+                                }
                                 "multi-pack-index" => {
                                     // Try to parse multi-pack-index file for detailed preview
                                     match std::fs::read(path) {
@@ -411,9 +432,11 @@ impl AppState {
                                             match crate::git::pack::MultiPackIndex::parse(
                                                 &midx_data,
                                             ) {
-                                                Ok((_, midx)) => Message::LoadMultiPackIndexDetails(
-                                                    Box::new(Ok(midx)),
-                                                ),
+                                                Ok((_, midx)) => {
+                                                    Message::LoadMultiPackIndexDetails(Box::new(
+                                                        Ok(midx),
+                                                    ))
+                                                }
                                                 Err(e) => Message::LoadMultiPackIndexDetails(
                                                     Box::new(Err(format!(
                                                         "Error parsing multi-pack-index: {e:?}"
@@ -421,9 +444,11 @@ impl AppState {
                                                 ),
                                             }
                                         }
-                                        Err(e) => Message::LoadMultiPackIndexDetails(Box::new(
-                                            Err(format!("Error reading multi-pack-index file: {e}")),
-                                        )),
+                                        Err(e) => {
+                                            Message::LoadMultiPackIndexDetails(Box::new(Err(
+                                                format!("Error reading multi-pack-index file: {e}"),
+                                            )))
+                                        }
                                     }
                                 }
                                 _ => {

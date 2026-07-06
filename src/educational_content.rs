@@ -116,6 +116,45 @@ impl EducationalContent {
             ),
         );
 
+        // Pack Bitmap files educational content
+        content_map.insert(
+            "Pack Bitmap".to_string(),
+            Text::from(
+                "PACK BITMAP FILES (.bitmap)\n\nReachability, precomputed.\n\
+             Serving a fetch or clone means answering \"which objects are\n\
+             reachable from these commits?\" — normally a graph walk over\n\
+             every commit, tree and blob. A bitmap file stores that answer\n\
+             for a set of selected commits: one bit per object in the pack\n\
+             (or multi-pack-index), set when the object is reachable.\n\
+             Reachability queries become OR/AND over bitmaps.\n\
+             \n\
+             Bitmap file structure:\n\
+             \n\
+             ┌───────────────────┐\n\
+             │ Header            │ \"BITM\", version, flags, entry count\n\
+             ├───────────────────┤\n\
+             │ Pack Checksum     │ 20/32 bytes (pack/MIDX this belongs to)\n\
+             ├───────────────────┤\n\
+             │ Type Indexes      │ 4 EWAH bitmaps: commits, trees, blobs, tags\n\
+             ├───────────────────┤\n\
+             │ Commit Bitmaps    │ N × (position, XOR offset, flags, EWAH bitmap)\n\
+             ├───────────────────┤\n\
+             │ Optional Sections │ pseudo-merges, lookup table, name-hash cache\n\
+             ├───────────────────┤\n\
+             │ Checksum          │ 20/32 bytes\n\
+             └───────────────────┘\n\
+             \n\
+             Bitmaps are EWAH run-length compressed, and similar commit\n\
+             bitmaps are additionally XOR-compressed against one another,\n\
+             storing only the difference. Bit n refers to the n-th object\n\
+             in pack offset order (via the .rev reverse index) or MIDX order.\n\
+             \n\
+             A repository has at most one bitmap: pack-*.bitmap next to its\n\
+             pack, or multi-pack-index-*.bitmap covering all indexed packs.\n\
+             Create one with `git repack -adb` or `repack.writeBitmaps = true`.",
+            ),
+        );
+
         // Multi-pack-index educational content
         content_map.insert(
             "Multi-Pack Index".to_string(),

@@ -566,6 +566,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                pack_bitmap_widget,
                                 multi_pack_index_widget,
                                 ..
                             }) => {
@@ -574,6 +575,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_up();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_up();
+                                } else if let Some(widget) = pack_bitmap_widget {
                                     widget.scroll_up();
                                 } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_up();
@@ -607,6 +610,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                pack_bitmap_widget,
                                 multi_pack_index_widget,
                                 ..
                             }) => {
@@ -615,6 +619,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_down();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_down();
+                                } else if let Some(widget) = pack_bitmap_widget {
                                     widget.scroll_down();
                                 } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_down();
@@ -657,6 +663,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                pack_bitmap_widget,
                                 multi_pack_index_widget,
                                 ..
                             }) => {
@@ -665,6 +672,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_to_top();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_to_top();
+                                } else if let Some(widget) = pack_bitmap_widget {
                                     widget.scroll_to_top();
                                 } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_to_top();
@@ -698,6 +707,7 @@ impl AppState {
                                 pack_index_widget,
                                 pack_reverse_index_widget,
                                 pack_mtimes_widget,
+                                pack_bitmap_widget,
                                 multi_pack_index_widget,
                                 ..
                             }) => {
@@ -706,6 +716,8 @@ impl AppState {
                                 } else if let Some(widget) = pack_reverse_index_widget {
                                     widget.scroll_to_bottom();
                                 } else if let Some(widget) = pack_mtimes_widget {
+                                    widget.scroll_to_bottom();
+                                } else if let Some(widget) = pack_bitmap_widget {
                                     widget.scroll_to_bottom();
                                 } else if let Some(widget) = multi_pack_index_widget {
                                     widget.scroll_to_bottom();

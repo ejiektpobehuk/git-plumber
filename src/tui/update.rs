@@ -207,6 +207,7 @@ impl AppState {
                                 regular_state.pack_index_widget = None;
                                 regular_state.pack_reverse_index_widget = None;
                                 regular_state.pack_mtimes_widget = None;
+                                regular_state.pack_bitmap_widget = None;
                                 regular_state.multi_pack_index_widget = None;
                             }
                             PreviewState::Pack(_) => {
@@ -262,6 +263,23 @@ impl AppState {
                         state.preview_state = PreviewState::Regular(
                             crate::tui::main_view::RegularPreViewState::new_with_pack_mtimes(
                                 mtimes,
+                            ),
+                        );
+                        self.error = None;
+                    }
+                }
+                Err(e) => {
+                    self.error = Some(e);
+                }
+            },
+
+            Message::LoadPackBitmapDetails(result) => match *result {
+                Ok(bitmap) => {
+                    if let AppView::Main { state } = &mut self.view {
+                        // Switch to Regular preview state with pack bitmap widget
+                        state.preview_state = PreviewState::Regular(
+                            crate::tui::main_view::RegularPreViewState::new_with_pack_bitmap(
+                                bitmap,
                             ),
                         );
                         self.error = None;
@@ -341,6 +359,7 @@ impl AppState {
                             if r.pack_index_widget.is_some()
                                 || r.pack_reverse_index_widget.is_some()
                                 || r.pack_mtimes_widget.is_some()
+                                || r.pack_bitmap_widget.is_some()
                                 || r.multi_pack_index_widget.is_some()
                             {
                                 0 // PackIndex, PackReverseIndex and PackMtimes widgets manage their own scrolling
@@ -388,6 +407,7 @@ impl AppState {
             | Message::LoadPackIndexDetails(_)
             | Message::LoadPackReverseIndexDetails(_)
             | Message::LoadPackMtimesDetails(_)
+            | Message::LoadPackBitmapDetails(_)
             | Message::LoadMultiPackIndexDetails(_)
             | Message::LoadPackObjects { .. }
             | Message::GitObjectsLoaded(_) => {

@@ -198,6 +198,13 @@ fn render_regular_preview_layout(
                 content_chunks[1],
                 matches!(preview_state.focus, RegularFocus::Preview),
             );
+        } else if let Some(pack_bitmap_widget) = &mut preview_state.pack_bitmap_widget {
+            // Render pack bitmap widget
+            pack_bitmap_widget.render(
+                f,
+                content_chunks[1],
+                matches!(preview_state.focus, RegularFocus::Preview),
+            );
         } else if let Some(multi_pack_index_widget) = &mut preview_state.multi_pack_index_widget {
             // Render multi-pack-index widget
             multi_pack_index_widget.render(

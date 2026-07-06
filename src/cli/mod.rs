@@ -303,6 +303,8 @@ pub fn run() -> Result<(), String> {
                     } else if path.file_name().and_then(|s| s.to_str()) == Some("multi-pack-index")
                     {
                         plumber.view_multi_pack_index(&path)
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("bitmap") {
+                        plumber.view_pack_bitmap(&path)
                     } else {
                         // Try to parse as loose object file
                         plumber.view_file_as_object(&path)
@@ -323,6 +325,8 @@ pub fn run() -> Result<(), String> {
                     } else if path.file_name().and_then(|s| s.to_str()) == Some("multi-pack-index")
                     {
                         plumber.view_multi_pack_index(&path)
+                    } else if path.extension().and_then(|s| s.to_str()) == Some("bitmap") {
+                        plumber.view_pack_bitmap(&path)
                     } else {
                         plumber.view_file_as_object(&path)
                     }

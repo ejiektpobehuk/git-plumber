@@ -6,6 +6,7 @@ use nom::{
     number::complete::be_u32,
 };
 
+pub mod bitmap;
 pub mod delta;
 pub mod index;
 pub mod mtimes;
@@ -14,6 +15,7 @@ pub mod object;
 pub mod resolver;
 pub mod reverse_index;
 
+pub use bitmap::PackBitmap;
 pub use delta::{DeltaInstruction, parse_delta_instructions};
 pub use index::PackIndex;
 pub use mtimes::PackMtimes;

@@ -83,6 +83,17 @@ impl GitPlumber {
             .and_then(Repository::get_multi_pack_index)
     }
 
+    /// Get the path to the multi-pack-index bitmap file, if the repository has one
+    ///
+    /// Returns None both when there is no MIDX bitmap and when the path is
+    /// not a git repository — absence is normal either way.
+    #[must_use]
+    pub fn get_multi_pack_index_bitmap(&self) -> Option<PathBuf> {
+        self.repository
+            .as_ref()
+            .and_then(Repository::get_multi_pack_index_bitmap)
+    }
+
     /// List all head refs (local branches) in the repository
     ///
     /// # Errors
@@ -343,16 +354,41 @@ impl GitPlumber {
         use crate::cli::formatters::CliPackFormatter;
         use crate::tui::widget::multi_pack_index_details::formatters::MultiPackIndexFormatter;
 
-        let data = std::fs::read(path)
-            .map_err(|e| format!("Error reading multi-pack-index file: {e}"))?;
+        let data =
+            std::fs::read(path).map_err(|e| format!("Error reading multi-pack-index file: {e}"))?;
         match crate::git::pack::MultiPackIndex::parse(&data) {
             Ok((_, multi_pack_index)) => {
-                let formatted_text = MultiPackIndexFormatter::new(&multi_pack_index).generate_content();
+                let formatted_text =
+                    MultiPackIndexFormatter::new(&multi_pack_index).generate_content();
                 let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
                 crate::cli::safe_print(&colored_text)?;
                 Ok(())
             }
             Err(e) => Err(format!("Error parsing multi-pack-index: {e:?}")),
+        }
+    }
+
+    /// View a pack bitmap file with rich formatting
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The file cannot be read
+    /// - The file is not a valid pack bitmap
+    /// - The formatting operations fail
+    pub fn view_pack_bitmap(&self, path: &Path) -> Result<(), String> {
+        use crate::cli::formatters::CliPackFormatter;
+        use crate::tui::widget::pack_bitmap_details::formatters::PackBitmapFormatter;
+
+        let data = std::fs::read(path).map_err(|e| format!("Error reading bitmap file: {e}"))?;
+        match crate::git::pack::PackBitmap::parse(&data) {
+            Ok((_, bitmap)) => {
+                let formatted_text = PackBitmapFormatter::new(&bitmap).generate_content();
+                let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
+                crate::cli::safe_print(&colored_text)?;
+                Ok(())
+            }
+            Err(e) => Err(format!("Error parsing pack bitmap: {e:?}")),
         }
     }
 
