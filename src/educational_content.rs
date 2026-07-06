@@ -116,6 +116,45 @@ impl EducationalContent {
             ),
         );
 
+        // Multi-pack-index educational content
+        content_map.insert(
+            "Multi-Pack Index".to_string(),
+            Text::from(
+                "MULTI-PACK-INDEX (multi-pack-index)\n\nOne index over many pack files.\n\
+             Each pack normally carries its own .idx, so finding an object\n\
+             means binary-searching every index in turn. The multi-pack-index\n\
+             (MIDX) merges them: one sorted table maps each object ID to the\n\
+             pack that stores it and its offset there.\n\
+             \n\
+             The file is chunk-based — a lookup table of 4-character chunk IDs\n\
+             and file offsets describes where each data table lives:\n\
+             \n\
+             ┌─────────────────┐\n\
+             │ Header          │ 12 bytes (\"MIDX\", version, hash, counts)\n\
+             ├─────────────────┤\n\
+             │ Chunk Lookup    │ (C+1) × 12 bytes (ID + offset, 0-terminated)\n\
+             ├─────────────────┤\n\
+             │ PNAM Chunk      │ NUL-terminated pack file names\n\
+             ├─────────────────┤\n\
+             │ OIDF Chunk      │ 256 × 4 bytes (fan-out table)\n\
+             ├─────────────────┤\n\
+             │ OIDL Chunk      │ N × 20/32 bytes (sorted object IDs)\n\
+             ├─────────────────┤\n\
+             │ OOFF Chunk      │ N × 8 bytes (pack ID + offset)\n\
+             ├─────────────────┤\n\
+             │ Optional Chunks │ LOFF (large offsets), RIDX, BTMP, ...\n\
+             ├─────────────────┤\n\
+             │ Checksum        │ 20/32 bytes\n\
+             └─────────────────┘\n\
+             \n\
+             Objects can appear in several packs; the MIDX records one\n\
+             preferred copy. Bitmaps can then cover all indexed packs at once.\n\
+             \n\
+             Create one with `git multi-pack-index write` or automatically\n\
+             via `git repack --write-midx` / `core.multiPackIndex`.",
+            ),
+        );
+
         // References educational content
         content_map.insert(
             "Refs".to_string(),

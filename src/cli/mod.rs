@@ -195,6 +195,12 @@ pub fn run() -> Result<(), String> {
                                     safe_println(&format!("{}. {}", i + 1, file.display()))?;
                                 }
                             }
+                            if let Some(midx_path) = plumber.get_multi_pack_index() {
+                                safe_println(&format!(
+                                    "Multi-pack-index: {}",
+                                    midx_path.display()
+                                ))?;
+                            }
                             Ok(())
                         }
                         Err(e) => Err(format!("Error listing pack files: {e}")),
@@ -258,6 +264,9 @@ pub fn run() -> Result<(), String> {
                             safe_println(&format!("  Error listing pack files: {e}"))?;
                         }
                     }
+                    if let Some(midx_path) = plumber.get_multi_pack_index() {
+                        safe_println(&format!("  Multi-pack-index: {}", midx_path.display()))?;
+                    }
 
                     safe_println("")?;
 
@@ -291,6 +300,9 @@ pub fn run() -> Result<(), String> {
                     // Check if it's a pack file or other git object file
                     if path.extension().and_then(|s| s.to_str()) == Some("pack") {
                         plumber.parse_pack_file_rich(&path)
+                    } else if path.file_name().and_then(|s| s.to_str()) == Some("multi-pack-index")
+                    {
+                        plumber.view_multi_pack_index(&path)
                     } else {
                         // Try to parse as loose object file
                         plumber.view_file_as_object(&path)
@@ -308,6 +320,9 @@ pub fn run() -> Result<(), String> {
                     // File exists, treat as path
                     if path.extension().and_then(|s| s.to_str()) == Some("pack") {
                         plumber.parse_pack_file_rich(&path)
+                    } else if path.file_name().and_then(|s| s.to_str()) == Some("multi-pack-index")
+                    {
+                        plumber.view_multi_pack_index(&path)
                     } else {
                         plumber.view_file_as_object(&path)
                     }

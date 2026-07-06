@@ -331,6 +331,31 @@ impl GitPlumber {
         )
     }
 
+    /// View a multi-pack-index file with rich formatting
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if:
+    /// - The file cannot be read
+    /// - The file is not a valid multi-pack-index
+    /// - The formatting operations fail
+    pub fn view_multi_pack_index(&self, path: &Path) -> Result<(), String> {
+        use crate::cli::formatters::CliPackFormatter;
+        use crate::tui::widget::multi_pack_index_details::formatters::MultiPackIndexFormatter;
+
+        let data = std::fs::read(path)
+            .map_err(|e| format!("Error reading multi-pack-index file: {e}"))?;
+        match crate::git::pack::MultiPackIndex::parse(&data) {
+            Ok((_, multi_pack_index)) => {
+                let formatted_text = MultiPackIndexFormatter::new(&multi_pack_index).generate_content();
+                let colored_text = CliPackFormatter::text_to_ansi_string(&formatted_text);
+                crate::cli::safe_print(&colored_text)?;
+                Ok(())
+            }
+            Err(e) => Err(format!("Error parsing multi-pack-index: {e:?}")),
+        }
+    }
+
     /// View an object by hash with rich formatting
     ///
     /// # Errors
