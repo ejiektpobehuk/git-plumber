@@ -42,8 +42,10 @@ impl<'a> MultiPackIndexFormatter<'a> {
 
         HeaderFormatter::new(self.multi_pack_index).format_header(&mut lines);
         ChunksFormatter::new(self.multi_pack_index).format_chunk_table(&mut lines);
-        PacksFormatter::new(self.multi_pack_index).format_pack_names(&mut lines);
+        let packs_formatter = PacksFormatter::new(self.multi_pack_index);
+        packs_formatter.format_pack_names(&mut lines);
         ObjectsFormatter::new(self.multi_pack_index).format_objects_overview(&mut lines);
+        packs_formatter.format_bitmapped_packs(&mut lines);
         self.add_checksum_section(&mut lines);
         self.add_structure_diagram(&mut lines);
 

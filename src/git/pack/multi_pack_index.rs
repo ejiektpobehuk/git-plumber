@@ -109,6 +109,47 @@ impl ObjectOffset {
     }
 }
 
+/// The slice of the multi-pack bitmap that belongs to one pack
+///
+/// Objects covered by a MIDX reachability bitmap are laid out in
+/// "pseudo-pack" order: all of pack 0's objects, then all of pack 1's, and
+/// so on. Each BTMP entry marks where one pack's run starts and how long it
+/// is, which is what lets `git pack-objects` reuse a byte range verbatim
+/// from one specific pack instead of from the preferred pack only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BitmappedPack {
+    /// Pack-int-id this entry describes; implicit on disk, where entries
+    /// appear in PNAM order
+    pub pack_id: u32,
+    /// First bit position (in pseudo-pack order) holding an object from this pack
+    pub bitmap_pos: u32,
+    /// Number of bit positions, starting at `bitmap_pos`, taken by this pack
+    pub bitmap_nr: u32,
+}
+
+impl BitmappedPack {
+    /// Bit position just past this pack's run
+    #[must_use]
+    pub const fn bitmap_end(&self) -> u32 {
+        self.bitmap_pos.saturating_add(self.bitmap_nr)
+    }
+
+    /// Whether this pack contributes no objects to the bitmap
+    ///
+    /// Git writes `bitmap_pos` 0 for such packs, so the position is only
+    /// meaningful when some bits are actually claimed.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.bitmap_nr == 0
+    }
+
+    /// Whether the given bitmap bit position falls in this pack's run
+    #[must_use]
+    pub const fn contains(&self, bitmap_pos: u32) -> bool {
+        !self.is_empty() && bitmap_pos >= self.bitmap_pos && bitmap_pos < self.bitmap_end()
+    }
+}
+
 /// Represents a Git multi-pack-index file (multi-pack-index)
 ///
 /// A multi-pack-index (MIDX) indexes the objects of many pack files at once,
@@ -146,6 +187,9 @@ pub struct MultiPackIndex {
     pub large_offsets: Option<Vec<u64>>,
     /// Reverse index from the RIDX chunk: positions sorted by pseudo-pack order
     pub reverse_index: Option<Vec<u32>>,
+    /// Per-pack bitmap ranges from the BTMP chunk, in pack-int-id order
+    /// (present only when a MIDX bitmap was written alongside this file)
+    pub bitmapped_packs: Option<Vec<BitmappedPack>>,
     /// SHA-1/SHA-256 checksum of all the above content
     pub checksum: Vec<u8>,
     /// Raw data for debugging/display purposes
@@ -258,6 +302,9 @@ impl MultiPackIndex {
         let reverse_index = chunk_slice(Self::CHUNK_RIDX)
             .map(|data| Self::parse_ridx(data, total_objects))
             .transpose()?;
+        let bitmapped_packs = chunk_slice(Self::CHUNK_BTMP)
+            .map(|data| Self::parse_btmp(data, num_packs))
+            .transpose()?;
 
         // Every large-offset redirect must land inside the LOFF table
         let large_count = large_offsets.as_ref().map_or(0, Vec::len);
@@ -295,6 +342,7 @@ impl MultiPackIndex {
                 object_offsets,
                 large_offsets,
                 reverse_index,
+                bitmapped_packs,
                 checksum,
                 raw_data,
             },
@@ -438,6 +486,73 @@ impl MultiPackIndex {
         Ok(positions)
     }
 
+    /// Parse the BTMP chunk: one (`bitmap_pos`, `bitmap_nr`) pair per pack
+    ///
+    /// The pack-int-id is not stored — entries follow PNAM order, so the row
+    /// index is the pack it describes.
+    fn parse_btmp(
+        data: &[u8],
+        num_packs: u32,
+    ) -> Result<Vec<BitmappedPack>, nom::Err<Error<&[u8]>>> {
+        if data.len() != num_packs as usize * 8 {
+            return Err(nom::Err::Error(Error::new(data, ErrorKind::LengthValue)));
+        }
+
+        let (_, packs) = count(
+            |input| {
+                let (input, bitmap_pos) = be_u32(input)?;
+                let (input, bitmap_nr) = be_u32(input)?;
+                Ok((input, (bitmap_pos, bitmap_nr)))
+            },
+            num_packs as usize,
+        )
+        .parse(data)?;
+
+        Ok(packs
+            .into_iter()
+            .enumerate()
+            .map(|(pack_id, (bitmap_pos, bitmap_nr))| BitmappedPack {
+                pack_id: pack_id as u32,
+                bitmap_pos,
+                bitmap_nr,
+            })
+            .collect())
+    }
+
+    /// Get the BTMP entry for a pack-int-id
+    #[must_use]
+    pub fn bitmapped_pack_for(&self, pack_id: u32) -> Option<&BitmappedPack> {
+        self.bitmapped_packs.as_ref()?.get(pack_id as usize)
+    }
+
+    /// Find which pack owns a given multi-pack bitmap bit position
+    ///
+    /// This is the join BTMP exists for: a set bit in the MIDX bitmap is a
+    /// position in pseudo-pack order, and only BTMP says which pack that
+    /// position falls in.
+    #[must_use]
+    pub fn pack_for_bitmap_pos(&self, bitmap_pos: u32) -> Option<&BitmappedPack> {
+        self.bitmapped_packs
+            .as_ref()?
+            .iter()
+            .find(|pack| pack.contains(bitmap_pos))
+    }
+
+    /// Total number of bit positions claimed by the BTMP table
+    ///
+    /// For a consistent MIDX bitmap this equals the object count, since the
+    /// per-pack runs tile pseudo-pack order without gaps or overlap.
+    #[must_use]
+    pub fn bitmapped_object_count(&self) -> Option<u32> {
+        Some(
+            self.bitmapped_packs
+                .as_ref()?
+                .iter()
+                .map(|pack| pack.bitmap_nr)
+                .sum(),
+        )
+    }
+
     /// Get the total number of objects across all indexed packs
     #[must_use]
     pub const fn object_count(&self) -> usize {
@@ -529,6 +644,33 @@ impl fmt::Display for MultiPackIndex {
         }
         if self.pack_count() > pack_sample {
             writeln!(f, "  ... ({} more packs)", self.pack_count() - pack_sample)?;
+        }
+
+        if let Some(bitmapped_packs) = &self.bitmapped_packs {
+            writeln!(f, "\nBitmapped packs (BTMP), bit range per pack:")?;
+            let btmp_sample = std::cmp::min(10, bitmapped_packs.len());
+            for pack in bitmapped_packs.iter().take(btmp_sample) {
+                let name = self.pack_name_for(pack.pack_id).unwrap_or("<unknown pack>");
+                if pack.is_empty() {
+                    writeln!(f, "  [{}] {name} — no bitmapped objects", pack.pack_id)?;
+                } else {
+                    writeln!(
+                        f,
+                        "  [{}] {name} — bits {}..{} ({} objects)",
+                        pack.pack_id,
+                        pack.bitmap_pos,
+                        pack.bitmap_end(),
+                        pack.bitmap_nr
+                    )?;
+                }
+            }
+            if bitmapped_packs.len() > btmp_sample {
+                writeln!(
+                    f,
+                    "  ... ({} more packs)",
+                    bitmapped_packs.len() - btmp_sample
+                )?;
+            }
         }
 
         writeln!(f, "\nSample objects (OID → pack, offset):")?;
@@ -823,6 +965,139 @@ mod tests {
 
         let (_, midx) = MultiPackIndex::parse(&data).unwrap();
         assert_eq!(midx.reverse_index, Some(vec![1, 0]));
+    }
+
+    /// Build a BTMP payload from (`bitmap_pos`, `bitmap_nr`) pairs
+    fn build_btmp(entries: &[(u32, u32)]) -> Vec<u8> {
+        let mut payload = Vec::new();
+        for (bitmap_pos, bitmap_nr) in entries {
+            payload.extend_from_slice(&bitmap_pos.to_be_bytes());
+            payload.extend_from_slice(&bitmap_nr.to_be_bytes());
+        }
+        payload
+    }
+
+    /// Assemble a three-pack MIDX carrying the given BTMP payload
+    fn midx_with_btmp(btmp: Vec<u8>) -> Vec<u8> {
+        let hash_len = 20;
+        let pack_names = ["pack-a.pack", "pack-b.pack", "pack-c.pack"];
+        let num_objects = 6;
+        let (oidf, oidl) = build_oids(num_objects, hash_len);
+
+        let mut ooff = Vec::new();
+        for i in 0..num_objects {
+            let pack_id = (i % pack_names.len()) as u32;
+            ooff.extend_from_slice(&pack_id.to_be_bytes());
+            ooff.extend_from_slice(&((i as u32) * 100).to_be_bytes());
+        }
+
+        let chunks = vec![
+            (MultiPackIndex::CHUNK_PNAM, build_pnam(&pack_names)),
+            (MultiPackIndex::CHUNK_OIDF, oidf),
+            (MultiPackIndex::CHUNK_OIDL, oidl),
+            (MultiPackIndex::CHUNK_OOFF, ooff),
+            (MultiPackIndex::CHUNK_BTMP, btmp),
+        ];
+
+        assemble_midx(1, 1, 0, pack_names.len() as u32, &chunks, hash_len)
+    }
+
+    #[test]
+    fn test_btmp_parsed() {
+        // The gitformat-pack example: packs of 10, 15 and 20 objects laid
+        // end to end in pseudo-pack order
+        let data = midx_with_btmp(build_btmp(&[(0, 10), (10, 15), (25, 20)]));
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        let bitmapped_packs = midx.bitmapped_packs.as_ref().unwrap();
+        assert_eq!(bitmapped_packs.len(), 3);
+        assert_eq!(
+            bitmapped_packs[1],
+            BitmappedPack {
+                pack_id: 1,
+                bitmap_pos: 10,
+                bitmap_nr: 15,
+            }
+        );
+        assert_eq!(bitmapped_packs[2].bitmap_end(), 45);
+        assert_eq!(midx.bitmapped_object_count(), Some(45));
+
+        // Pack-int-id is the row index, so BTMP joins to PNAM by position
+        let pack = midx.bitmapped_pack_for(2).unwrap();
+        assert_eq!(midx.pack_name_for(pack.pack_id), Some("pack-c.pack"));
+        assert_eq!(midx.bitmapped_pack_for(3), None);
+    }
+
+    #[test]
+    fn test_btmp_bit_position_lookup() {
+        let data = midx_with_btmp(build_btmp(&[(0, 10), (10, 15), (25, 20)]));
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        // Boundaries: last bit of a pack and the first bit of the next
+        assert_eq!(midx.pack_for_bitmap_pos(0).unwrap().pack_id, 0);
+        assert_eq!(midx.pack_for_bitmap_pos(9).unwrap().pack_id, 0);
+        assert_eq!(midx.pack_for_bitmap_pos(10).unwrap().pack_id, 1);
+        assert_eq!(midx.pack_for_bitmap_pos(24).unwrap().pack_id, 1);
+        assert_eq!(midx.pack_for_bitmap_pos(25).unwrap().pack_id, 2);
+        assert_eq!(midx.pack_for_bitmap_pos(44).unwrap().pack_id, 2);
+        assert!(midx.pack_for_bitmap_pos(45).is_none()); // past the last run
+    }
+
+    #[test]
+    fn test_btmp_preferred_pack_is_not_first() {
+        // The preferred pack leads pseudo-pack order whatever its pack-int-id,
+        // so bitmap_pos need not ascend with the row number. Here pack 2 is
+        // preferred: it takes bits 0..3, and packs 0 and 1 follow.
+        let data = midx_with_btmp(build_btmp(&[(3, 6), (9, 3), (0, 3)]));
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        assert_eq!(midx.pack_for_bitmap_pos(0).unwrap().pack_id, 2);
+        assert_eq!(midx.pack_for_bitmap_pos(3).unwrap().pack_id, 0);
+        assert_eq!(midx.pack_for_bitmap_pos(9).unwrap().pack_id, 1);
+        assert_eq!(midx.bitmapped_object_count(), Some(12));
+    }
+
+    #[test]
+    fn test_btmp_pack_with_no_bitmapped_objects() {
+        // Git writes bitmap_pos 0 for a pack contributing no bits, which must
+        // not be read as "owns bit 0"
+        let data = midx_with_btmp(build_btmp(&[(0, 0), (0, 10), (10, 5)]));
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        let empty = midx.bitmapped_pack_for(0).unwrap();
+        assert!(empty.is_empty());
+        assert!(!empty.contains(0));
+        assert_eq!(midx.pack_for_bitmap_pos(0).unwrap().pack_id, 1);
+        assert_eq!(midx.bitmapped_object_count(), Some(15));
+    }
+
+    #[test]
+    fn test_btmp_absent() {
+        let data = create_test_midx_data(&["pack-a.pack"], 3, 1, false);
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        assert_eq!(midx.bitmapped_packs, None);
+        assert_eq!(midx.bitmapped_object_count(), None);
+        assert_eq!(midx.bitmapped_pack_for(0), None);
+        assert_eq!(midx.pack_for_bitmap_pos(0), None);
+    }
+
+    #[test]
+    fn test_btmp_entry_count_mismatch() {
+        // Three packs, but only two BTMP entries
+        let data = midx_with_btmp(build_btmp(&[(0, 10), (10, 15)]));
+
+        assert!(MultiPackIndex::parse(&data).is_err());
+    }
+
+    #[test]
+    fn test_btmp_in_display_output() {
+        let data = midx_with_btmp(build_btmp(&[(0, 10), (10, 15), (25, 20)]));
+        let (_, midx) = MultiPackIndex::parse(&data).unwrap();
+
+        let display_str = format!("{midx}");
+        assert!(display_str.contains("Bitmapped packs (BTMP)"));
+        assert!(display_str.contains("pack-b.pack — bits 10..25 (15 objects)"));
     }
 
     #[test]

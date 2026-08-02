@@ -189,6 +189,12 @@ impl EducationalContent {
              Objects can appear in several packs; the MIDX records one\n\
              preferred copy. Bitmaps can then cover all indexed packs at once.\n\
              \n\
+             A multi-pack bitmap numbers objects in \"pseudo-pack\" order —\n\
+             one pack's objects, then the next pack's — with the preferred\n\
+             pack placed first. The BTMP chunk stores, per pack, the first bit\n\
+             position it occupies and how many bits it takes, which is what\n\
+             maps a set bit back to the pack that holds the object.\n\
+             \n\
              Create one with `git multi-pack-index write` or automatically\n\
              via `git repack --write-midx` / `core.multiPackIndex`.",
             ),

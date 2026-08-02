@@ -19,7 +19,7 @@ pub use bitmap::PackBitmap;
 pub use delta::{DeltaInstruction, parse_delta_instructions};
 pub use index::PackIndex;
 pub use mtimes::PackMtimes;
-pub use multi_pack_index::MultiPackIndex;
+pub use multi_pack_index::{BitmappedPack, MultiPackIndex};
 pub use object::{Object, ObjectHeader, ObjectType};
 pub use resolver::{ResolvedObject, resolve_objects};
 pub use reverse_index::PackReverseIndex;
