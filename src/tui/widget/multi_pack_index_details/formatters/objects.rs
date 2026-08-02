@@ -2,6 +2,11 @@ use crate::git::pack::MultiPackIndex;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 
+/// Number of object ID hex characters shown in the objects table
+const OID_WIDTH: usize = 12;
+/// Length of the separator rule under the (variable-length) offset column
+const OFFSET_RULE_WIDTH: usize = 14;
+
 pub struct ObjectsFormatter<'a> {
     multi_pack_index: &'a MultiPackIndex,
 }
@@ -100,27 +105,43 @@ impl<'a> ObjectsFormatter<'a> {
             return;
         }
 
+        // Size the numeric columns to their widest value so a large repository
+        // doesn't push the dividers out of line; the column labels set the
+        // lower bound. Every row is then built from the same cell widths.
+        let index_width = Self::column_width(object_count - 1, "Index".len());
+        let pack_width = Self::column_width(
+            self.multi_pack_index.pack_count().saturating_sub(1),
+            "Pack".len(),
+        );
+
+        let bold = Style::default().add_modifier(Modifier::BOLD);
         lines.push(Line::from(vec![
-            Span::styled(" Index", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(" │ ", gray),
-            Span::styled("Object ID", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled("    │ ", gray),
-            Span::styled("Pack", Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(" │ ", gray),
-            Span::styled("Offset", Style::default().add_modifier(Modifier::BOLD)),
+            Span::styled(format!(" {:>index_width$} ", "Index"), bold),
+            Span::styled("│", gray),
+            Span::styled(format!(" {:<OID_WIDTH$} ", "Object ID"), bold),
+            Span::styled("│", gray),
+            Span::styled(format!(" {:>pack_width$} ", "Pack"), bold),
+            Span::styled("│", gray),
+            Span::styled(" Offset", bold),
         ]));
         lines.push(Line::styled(
-            "──────┼──────────────┼──────┼──────────────",
+            format!(
+                "{}┼{}┼{}┼{}",
+                "─".repeat(index_width + 2),
+                "─".repeat(OID_WIDTH + 2),
+                "─".repeat(pack_width + 2),
+                "─".repeat(OFFSET_RULE_WIDTH),
+            ),
             gray,
         ));
 
         let entries_to_show = Self::determine_sample_indices(object_count);
         for (i, show_entry) in entries_to_show.iter().enumerate() {
             if *show_entry {
-                let short_oid = self
-                    .multi_pack_index
-                    .oid_hex_at(i)
-                    .map_or_else(|| "?".to_string(), |oid| oid[..12.min(oid.len())].to_string());
+                let short_oid = self.multi_pack_index.oid_hex_at(i).map_or_else(
+                    || "?".to_string(),
+                    |oid| oid[..OID_WIDTH.min(oid.len())].to_string(),
+                );
                 let (pack_id, offset) = self.multi_pack_index.offset_at(i).unwrap_or((0, 0));
                 let is_large = self
                     .multi_pack_index
@@ -129,13 +150,22 @@ impl<'a> ObjectsFormatter<'a> {
                     .is_some_and(|object_offset| object_offset.is_large());
 
                 let mut spans = vec![
-                    Span::styled(format!(" {i:4} "), Style::default().fg(Color::Cyan)),
-                    Span::styled("│ ", gray),
-                    Span::styled(short_oid, Style::default().fg(Color::Yellow)),
-                    Span::styled(" │ ", gray),
-                    Span::styled(format!("{pack_id:4}"), Style::default().fg(Color::LightBlue)),
-                    Span::styled(" │ ", gray),
-                    Span::styled(format!("{offset}"), Style::default().fg(Color::LightGreen)),
+                    Span::styled(
+                        format!(" {i:>index_width$} "),
+                        Style::default().fg(Color::Cyan),
+                    ),
+                    Span::styled("│", gray),
+                    Span::styled(
+                        format!(" {short_oid:<OID_WIDTH$} "),
+                        Style::default().fg(Color::Yellow),
+                    ),
+                    Span::styled("│", gray),
+                    Span::styled(
+                        format!(" {pack_id:>pack_width$} "),
+                        Style::default().fg(Color::LightBlue),
+                    ),
+                    Span::styled("│", gray),
+                    Span::styled(format!(" {offset}"), Style::default().fg(Color::LightGreen)),
                 ];
                 if is_large {
                     spans.push(Span::styled(" (large)", Style::default().fg(Color::Magenta)));
@@ -143,13 +173,13 @@ impl<'a> ObjectsFormatter<'a> {
                 lines.push(Line::from(spans));
             } else if i > 0 && entries_to_show[i - 1] {
                 lines.push(Line::from(vec![
-                    Span::styled("  ... ", gray),
-                    Span::styled("│ ", gray),
-                    Span::styled("...          ", gray),
-                    Span::styled("│ ", gray),
-                    Span::styled(" ... ", gray),
-                    Span::styled("│ ", gray),
-                    Span::styled("...", gray),
+                    Span::styled(format!(" {:>index_width$} ", "..."), gray),
+                    Span::styled("│", gray),
+                    Span::styled(format!(" {:<OID_WIDTH$} ", "..."), gray),
+                    Span::styled("│", gray),
+                    Span::styled(format!(" {:>pack_width$} ", "..."), gray),
+                    Span::styled("│", gray),
+                    Span::styled(" ...", gray),
                 ]));
             }
         }
@@ -166,6 +196,13 @@ impl<'a> ObjectsFormatter<'a> {
             ]));
             lines.push(Line::from(""));
         }
+    }
+
+    /// Width of a numeric column holding values up to `max_value`, never
+    /// narrower than the column's label
+    fn column_width(max_value: usize, label_len: usize) -> usize {
+        let digits = max_value.checked_ilog10().map_or(1, |d| d as usize + 1);
+        digits.max(label_len)
     }
 
     /// Pick which entries of a large table to display: all when small,
